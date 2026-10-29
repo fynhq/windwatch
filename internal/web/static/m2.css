@@ -861,6 +861,14 @@
   font-size: 12px;
 }
 
+.public-powered a {
+  color: inherit;
+}
+
+.public-powered a:hover {
+  color: var(--accent);
+}
+
 /* Events overview and filters */
 .events-overview {
   display: flex;

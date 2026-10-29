@@ -1,6 +1,6 @@
 {{define "content" -}}
 {{template "status-live" .}}
-<p class="public-powered muted">{{.I18n.T "public.poweredBy"}}</p>
+<p class="public-powered muted"><a href="https://github.com/fynhq/windwatch" target="_blank" rel="noopener noreferrer" title="{{.I18n.T "footer.project"}}">{{.I18n.Tf "footer.version" .Version}}</a></p>
 {{- end}}
 
 {{define "status-live" -}}

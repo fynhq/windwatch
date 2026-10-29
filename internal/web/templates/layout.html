@@ -152,9 +152,9 @@
 <main id="main" class="main-content auth-main">
   {{template "content" .}}
 </main>
-<footer class="app-footer auth-footer">
+{{if not .PublicView}}<footer class="app-footer auth-footer">
   <span>{{.I18n.Tf "footer.version" .Version}}</span>
-</footer>
+</footer>{{end}}
 {{end}}
 </body>
 </html>

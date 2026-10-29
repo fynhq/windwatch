@@ -369,7 +369,6 @@
   "public.someAttention": "部分系统需要关注",
   "public.noMonitors": "还没有公开的监控。",
   "public.updated": "更新于 %s",
-  "public.poweredBy": "由 WindWatch 提供",
   "notice.publicStatusSaved": "公开状态页设置已保存。",
   "notice.timezoneSaved": "时区已保存。",
   "error.publicTitle": "页面标题最多 100 个字符。",

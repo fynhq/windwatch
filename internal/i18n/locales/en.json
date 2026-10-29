@@ -369,7 +369,6 @@
   "public.someAttention": "Some systems need attention",
   "public.noMonitors": "No monitors are published yet.",
   "public.updated": "Updated %s",
-  "public.poweredBy": "Powered by WindWatch",
   "notice.publicStatusSaved": "Public status page settings saved.",
   "notice.timezoneSaved": "Timezone saved.",
   "error.publicTitle": "Page title must be at most 100 characters.",

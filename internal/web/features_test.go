@@ -179,6 +179,12 @@ func TestPublicStatusPage(t *testing.T) {
 	if strings.Contains(body, "Check now") {
 		t.Fatal("/status exposed admin actions")
 	}
+	if !strings.Contains(body, `href="https://github.com/fynhq/windwatch"`) || !strings.Contains(body, "WindWatch test") {
+		t.Fatalf("/status missing version link: %s", body)
+	}
+	if strings.Contains(body, `class="app-footer"`) {
+		t.Fatalf("/status still renders the page footer: %s", body)
+	}
 
 	response, err = adminClient.PostForm(testServer.URL+"/settings/public-status", url.Values{
 		"csrf_token":      {csrf},
