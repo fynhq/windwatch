@@ -20,7 +20,7 @@ English | [简体中文](#chinese)
 - **Multi-user web UI** — administrators manage monitors, proxies, notifications, and accounts; read-only viewers can inspect the dashboard, monitor details, and events. Simplified Chinese and English, a fixed desktop sidebar, a mobile top bar with a bottom dock, and a color theme that follows the operating system. Dashboard and event filters run in the browser. Dashboard and public status pages refresh a server-rendered fragment in place every 30 seconds, pause while the tab is hidden, and keep full-page refresh as the no-JavaScript fallback.
 - **Public status page** — an optional login-free page with a selected monitor list; it shows names, statuses, 24h/7d/30d/90d uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) without targets, configuration, or secrets.
 - **Password recovery** — the `windwatch reset-password` command resets an account offline and invalidates its sessions.
-- **Small footprint** — server-rendered pages, embedded templates and assets, SQLite storage, and no Redis, Node.js, or external database.
+- **Small footprint** — about 30 MB resident memory, server-rendered pages, embedded templates and assets, SQLite storage, and no Redis, Node.js, or external database.
 
 ## Quick start
 
@@ -325,7 +325,7 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 - **多用户 Web 界面**：管理员管理监控、代理、通知和账号；只读观察者可以查看仪表盘、监控详情和事件。简体中文和英文，桌面固定侧边栏，手机顶部工具栏 + 底部 dock 导航，主题强制跟随操作系统。仪表盘和事件筛选在浏览器内完成；仪表盘和公开状态页每 30 秒局部刷新服务端渲染的 fragment，页面隐藏时暂停，并以整页刷新作为无 JavaScript 回退。
 - **公开状态页**：可选的免登录页面，只展示选定监控的名称、状态、24h/7d/30d/90d 可用率和逐日可用率条（桌面最近 90 天，手机默认最近 30 天），不暴露目标 URL、配置或密钥。
 - **密码恢复**：`windwatch reset-password` 可离线重置账号密码并注销该账号的会话。
-- **资源占用小**：服务端渲染，模板和静态资源内嵌，SQLite 存储，不依赖 Redis、Node.js 或外部数据库。
+- **资源占用小**：常驻内存约 30 MB；服务端渲染，模板和静态资源内嵌，SQLite 存储，不依赖 Redis、Node.js 或外部数据库。
 
 ## 快速开始
 
