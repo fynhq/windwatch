@@ -634,7 +634,7 @@ func formatTime(value time.Time, location *time.Location) string {
 	if location == nil {
 		location = time.UTC
 	}
-	return value.In(location).Format("2006-01-02 15:04:05")
+	return value.In(location).Format("01-02 15:04:05")
 }
 
 // formatTimeRange keeps the date on the start and drops it from the end when

@@ -171,8 +171,8 @@ func TestRenderUsesConfiguredTimezone(t *testing.T) {
 		OccurredAt:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 	text := service.render(i18n.LangEN, notification, location)
-	if !strings.Contains(text, "2026-01-01 08:00:00") {
-		t.Fatalf("notification time not converted: %q", text)
+	if strings.Contains(text, "2026-") || !strings.Contains(text, "01-01 08:00:00") {
+		t.Fatalf("notification time not converted without a year: %q", text)
 	}
 }
 
@@ -220,7 +220,7 @@ func TestRenderRecoveryShowsObservedWindow(t *testing.T) {
 	}
 
 	zh := service.render(i18n.LangZH, notification, location)
-	if !strings.Contains(zh, "故障持续: 2 个检测周期（2026-10-28 18:58:27 – 19:00:31）") {
+	if !strings.Contains(zh, "故障持续: 2 个检测周期（10-28 18:58:27 – 19:00:31）") {
 		t.Fatalf("zh recovery text = %q", zh)
 	}
 	if strings.Contains(zh, "时间:") {
@@ -228,8 +228,11 @@ func TestRenderRecoveryShowsObservedWindow(t *testing.T) {
 	}
 
 	en := service.render(i18n.LangEN, notification, location)
-	if !strings.Contains(en, "Downtime: 2 check intervals (2026-10-28 18:58:27 – 19:00:31)") {
+	if !strings.Contains(en, "Downtime: 2 check intervals (10-28 18:58:27 – 19:00:31)") {
 		t.Fatalf("en recovery text = %q", en)
+	}
+	if strings.Contains(zh, "2026-") || strings.Contains(en, "2026-") {
+		t.Fatalf("recovery text still contains a year: zh=%q en=%q", zh, en)
 	}
 
 	body, err := service.webhookBody(notification, en)
