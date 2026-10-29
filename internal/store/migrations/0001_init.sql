@@ -138,6 +138,8 @@ CREATE TABLE notification_channels (
     enabled INTEGER NOT NULL DEFAULT 1,
     telegram_chat_ids TEXT NOT NULL DEFAULT '',
     webhook_url TEXT NOT NULL DEFAULT '',
+    webhook_format TEXT NOT NULL DEFAULT 'generic'
+        CHECK (webhook_format IN ('generic', 'dingtalk', 'wecom', 'feishu')),
     secret_enc TEXT NOT NULL DEFAULT '',
     proxy_id INTEGER REFERENCES proxies(id) ON DELETE SET NULL,
     created_at_ms INTEGER NOT NULL,
@@ -158,6 +160,7 @@ CREATE TABLE notify_log (
     channel TEXT NOT NULL,
     channel_id INTEGER NOT NULL DEFAULT 0,
     channel_name TEXT NOT NULL DEFAULT '',
+    monitor_name TEXT NOT NULL DEFAULT '',
     target TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed')),
     error TEXT NOT NULL DEFAULT '',
