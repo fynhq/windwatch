@@ -854,6 +854,25 @@
   border-radius: 2px;
 }
 
+.public-history-range-narrow {
+  display: none;
+}
+
+/* Mobile shows the latest 30 of the 90 server-rendered daily bars. */
+@media (max-width: 640px) {
+  .public-history-range-wide {
+    display: none;
+  }
+
+  .public-history-range-narrow {
+    display: inline;
+  }
+
+  .public-history-bars span:nth-child(-n+60) {
+    display: none;
+  }
+}
+
 .public-powered {
   max-width: 900px;
   margin: 24px auto 0;

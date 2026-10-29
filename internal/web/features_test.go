@@ -165,7 +165,7 @@ func TestPublicStatusPage(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("/status status=%d body=%s", response.StatusCode, body)
 	}
-	for _, want := range []string{"Acme status", "Live service health", "Public site", "public-history-bars", "90-day uptime"} {
+	for _, want := range []string{"Acme status", "Live service health", "Public site", "public-history-bars", "90d uptime", "public-history-range-narrow"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("/status missing %q: %s", want, body)
 		}
@@ -387,7 +387,7 @@ func TestLongRangeChartRendering(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("detail status=%d body=%s", response.StatusCode, body)
 	}
-	if !strings.Contains(body, "30-day daily uptime") || !strings.Contains(body, "long-range-chart") || !strings.Contains(body, "bar-up") {
+	if !strings.Contains(body, "30d daily uptime") || !strings.Contains(body, "long-range-chart") || !strings.Contains(body, "bar-up") {
 		t.Fatalf("long-range chart missing: %s", body)
 	}
 }

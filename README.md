@@ -18,7 +18,7 @@ English | [简体中文](#chinese)
 - **Dashboard and history** — an overall status band, search, and status filters sit above a single-column monitor list. Each row shows 24-hour and current latency, a relative last-check time, and its latest 24 checks at the configured interval. Monitor details use a two-column layout with a switchable history card, 24-hour latency chart, 30-day/90-day daily uptime, recent events, and configuration. Display and daily charts use a configurable IANA timezone; storage remains UTC.
 - **Notifications** — any number of named Telegram bot and webhook methods, each with its own credentials, notification language, optional outbound proxy, and test action. Monitors choose which methods receive their alerts and configure their own repeat reminders. Retries, deduplication, and delivery history are included.
 - **Multi-user web UI** — administrators manage monitors, proxies, notifications, and accounts; read-only viewers can inspect the dashboard, monitor details, and events. Simplified Chinese and English, a fixed desktop sidebar, a mobile top bar with a bottom dock, and a color theme that follows the operating system. Dashboard and event filters run in the browser. Dashboard and public status pages refresh a server-rendered fragment in place every 30 seconds, pause while the tab is hidden, and keep full-page refresh as the no-JavaScript fallback.
-- **Public status page** — an optional login-free page with a selected monitor list; it shows names, statuses, 24h/7d/30d/90d uptime, and a 90-day daily uptime strip without targets, configuration, or secrets.
+- **Public status page** — an optional login-free page with a selected monitor list; it shows names, statuses, 24h/7d/30d/90d uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) without targets, configuration, or secrets.
 - **Password recovery** — the `windwatch reset-password` command resets an account offline and invalidates its sessions.
 - **Small footprint** — server-rendered pages, embedded templates and assets, SQLite storage, and no Redis, Node.js, or external database.
 
@@ -241,7 +241,7 @@ At least one active administrator must remain. Disabling an account or resetting
 
 Enable the page under **Settings → Public page**, set a title and optional description, and select the monitors to publish. The page is available at `/status` without a login and refreshes its server-rendered content in place every 30 seconds; its full address is shown in settings with a click-to-copy button.
 
-Only monitor names, types, current status, 24-hour, 7-day, 30-day, and 90-day uptime, and a 90-day daily uptime strip are shown. Paused monitors are counted separately and do not turn the overall status into an attention state. Target URLs, monitor configuration, notification settings, and secrets are never exposed. The page is marked `noindex, nofollow` while enabled; disabling it makes `/status` return 404.
+Only monitor names, types, current status, 24-hour, 7-day, 30-day, and 90-day uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) are shown. Paused monitors are counted separately and do not turn the overall status into an attention state. Target URLs, monitor configuration, notification settings, and secrets are never exposed. The page is marked `noindex, nofollow` while enabled; disabling it makes `/status` return 404.
 
 ## Password recovery
 
@@ -323,7 +323,7 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 - **仪表盘与历史**：仪表盘以总体状态带、搜索和状态筛选开头，监控为单列列表，每行展示 24 小时可用率、当前延迟、相对最近检查时间和按监控间隔计算的最近 24 次检查。详情页采用双栏布局，主列是可切换的状态历史、24 小时延迟图和最近事件，侧栏是配置、证书、域名和危险操作。界面和日图使用可配置的 IANA 时区，存储仍使用 UTC。
 - **通知**：可添加任意数量、名称唯一的 Telegram Bot 和 Webhook 通知方式，每种方式独立配置凭据、通知语言、可选代理，并支持测试发送；每个监控选择使用哪些方式，并在监控项中配置重复提醒。支持重试、去重和投递记录。
 - **多用户 Web 界面**：管理员管理监控、代理、通知和账号；只读观察者可以查看仪表盘、监控详情和事件。简体中文和英文，桌面固定侧边栏，手机顶部工具栏 + 底部 dock 导航，主题强制跟随操作系统。仪表盘和事件筛选在浏览器内完成；仪表盘和公开状态页每 30 秒局部刷新服务端渲染的 fragment，页面隐藏时暂停，并以整页刷新作为无 JavaScript 回退。
-- **公开状态页**：可选的免登录页面，只展示选定监控的名称、状态、24h/7d/30d/90d 可用率和最近 90 天逐日可用率条，不暴露目标 URL、配置或密钥。
+- **公开状态页**：可选的免登录页面，只展示选定监控的名称、状态、24h/7d/30d/90d 可用率和逐日可用率条（桌面最近 90 天，手机默认最近 30 天），不暴露目标 URL、配置或密钥。
 - **密码恢复**：`windwatch reset-password` 可离线重置账号密码并注销该账号的会话。
 - **资源占用小**：服务端渲染，模板和静态资源内嵌，SQLite 存储，不依赖 Redis、Node.js 或外部数据库。
 
@@ -544,7 +544,7 @@ data/
 
 在**设置 → 公开页**中启用页面、填写标题和可选说明，并勾选要公开的监控。页面地址为 `/status`，无需登录，每 30 秒局部刷新服务端渲染的内容；设置页会显示完整地址，点击即可复制。
 
-页面只展示监控名称、类型、当前状态、24 小时、7 天、30 天和 90 天可用率，以及最近 90 天逐日可用率条；暂停监控单独计数，不会把总体状态变成“需要关注”。页面不会暴露目标 URL、监控配置、通知设置或密钥。启用期间页面禁止搜索引擎索引；关闭后 `/status` 返回 404。
+页面只展示监控名称、类型、当前状态、24 小时、7 天、30 天和 90 天可用率，以及逐日可用率条（桌面最近 90 天，手机默认最近 30 天）；暂停监控单独计数，不会把总体状态变成“需要关注”。页面不会暴露目标 URL、监控配置、通知设置或密钥。启用期间页面禁止搜索引擎索引；关闭后 `/status` 返回 404。
 
 ## 密码恢复
 

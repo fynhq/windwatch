@@ -53,7 +53,8 @@
     {{if .History}}
     <div class="public-history">
       <div class="history-subhead">
-        <span>{{$.I18n.T "public.history"}}</span>
+        <span class="public-history-range-wide">{{$.I18n.T "public.history"}}</span>
+        <span class="public-history-range-narrow">{{$.I18n.T "public.history30d"}}</span>
         <span class="hint">{{$.I18n.T "public.historyHint"}}</span>
       </div>
       <div class="bars public-history-bars" aria-hidden="true">

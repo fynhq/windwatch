@@ -507,7 +507,7 @@ func TestMonitorCreateCheckToggleDelete(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !strings.Contains(body, "Example site") {
 		t.Fatalf("detail after create status=%d body=%s", response.StatusCode, body)
 	}
-	if !strings.Contains(body, "30-day uptime") || !strings.Contains(body, "90-day uptime") {
+	if !strings.Contains(body, "Uptime 30d") || !strings.Contains(body, "Uptime 90d") {
 		t.Fatalf("detail missing long-range uptime cards: %s", body)
 	}
 	monitors, err := st.ListMonitors(t.Context())
