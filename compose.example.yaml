@@ -2,8 +2,8 @@
 # 公开示例模板。复制为 compose.yaml 后按本地环境调整。
 # compose.yaml is gitignored and intended for local deployment only.
 # compose.yaml 已被 Git 忽略，仅用于本地部署。
-# Set WINDWATCH_IMAGE to pin a digest or use a locally built image.
-# 设置 WINDWATCH_IMAGE 可固定镜像 digest，或使用本地构建的镜像。
+# Set WINDWATCH_IMAGE to pin a version tag or digest, or use a locally built image.
+# 设置 WINDWATCH_IMAGE 可固定版本标签或 digest，或使用本地构建的镜像。
 name: windwatch
 
 services:

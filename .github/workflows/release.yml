@@ -111,7 +111,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/fynhq/windwatch:latest
+          tags: |
+            ghcr.io/fynhq/windwatch:latest
+            ghcr.io/fynhq/windwatch:v${{ steps.meta.outputs.version }}
           build-args: |
             VERSION=v${{ steps.meta.outputs.version }}
             COMMIT=${{ steps.meta.outputs.commit }}

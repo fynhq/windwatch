@@ -53,14 +53,14 @@ WindWatch supports two deployment paths: Docker Compose and a single Linux binar
 
 The included [Dockerfile](Dockerfile) builds a static binary and runs it as an unprivileged user on an Alpine runtime. CA certificates are installed in the runtime image, and templates, static assets, migrations, locales, and time zone data are embedded in the binary.
 
-The tracked [compose.example.yaml](compose.example.yaml) pulls the published image `ghcr.io/fynhq/windwatch:latest` by default. Copy it to the local, gitignored `compose.yaml` before the first run:
+Copy the tracked [compose.example.yaml](compose.example.yaml) to the local, gitignored `compose.yaml` before the first run:
 
 ```bash
 cp compose.example.yaml compose.yaml
 docker compose up -d
 ```
 
-The GHCR image is published with the first release and uses the `latest` tag only. Until then, build locally with `docker build -t windwatch:latest .` and run `WINDWATCH_IMAGE=windwatch:latest docker compose up -d`. To pin a published image, set `WINDWATCH_IMAGE=ghcr.io/fynhq/windwatch@sha256:...` using the digest shown on the package page. To upgrade, back up the data volume or directory and record the current digest, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the recorded digest.
+The container image is published with the first release. Until then, build locally with `docker build -t windwatch:latest .` and run `WINDWATCH_IMAGE=windwatch:latest docker compose up -d`. To upgrade, back up the data volume or directory, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous version tag or the digest recorded before the upgrade.
 
 Open [http://localhost:8080/setup](http://localhost:8080/setup) and create the administrator account. Data is stored in the named volume `windwatch_data`; `docker compose down` keeps it, while `docker compose down -v` deletes it.
 
@@ -358,14 +358,14 @@ WindWatch 支持两种部署方式：Docker Compose 和单文件 Linux 二进制
 
 仓库自带 [Dockerfile](Dockerfile)，使用多阶段构建生成静态二进制，并在 Alpine 运行时中以非 root 用户运行。CA 证书安装在运行镜像中，模板、静态资源、数据库迁移、语言包和时区数据都嵌入在二进制中。
 
-仓库中的 [compose.example.yaml](compose.example.yaml) 默认引用已发布镜像 `ghcr.io/fynhq/windwatch:latest`。首次运行前先复制成本地、已被 Git 忽略的 `compose.yaml`：
+首次运行前，把仓库中的 [compose.example.yaml](compose.example.yaml) 复制成本地、已被 Git 忽略的 `compose.yaml`：
 
 ```bash
 cp compose.example.yaml compose.yaml
 docker compose up -d
 ```
 
-GHCR 镜像会随首次正式发布提供，且只使用 `latest` 标签。在此之前可本地构建 `docker build -t windwatch:latest .`，再用 `WINDWATCH_IMAGE=windwatch:latest docker compose up -d`。需要固定已发布镜像时，使用包页面显示的 digest 设置 `WINDWATCH_IMAGE=ghcr.io/fynhq/windwatch@sha256:...`。升级容器部署时，先备份数据卷或数据目录并记录当前 digest，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为之前记录的 digest。
+容器镜像随首次正式发布提供。在此之前可本地构建 `docker build -t windwatch:latest .`，再用 `WINDWATCH_IMAGE=windwatch:latest docker compose up -d`。升级时先备份数据卷或数据目录，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或事先记录的 digest。
 
 打开 [http://localhost:8080/setup](http://localhost:8080/setup) 创建管理员账号。数据保存在命名卷 `windwatch_data` 中；`docker compose down` 会保留数据，`docker compose down -v` 会删除数据。
 
