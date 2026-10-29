@@ -33,6 +33,7 @@ type notificationChannelFormValues struct {
 	TelegramChatIDs string
 	TelegramToken   string
 	WebhookURL      string
+	WebhookFormat   model.WebhookFormat
 	WebhookSecret   string
 	Enabled         bool
 	ProxyID         string
@@ -274,6 +275,9 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 			StatusLabel:         data.I18n.T("notification.disabled"),
 			StatusClass:         "status-paused",
 		}
+		if channel.Type == model.NotificationChannelWebhook && channel.ResolvedWebhookFormat() != model.WebhookFormatGeneric {
+			row.TypeLabel += " · " + notificationWebhookFormatLabel(data.I18n, channel.ResolvedWebhookFormat())
+		}
 		if channel.Enabled {
 			row.StatusLabel = data.I18n.T("notification.enabled")
 			row.StatusClass = "status-up"
@@ -290,9 +294,10 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 		ProxyTypeOptions: []model.ProxyType{model.ProxyHTTP, model.ProxySOCKS5},
 		Channels:         channelRows,
 		ChannelForm: notificationChannelFormValues{
-			Type:     model.NotificationChannelTelegram,
-			Language: model.NotificationLanguageZH,
-			Enabled:  true,
+			Type:          model.NotificationChannelTelegram,
+			Language:      model.NotificationLanguageZH,
+			WebhookFormat: model.WebhookFormatGeneric,
+			Enabled:       true,
 		},
 		ChannelFormAction: "/settings/notifications/channels",
 		NotificationLogs:  logRows,
@@ -373,6 +378,10 @@ func parseNotificationChannelForm(r *http.Request) notificationChannelFormValues
 		channelType = model.NotificationChannelTelegram
 	}
 	language := strings.TrimSpace(r.PostFormValue("language"))
+	format := model.WebhookFormat(strings.TrimSpace(r.PostFormValue("webhook_format")))
+	if format == "" {
+		format = model.WebhookFormatGeneric
+	}
 	return notificationChannelFormValues{
 		Name:            strings.TrimSpace(r.PostFormValue("name")),
 		Type:            channelType,
@@ -380,6 +389,7 @@ func parseNotificationChannelForm(r *http.Request) notificationChannelFormValues
 		TelegramChatIDs: strings.TrimSpace(r.PostFormValue("telegram_chat_ids")),
 		TelegramToken:   strings.TrimSpace(r.PostFormValue("telegram_token")),
 		WebhookURL:      strings.TrimSpace(r.PostFormValue("webhook_url")),
+		WebhookFormat:   format,
 		WebhookSecret:   strings.TrimSpace(r.PostFormValue("webhook_secret")),
 		Enabled:         r.PostFormValue("enabled") == "1",
 		ProxyID:         strings.TrimSpace(r.PostFormValue("proxy_id")),
@@ -393,6 +403,7 @@ func channelFormValues(channel model.NotificationChannel) notificationChannelFor
 		Language:        channel.ResolvedLanguage(),
 		TelegramChatIDs: channel.TelegramChatIDs,
 		WebhookURL:      channel.WebhookURL,
+		WebhookFormat:   channel.ResolvedWebhookFormat(),
 		Enabled:         channel.Enabled,
 		ProxyID:         channel.ProxyIDString(),
 	}
@@ -514,6 +525,7 @@ func (s *Server) notificationChannelFromValues(r *http.Request, values notificat
 		Enabled:         values.Enabled,
 		TelegramChatIDs: values.TelegramChatIDs,
 		WebhookURL:      values.WebhookURL,
+		WebhookFormat:   values.WebhookFormat,
 	}
 	if existing != nil {
 		channel.ID = existing.ID
@@ -533,14 +545,14 @@ func (s *Server) notificationChannelFromValues(r *http.Request, values notificat
 		if channel.SecretEnc == "" {
 			return model.NotificationChannel{}, newFormError("error.notificationChannelToken")
 		}
-	} else {
-		if values.WebhookSecret != "" {
-			encrypted, err := s.cipher.Encrypt(values.WebhookSecret)
-			if err != nil {
-				return model.NotificationChannel{}, err
-			}
-			channel.SecretEnc = encrypted
+	} else if channel.ResolvedWebhookFormat() == model.WebhookFormatWeCom {
+		channel.SecretEnc = ""
+	} else if values.WebhookSecret != "" {
+		encrypted, err := s.cipher.Encrypt(values.WebhookSecret)
+		if err != nil {
+			return model.NotificationChannel{}, err
 		}
+		channel.SecretEnc = encrypted
 	}
 	if values.ProxyID != "" {
 		proxyID, err := strconv.ParseInt(values.ProxyID, 10, 64)
@@ -573,6 +585,8 @@ func channelValidationKey(err error) string {
 		return "error.notificationChannelChatIDs"
 	case errors.Is(err, model.ErrChannelWebhookURL):
 		return "error.webhookURL"
+	case errors.Is(err, model.ErrChannelWebhookFormat):
+		return "error.notificationChannelWebhookFormat"
 	default:
 		return "error.invalidRequest"
 	}
@@ -847,6 +861,19 @@ func notificationChannelTypeLabel(translator interface{ T(string) string }, chan
 		return translator.T("notification.webhook")
 	default:
 		return string(channelType)
+	}
+}
+
+func notificationWebhookFormatLabel(translator interface{ T(string) string }, format model.WebhookFormat) string {
+	switch format {
+	case model.WebhookFormatDingTalk:
+		return translator.T("notification.webhookFormatDingTalk")
+	case model.WebhookFormatWeCom:
+		return translator.T("notification.webhookFormatWeCom")
+	case model.WebhookFormatFeishu:
+		return translator.T("notification.webhookFormatFeishu")
+	default:
+		return translator.T("notification.webhookFormatGeneric")
 	}
 }
 

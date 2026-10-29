@@ -720,6 +720,27 @@
     }
   }
 
+  function initWebhookFormatFields() {
+    var selects = document.querySelectorAll("[data-webhook-format-select]");
+    for (var i = 0; i < selects.length; i++) {
+      (function (select) {
+        var form = select.closest("form");
+        if (!form) {
+          return;
+        }
+        var groups = form.querySelectorAll("[data-webhook-secret]");
+        function refresh() {
+          var hide = select.value === "wecom";
+          for (var j = 0; j < groups.length; j++) {
+            groups[j].hidden = hide;
+          }
+        }
+        select.addEventListener("change", refresh);
+        refresh();
+      })(selects[i]);
+    }
+  }
+
   function initConfirmForms() {
     document.addEventListener("submit", function (event) {
       var form = event.target.closest("form[data-confirm]");
@@ -775,6 +796,7 @@
     initAutoRefresh();
     initSecretGenerators();
     initChannelTypeFields();
+    initWebhookFormatFields();
     initHTTPSChecks();
     initToasts();
     initDialogs();

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,62 @@ import (
 
 	"github.com/fynhq/windwatch/internal/model"
 )
+
+func TestMigrateWebhookFormatUpgrade(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	script, err := migrationFS.ReadFile("migrations/0001_init.sql")
+	if err != nil {
+		t.Fatalf("read baseline: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, string(script)); err != nil {
+		t.Fatalf("apply baseline: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at_ms INTEGER NOT NULL)"); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (1, 1)"); err != nil {
+		t.Fatalf("record baseline: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO notification_channels (
+			name, type, language, enabled, telegram_chat_ids, webhook_url, secret_enc,
+			proxy_id, created_at_ms, updated_at_ms
+		) VALUES ('Legacy hook', 'webhook', 'zh-CN', 1, '', 'https://example.com/hook', '', NULL, 1, 1)
+	`); err != nil {
+		t.Fatalf("insert legacy channel: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close upgrade database: %v", err)
+	}
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open upgraded database: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate upgraded database: %v", err)
+	}
+	channel, err := st.NotificationChannelByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("NotificationChannelByID: %v", err)
+	}
+	if channel.WebhookFormat != model.WebhookFormatGeneric {
+		t.Fatalf("legacy webhook format = %q, want generic", channel.WebhookFormat)
+	}
+	var versions int
+	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
+		t.Fatalf("count migrations: %v", err)
+	}
+	if versions != 2 {
+		t.Fatalf("schema versions after upgrade = %d, want 2", versions)
+	}
+}
 
 func TestMigrateFreshDatabase(t *testing.T) {
 	ctx := context.Background()
@@ -29,8 +86,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if versions != 1 {
-		t.Fatalf("schema versions = %d, want 1", versions)
+	if versions != 2 {
+		t.Fatalf("schema versions = %d, want 2", versions)
 	}
 
 	expectedTables := []string{
@@ -88,11 +145,31 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	if err != nil || channel.Language != model.NotificationLanguageZH {
 		t.Fatalf("channel language = %q err=%v", channel.Language, err)
 	}
+	if channel.ResolvedWebhookFormat() != model.WebhookFormatGeneric {
+		t.Fatalf("default webhook format = %q", channel.WebhookFormat)
+	}
 	if _, err := st.CreateNotificationChannel(ctx, model.NotificationChannel{
 		Name: "ops hook", Type: model.NotificationChannelWebhook, Enabled: true,
 		WebhookURL: "https://example.com/other",
 	}, now); !errors.Is(err, ErrNotificationChannelNameTaken) {
 		t.Fatalf("duplicate channel error = %v, want ErrNotificationChannelNameTaken", err)
+	}
+	if _, err := st.CreateNotificationChannel(ctx, model.NotificationChannel{
+		Name: "invalid hook", Type: model.NotificationChannelWebhook, Enabled: true,
+		WebhookURL: "https://example.com/invalid", WebhookFormat: "slack",
+	}, now); !errors.Is(err, model.ErrChannelWebhookFormat) {
+		t.Fatalf("invalid webhook format error = %v, want ErrChannelWebhookFormat", err)
+	}
+	dingID, err := st.CreateNotificationChannel(ctx, model.NotificationChannel{
+		Name: "DingTalk hook", Type: model.NotificationChannelWebhook, Enabled: true,
+		WebhookURL: "https://example.com/ding", WebhookFormat: model.WebhookFormatDingTalk,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateNotificationChannel with format: %v", err)
+	}
+	dingChannel, err := st.NotificationChannelByID(ctx, dingID)
+	if err != nil || dingChannel.WebhookFormat != model.WebhookFormatDingTalk {
+		t.Fatalf("webhook format round trip = %q err=%v", dingChannel.WebhookFormat, err)
 	}
 
 	monitorID, err := st.CreateMonitor(ctx, model.Monitor{

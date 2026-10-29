@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,7 +144,7 @@ func (s *Service) Test(ctx context.Context, channelID int64) error {
 		}
 		return s.sendTelegramText(ctx, channel, token, translator.T("notify.test"), "")
 	case model.NotificationChannelWebhook:
-		body, err := s.webhookBody(notification, translator.T("notify.test"))
+		body, err := s.webhookBody(channel, notification, translator.T("notify.test"))
 		if err != nil {
 			return err
 		}
@@ -163,7 +165,7 @@ func (s *Service) sendChannel(ctx context.Context, config Config, channel model.
 		}
 		return s.sendTelegramText(ctx, channel, token, text, notification.Key)
 	case model.NotificationChannelWebhook:
-		body, err := s.webhookBody(notification, s.render(language, notification, config.Timezone))
+		body, err := s.webhookBody(channel, notification, s.render(language, notification, config.Timezone))
 		if err != nil {
 			return err
 		}
@@ -325,9 +327,14 @@ func (s *Service) sendWebhookBody(ctx context.Context, channel model.Notificatio
 	if strings.TrimSpace(channel.WebhookURL) == "" {
 		return errors.New("webhook URL is not configured")
 	}
-	secretValue, err := s.channelSecret(channel)
-	if err != nil {
-		return err
+	format := channel.ResolvedWebhookFormat()
+	secretValue := ""
+	if format != model.WebhookFormatWeCom {
+		value, err := s.channelSecret(channel)
+		if err != nil {
+			return err
+		}
+		secretValue = value
 	}
 	client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 	if err != nil {
@@ -335,15 +342,33 @@ func (s *Service) sendWebhookBody(ctx context.Context, channel model.Notificatio
 	}
 	defer cleanup()
 	return s.retry(ctx, func() error {
-		request, err := http.NewRequestWithContext(ctx, http.MethodPost, channel.WebhookURL, bytes.NewReader(body))
+		endpoint := channel.WebhookURL
+		payload := body
+		if secretValue != "" {
+			switch format {
+			case model.WebhookFormatDingTalk:
+				signed, err := dingTalkSignedURL(endpoint, secretValue, time.Now())
+				if err != nil {
+					return permanentError{err: errors.New("invalid webhook request")}
+				}
+				endpoint = signed
+			case model.WebhookFormatFeishu:
+				signed, err := feishuSignedBody(payload, secretValue, time.Now())
+				if err != nil {
+					return permanentError{err: errors.New("invalid webhook request")}
+				}
+				payload = signed
+			}
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 		if err != nil {
 			return permanentError{err: errors.New("invalid webhook request")}
 		}
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("User-Agent", "WindWatch-Notifier")
-		if secretValue != "" {
+		if format == model.WebhookFormatGeneric && secretValue != "" {
 			mac := hmac.New(sha256.New, []byte(secretValue))
-			mac.Write(body)
+			mac.Write(payload)
 			request.Header.Set("X-WindWatch-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 		}
 		response, err := client.Do(request)
@@ -351,7 +376,7 @@ func (s *Service) sendWebhookBody(ctx context.Context, channel model.Notificatio
 			return errors.New("webhook request failed")
 		}
 		defer response.Body.Close()
-		io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 		if response.StatusCode == http.StatusTooManyRequests {
 			if delay := parseRetryAfter(response.Header.Get("Retry-After"), time.Now()); delay > 0 {
 				return retryAfterError{wait: delay}
@@ -364,8 +389,82 @@ func (s *Service) sendWebhookBody(ctx context.Context, channel model.Notificatio
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
 			return permanentError{err: fmt.Errorf("webhook returned HTTP %d", response.StatusCode)}
 		}
-		return nil
+		return webhookResponseError(format, responseBody)
 	})
+}
+
+func webhookResponseError(format model.WebhookFormat, body []byte) error {
+	switch format {
+	case model.WebhookFormatDingTalk, model.WebhookFormatWeCom:
+		var result struct {
+			ErrCode *int   `json:"errcode"`
+			ErrMsg  string `json:"errmsg"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil || result.ErrCode == nil {
+			return permanentError{err: errors.New("invalid webhook response")}
+		}
+		if *result.ErrCode != 0 {
+			return permanentError{err: platformError(*result.ErrCode, result.ErrMsg)}
+		}
+	case model.WebhookFormatFeishu:
+		var result struct {
+			Code          *int   `json:"code"`
+			Msg           string `json:"msg"`
+			StatusCode    *int   `json:"StatusCode"`
+			StatusMessage string `json:"StatusMessage"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return permanentError{err: errors.New("invalid webhook response")}
+		}
+		code := result.Code
+		message := result.Msg
+		if code == nil {
+			code = result.StatusCode
+			message = result.StatusMessage
+		}
+		if code == nil {
+			return permanentError{err: errors.New("invalid webhook response")}
+		}
+		if *code != 0 {
+			return permanentError{err: platformError(*code, message)}
+		}
+	}
+	return nil
+}
+
+func platformError(code int, message string) error {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return fmt.Errorf("webhook returned error code %d", code)
+	}
+	return fmt.Errorf("webhook returned error code %d: %s", code, message)
+}
+
+func dingTalkSignedURL(rawURL, secret string, now time.Time) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	timestamp := strconv.FormatInt(now.UnixMilli(), 10)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp + "\n" + secret))
+	query := parsed.Query()
+	query.Set("timestamp", timestamp)
+	query.Set("sign", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
+}
+
+func feishuSignedBody(body []byte, secret string, now time.Time) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	timestamp := strconv.FormatInt(now.Unix(), 10)
+	mac := hmac.New(sha256.New, []byte(timestamp+"\n"+secret))
+	payload["timestamp"] = timestamp
+	payload["sign"] = base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	return json.Marshal(payload)
 }
 
 type webhookPayload struct {
@@ -386,7 +485,24 @@ type webhookMonitor struct {
 	Target string `json:"target"`
 }
 
-func (s *Service) webhookBody(notification model.Notification, text string) ([]byte, error) {
+func (s *Service) webhookBody(channel model.NotificationChannel, notification model.Notification, text string) ([]byte, error) {
+	switch channel.ResolvedWebhookFormat() {
+	case model.WebhookFormatDingTalk, model.WebhookFormatWeCom:
+		return json.Marshal(map[string]any{
+			"msgtype": "text",
+			"text":    map[string]string{"content": text},
+		})
+	case model.WebhookFormatFeishu:
+		return json.Marshal(map[string]any{
+			"msg_type": "text",
+			"content":  map[string]string{"text": text},
+		})
+	default:
+		return s.genericWebhookBody(notification, text)
+	}
+}
+
+func (s *Service) genericWebhookBody(notification model.Notification, text string) ([]byte, error) {
 	payload := webhookPayload{
 		Version: 1,
 		Event:   string(notification.Kind),

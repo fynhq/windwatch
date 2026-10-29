@@ -14,7 +14,7 @@ import (
 var ErrNotificationChannelNameTaken = errors.New("notification channel name already exists")
 
 const notificationChannelSelect = `
-	SELECT id, name, type, language, enabled, telegram_chat_ids, webhook_url,
+	SELECT id, name, type, language, enabled, telegram_chat_ids, webhook_url, webhook_format,
 	       secret_enc, proxy_id, created_at_ms, updated_at_ms
 	FROM notification_channels
 `
@@ -29,7 +29,7 @@ func scanNotificationChannel(row scanner) (model.NotificationChannel, error) {
 	)
 	err := row.Scan(
 		&channel.ID, &channel.Name, &channel.Type, &channel.Language, &enabled,
-		&channel.TelegramChatIDs, &channel.WebhookURL, &channel.SecretEnc,
+		&channel.TelegramChatIDs, &channel.WebhookURL, &channel.WebhookFormat, &channel.SecretEnc,
 		&proxyID, &createdAtMS, &updatedAtMS,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -87,13 +87,13 @@ func (s *Store) CreateNotificationChannel(ctx context.Context, channel model.Not
 	}
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO notification_channels (
-			name, type, language, enabled, telegram_chat_ids, webhook_url, secret_enc,
+			name, type, language, enabled, telegram_chat_ids, webhook_url, webhook_format, secret_enc,
 			proxy_id, created_at_ms, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(channel.Name), channel.Type, channel.ResolvedLanguage(), boolInt(channel.Enabled),
 		strings.TrimSpace(channel.TelegramChatIDs), strings.TrimSpace(channel.WebhookURL),
-		channel.SecretEnc, channel.ProxyID,
+		channel.ResolvedWebhookFormat(), channel.SecretEnc, channel.ProxyID,
 		now.UTC().UnixMilli(), now.UTC().UnixMilli(),
 	)
 	if err != nil {
@@ -116,12 +116,12 @@ func (s *Store) UpdateNotificationChannel(ctx context.Context, channel model.Not
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE notification_channels SET
 			name = ?, type = ?, language = ?, enabled = ?, telegram_chat_ids = ?, webhook_url = ?,
-			secret_enc = ?, proxy_id = ?, updated_at_ms = ?
+			webhook_format = ?, secret_enc = ?, proxy_id = ?, updated_at_ms = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(channel.Name), channel.Type, channel.ResolvedLanguage(), boolInt(channel.Enabled),
 		strings.TrimSpace(channel.TelegramChatIDs), strings.TrimSpace(channel.WebhookURL),
-		channel.SecretEnc, channel.ProxyID, now.UTC().UnixMilli(), channel.ID,
+		channel.ResolvedWebhookFormat(), channel.SecretEnc, channel.ProxyID, now.UTC().UnixMilli(), channel.ID,
 	)
 	if err != nil {
 		if isUniqueConstraint(err) {

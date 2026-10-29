@@ -223,12 +223,22 @@
       </div>
 
       <div class="form-grid" data-channel-fields="webhook" {{if ne .ChannelForm.Type "webhook"}}hidden{{end}}>
+        <label class="field">
+          <span>{{.I18n.T "notification.webhookFormat"}}</span>
+          <select name="webhook_format" data-webhook-format-select>
+            <option value="generic" {{if eq .ChannelForm.WebhookFormat "generic"}}selected{{end}}>{{.I18n.T "notification.webhookFormatGeneric"}}</option>
+            <option value="dingtalk" {{if eq .ChannelForm.WebhookFormat "dingtalk"}}selected{{end}}>{{.I18n.T "notification.webhookFormatDingTalk"}}</option>
+            <option value="wecom" {{if eq .ChannelForm.WebhookFormat "wecom"}}selected{{end}}>{{.I18n.T "notification.webhookFormatWeCom"}}</option>
+            <option value="feishu" {{if eq .ChannelForm.WebhookFormat "feishu"}}selected{{end}}>{{.I18n.T "notification.webhookFormatFeishu"}}</option>
+          </select>
+          <small class="hint">{{.I18n.T "notification.webhookFormatHint"}}</small>
+        </label>
         <label class="field is-wide">
           <span>{{.I18n.T "notification.webhookURL"}}</span>
           <input type="url" name="webhook_url" value="{{.ChannelForm.WebhookURL}}" placeholder="https://example.com/hooks/windwatch">
           <small class="hint">{{.I18n.T "notification.webhookHint"}}</small>
         </label>
-        <div class="field" data-secret-group>
+        <div class="field" data-secret-group data-webhook-secret {{if eq .ChannelForm.WebhookFormat "wecom"}}hidden{{end}}>
           <span>{{.I18n.T "notification.webhookSecret"}}</span>
           <div class="input-action">
             <input type="text" name="webhook_secret" autocomplete="new-password"

@@ -235,7 +235,7 @@ func TestRenderRecoveryShowsObservedWindow(t *testing.T) {
 		t.Fatalf("recovery text still contains a year: zh=%q en=%q", zh, en)
 	}
 
-	body, err := service.webhookBody(notification, en)
+	body, err := service.webhookBody(model.NotificationChannel{Type: model.NotificationChannelWebhook}, notification, en)
 	if err != nil {
 		t.Fatalf("webhookBody: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestReminderRenderPrefixAndWebhookDetails(t *testing.T) {
 	if !strings.Contains(text, "[REMINDER 1/2]") || !strings.Contains(text, "connection refused") {
 		t.Fatalf("reminder text = %q", text)
 	}
-	body, err := service.webhookBody(notification, text)
+	body, err := service.webhookBody(model.NotificationChannel{Type: model.NotificationChannelWebhook}, notification, text)
 	if err != nil {
 		t.Fatalf("webhookBody: %v", err)
 	}

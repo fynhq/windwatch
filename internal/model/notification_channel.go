@@ -21,6 +21,24 @@ const (
 	NotificationLanguageEN = "en"
 )
 
+type WebhookFormat string
+
+const (
+	WebhookFormatGeneric  WebhookFormat = "generic"
+	WebhookFormatDingTalk WebhookFormat = "dingtalk"
+	WebhookFormatWeCom    WebhookFormat = "wecom"
+	WebhookFormatFeishu   WebhookFormat = "feishu"
+)
+
+func (f WebhookFormat) Valid() bool {
+	switch f {
+	case WebhookFormatGeneric, WebhookFormatDingTalk, WebhookFormatWeCom, WebhookFormatFeishu:
+		return true
+	default:
+		return false
+	}
+}
+
 type NotificationChannel struct {
 	ID              int64
 	Name            string
@@ -29,6 +47,7 @@ type NotificationChannel struct {
 	Enabled         bool
 	TelegramChatIDs string
 	WebhookURL      string
+	WebhookFormat   WebhookFormat
 	SecretEnc       string
 	ProxyID         *int64
 	CreatedAt       time.Time
@@ -36,11 +55,12 @@ type NotificationChannel struct {
 }
 
 var (
-	ErrChannelName       = errors.New("invalid notification channel name")
-	ErrChannelType       = errors.New("invalid notification channel type")
-	ErrChannelLanguage   = errors.New("invalid notification channel language")
-	ErrChannelChatIDs    = errors.New("invalid telegram chat ids")
-	ErrChannelWebhookURL = errors.New("invalid webhook URL")
+	ErrChannelName          = errors.New("invalid notification channel name")
+	ErrChannelType          = errors.New("invalid notification channel type")
+	ErrChannelLanguage      = errors.New("invalid notification channel language")
+	ErrChannelChatIDs       = errors.New("invalid telegram chat ids")
+	ErrChannelWebhookURL    = errors.New("invalid webhook URL")
+	ErrChannelWebhookFormat = errors.New("invalid webhook format")
 )
 
 func (c NotificationChannel) Validate() error {
@@ -66,10 +86,20 @@ func (c NotificationChannel) Validate() error {
 		if err := validateChannelWebhookURL(c.WebhookURL); err != nil {
 			return err
 		}
+		if c.WebhookFormat != "" && !c.WebhookFormat.Valid() {
+			return ErrChannelWebhookFormat
+		}
 	default:
 		return ErrChannelType
 	}
 	return nil
+}
+
+func (c NotificationChannel) ResolvedWebhookFormat() WebhookFormat {
+	if c.WebhookFormat == "" {
+		return WebhookFormatGeneric
+	}
+	return c.WebhookFormat
 }
 
 func validateChannelWebhookURL(rawURL string) error {

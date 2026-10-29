@@ -45,6 +45,7 @@ func TestNotificationChannelsCreateEditTest(t *testing.T) {
 		"type":           {"webhook"},
 		"language":       {"zh-CN"},
 		"webhook_url":    {"https://example.com/hook"},
+		"webhook_format": {"dingtalk"},
 		"webhook_secret": {"hook-secret"},
 		"enabled":        {"1"},
 	})
@@ -78,7 +79,7 @@ func TestNotificationChannelsCreateEditTest(t *testing.T) {
 		t.Fatalf("decrypted token=%q err=%v", decoded, err)
 	}
 	if webhook.Name != "Alerts Hook" || webhook.WebhookURL != "https://example.com/hook" || !webhook.Enabled ||
-		webhook.Language != model.NotificationLanguageZH {
+		webhook.Language != model.NotificationLanguageZH || webhook.WebhookFormat != model.WebhookFormatDingTalk {
 		t.Fatalf("unexpected webhook channel: %+v", webhook)
 	}
 	if webhook.SecretEnc == "" || webhook.SecretEnc == "hook-secret" {
@@ -91,10 +92,13 @@ func TestNotificationChannelsCreateEditTest(t *testing.T) {
 	}
 	body := readResponseBody(t, response)
 	for _, want := range []string{
-		"Ops Telegram", "Alerts Hook",
+		"Ops Telegram", "Alerts Hook", "Webhook · DingTalk",
 		`data-dialog-open="notification-channel"`,
 		`<dialog class="dialog" id="notification-channel"`,
 		`data-channel-type-select`,
+		`data-webhook-format-select`,
+		`name="webhook_format"`,
+		`value="dingtalk"`,
 		`name="language"`,
 		`/settings/notifications/channels/` + strconv.FormatInt(telegram.ID, 10) + `/test`,
 	} {
@@ -359,6 +363,85 @@ func TestFirstNotificationChannelAdoptsUnlinkedMonitors(t *testing.T) {
 	}
 }
 
+func TestNotificationWebhookFormats(t *testing.T) {
+	_, st, testServer := newWebTestServer(t)
+	client, csrf := setupAdminSession(t, testServer)
+
+	response, err := client.PostForm(testServer.URL+"/settings/notifications/channels", url.Values{
+		"csrf_token":     {csrf},
+		"name":           {"WeCom hook"},
+		"type":           {"webhook"},
+		"language":       {"zh-CN"},
+		"webhook_url":    {"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"},
+		"webhook_format": {"wecom"},
+		"webhook_secret": {"ignored-secret"},
+		"enabled":        {"1"},
+	})
+	if err != nil {
+		t.Fatalf("POST WeCom channel: %v", err)
+	}
+	_ = readResponseBody(t, response)
+
+	channels, err := st.ListNotificationChannels(t.Context())
+	if err != nil || len(channels) != 1 {
+		t.Fatalf("channels=%+v err=%v", channels, err)
+	}
+	if channels[0].WebhookFormat != model.WebhookFormatWeCom || channels[0].SecretEnc != "" {
+		t.Fatalf("wecom channel = %+v", channels[0])
+	}
+
+	response, err = client.PostForm(testServer.URL+"/settings/notifications/channels", url.Values{
+		"csrf_token":     {csrf},
+		"name":           {"DingTalk hook"},
+		"type":           {"webhook"},
+		"webhook_url":    {"https://oapi.dingtalk.com/robot/send?access_token=test"},
+		"webhook_format": {"dingtalk"},
+		"webhook_secret": {"ding-secret"},
+		"enabled":        {"1"},
+	})
+	if err != nil {
+		t.Fatalf("POST DingTalk channel: %v", err)
+	}
+	_ = readResponseBody(t, response)
+	channels, err = st.ListNotificationChannels(t.Context())
+	if err != nil || len(channels) != 2 {
+		t.Fatalf("channels after DingTalk create=%+v err=%v", channels, err)
+	}
+	dingTalk := channels[1]
+	response, err = client.PostForm(testServer.URL+"/settings/notifications/channels/"+strconv.FormatInt(dingTalk.ID, 10), url.Values{
+		"csrf_token":     {csrf},
+		"name":           {dingTalk.Name},
+		"type":           {"webhook"},
+		"webhook_url":    {dingTalk.WebhookURL},
+		"webhook_format": {"feishu"},
+		"enabled":        {"1"},
+	})
+	if err != nil {
+		t.Fatalf("POST format change: %v", err)
+	}
+	_ = readResponseBody(t, response)
+	updated, err := st.NotificationChannelByID(t.Context(), dingTalk.ID)
+	if err != nil || updated.WebhookFormat != model.WebhookFormatFeishu || updated.SecretEnc == "" {
+		t.Fatalf("format change lost the secret: %+v err=%v", updated, err)
+	}
+
+	response, err = client.PostForm(testServer.URL+"/settings/notifications/channels", url.Values{
+		"csrf_token":     {csrf},
+		"name":           {"Bad format hook"},
+		"type":           {"webhook"},
+		"webhook_url":    {"https://example.com/hook"},
+		"webhook_format": {"slack"},
+		"enabled":        {"1"},
+	})
+	if err != nil {
+		t.Fatalf("POST invalid webhook format: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(body, "Choose Generic, DingTalk, WeCom, or Feishu") {
+		t.Fatalf("invalid webhook format status=%d body=%s", response.StatusCode, body)
+	}
+}
+
 func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	_, st, testServer := newWebTestServer(t)
 	client, _ := setupAdminSession(t, testServer)
@@ -386,7 +469,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	}
 	body := readResponseBody(t, response)
 	for _, want := range []string{
-		"Primary hook", "Generic webhook", ">Sent</td>",
+		"Primary hook", "Webhook", ">Sent</td>",
 		`data-notification-content`, `data-notification-content-dialog`,
 		`data-notification-content-field="payload"`, "delivery-body",
 	} {
@@ -408,7 +491,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 		t.Fatalf("GET settings logs in Chinese: %v", err)
 	}
 	body = readResponseBody(t, response)
-	for _, want := range []string{"Primary hook", "通用 Webhook", ">已发送</td>", "查看内容"} {
+	for _, want := range []string{"Primary hook", "Webhook", ">已发送</td>", "查看内容"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Chinese delivery log missing %q: %s", want, body)
 		}
