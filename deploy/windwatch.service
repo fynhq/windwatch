@@ -1,0 +1,41 @@
+[Unit]
+Description=WindWatch monitoring service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=windwatch
+Group=windwatch
+StateDirectory=windwatch
+StateDirectoryMode=0750
+WorkingDirectory=/var/lib/windwatch
+ExecStart=/usr/local/bin/windwatch serve --data-dir /var/lib/windwatch
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/windwatch
+
+# Uncomment when a trusted reverse proxy fronts this service. Only list proxy
+# addresses or networks, never client networks.
+# 仅当服务前有可信反向代理时取消注释。只填写代理地址或网段，不要填写客户端网段。
+# Environment=WINDWATCH_TRUSTED_PROXIES=127.0.0.1/32
+
+# Uncomment to enable Docker container monitoring. The windwatch user must be
+# allowed to access the Docker socket, which is a high-privilege capability.
+# 取消注释以启用 Docker 容器监控。windwatch 用户必须有权访问 Docker socket，这是高权限能力。
+# SupplementaryGroups=docker
+
+[Install]
+WantedBy=multi-user.target

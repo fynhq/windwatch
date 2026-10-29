@@ -1,0 +1,158 @@
+{{define "content" -}}
+<section class="page-head page-head-row">
+  <div>
+    <p class="eyebrow">{{.I18n.T "nav.users"}}</p>
+    <h1>{{.I18n.T "users.title"}}</h1>
+    <p class="muted">{{.I18n.T "users.intro"}}</p>
+  </div>
+  <div class="page-actions">
+    <button class="button button-primary" type="button" data-dialog-open="create-user">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "users.create"}}</span>
+    </button>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{.I18n.T "users.list"}}</h2>
+    <span class="muted">{{.I18n.Tf "users.count" (len .Users)}}</span>
+  </div>
+  <div class="table-scroll">
+    <table class="responsive-table users-table">
+      <thead>
+        <tr>
+          <th>{{.I18n.T "users.username"}}</th>
+          <th>{{.I18n.T "users.role"}}</th>
+          <th>{{.I18n.T "users.status"}}</th>
+          <th>{{.I18n.T "users.created"}}</th>
+          <th>{{.I18n.T "users.actions"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Users}}
+        {{$userRole := .Role}}
+        <tr>
+          <td data-label="{{$.I18n.T "users.username"}}">
+            <strong>{{.Username}}</strong>
+            {{if .IsSelf}}<span class="muted">({{$.I18n.T "users.you"}})</span>{{end}}
+          </td>
+          <td data-label="{{$.I18n.T "users.role"}}">{{.RoleLabel}}</td>
+          <td data-label="{{$.I18n.T "users.status"}}">
+            {{if .Disabled}}
+            <span class="status-pill status-paused">{{$.I18n.T "users.disabled"}}</span>
+            {{else}}
+            <span class="status-pill status-up">{{$.I18n.T "users.active"}}</span>
+            {{end}}
+          </td>
+          <td data-label="{{$.I18n.T "users.created"}}">{{.Created}}</td>
+          <td class="is-wide" data-label="{{$.I18n.T "users.actions"}}">
+            <div class="user-actions">
+              {{if not .IsSelf}}
+              <form method="post" action="/settings/users/{{.ID}}/role" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <select name="role" aria-label="{{$.I18n.T "users.role"}}">
+                  {{range $.Roles}}
+                  <option value="{{.Value}}" {{if eq .Value $userRole}}selected{{end}}>{{.Label}}</option>
+                  {{end}}
+                </select>
+                <button class="button button-secondary button-small" type="submit">{{$.I18n.T "users.saveRole"}}</button>
+              </form>
+              <form method="post" action="/settings/users/{{.ID}}/disabled" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <input type="hidden" name="disabled" value="{{if .Disabled}}0{{else}}1{{end}}">
+                <button class="button button-secondary button-small" type="submit">
+                  {{if .Disabled}}{{$.I18n.T "users.enable"}}{{else}}{{$.I18n.T "users.disable"}}{{end}}
+                </button>
+              </form>
+              <details class="inline-details">
+                <summary>{{$.I18n.T "users.delete"}}</summary>
+                <form method="post" action="/settings/users/{{.ID}}/delete" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                  <button class="button button-danger button-small" type="submit">{{$.I18n.T "users.deleteConfirm"}}</button>
+                </form>
+              </details>
+              {{end}}
+              <button class="link-button" type="button" data-dialog-open="reset-password-{{.ID}}">{{$.I18n.T "users.resetPassword"}}</button>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{{range .Users}}
+<dialog class="dialog" id="reset-password-{{.ID}}" aria-labelledby="reset-password-{{.ID}}-title"
+  {{if eq $.PasswordResetUserID .ID}}data-auto-open="true"{{end}}>
+  <form method="post" action="/settings/users/{{.ID}}/password" class="dialog-form">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <div class="dialog-head">
+      <div>
+        <h2 id="reset-password-{{.ID}}-title">{{$.I18n.T "users.resetPassword"}} · {{.Username}}</h2>
+        <p class="hint">{{$.I18n.T "users.resetPasswordHint"}}</p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{$.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <div class="dialog-body">
+      {{if $.Error}}<p class="alert alert-error">{{$.Error}}</p>{{end}}
+      <label class="field">
+        <span>{{$.I18n.T "users.newPassword"}}</span>
+        <input type="password" name="password" minlength="10" maxlength="256" required autocomplete="new-password" autofocus>
+      </label>
+      <label class="field">
+        <span>{{$.I18n.T "users.passwordConfirm"}}</span>
+        <input type="password" name="password_confirm" minlength="10" maxlength="256" required autocomplete="new-password">
+      </label>
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="button" data-dialog-close>{{$.I18n.T "common.cancel"}}</button>
+      <button class="button button-primary" type="submit">{{$.I18n.T "users.resetPasswordAction"}}</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+
+<dialog class="dialog" id="create-user" aria-labelledby="create-user-title" aria-describedby="create-user-hint" {{if .CreateUserOpen}}data-auto-open="true"{{end}}>
+  <form method="post" action="/settings/users" class="dialog-form">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="dialog-head">
+      <div>
+        <h2 id="create-user-title">{{.I18n.T "users.create"}}</h2>
+        <p class="hint" id="create-user-hint">{{.I18n.T "users.createHint"}}</p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <div class="dialog-body">
+      {{if .Error}}<p class="alert alert-error">{{.Error}}</p>{{end}}
+      <div class="form-grid">
+        <label class="field">
+          <span>{{.I18n.T "users.username"}}</span>
+          <input type="text" name="username" value="{{.Values.Username}}" minlength="3" maxlength="64" required autocomplete="off" autofocus>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "users.role"}}</span>
+          <select name="role">
+            {{range .Roles}}
+            <option value="{{.Value}}" {{if eq $.Values.Role .Value}}selected{{end}}>{{.Label}}</option>
+            {{end}}
+          </select>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "users.password"}}</span>
+          <input type="password" name="password" minlength="10" maxlength="256" required autocomplete="new-password">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "users.passwordConfirm"}}</span>
+          <input type="password" name="password_confirm" minlength="10" maxlength="256" required autocomplete="new-password">
+        </label>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.cancel"}}</button>
+      <button class="button button-primary" type="submit">{{.I18n.T "users.createAction"}}</button>
+    </div>
+  </form>
+</dialog>
+{{- end}}

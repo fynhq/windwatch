@@ -1,0 +1,129 @@
+{{define "content" -}}
+<section class="page-head page-head-row">
+  <div>
+    <p class="eyebrow">{{.I18n.T "nav.dashboard"}}</p>
+    <h1>{{.I18n.T "dashboard.title"}}</h1>
+    <p class="page-updated hint">
+      <span data-refresh-label data-refresh-template="{{.I18n.T "common.secondsAgo"}}" data-just-now="{{.I18n.T "common.justNow"}}">{{.I18n.T "common.updatedNow"}}</span>
+      <span aria-hidden="true">·</span>
+      <span>{{.I18n.Tf "common.autoRefreshEvery" 30}}</span>
+    </p>
+  </div>
+  {{if .IsAdmin}}
+  <div class="page-actions">
+    <a class="button button-primary" href="/monitors/new">{{template "icon-plus"}}{{.I18n.T "dashboard.addMonitor"}}</a>
+  </div>
+  {{end}}
+</section>
+
+{{template "dashboard-live" .}}
+{{- end}}
+
+{{define "dashboard-live" -}}
+<div data-live-region="dashboard">
+{{if .HasMonitors}}
+<section class="overview-panel" aria-label="{{.I18n.T "dashboard.summary"}}">
+  <div class="overview-state">
+    <span class="status-dot {{.OverallClass}}" aria-hidden="true"></span>
+    <div class="overview-copy">
+      <strong>{{.OverallLabel}}</strong>
+      <span>{{.I18n.Tf "dashboard.monitorCount" .Total}}</span>
+    </div>
+  </div>
+  <div class="overview-filters" role="group" aria-label="{{.I18n.T "dashboard.filterLabel"}}">
+    <button class="filter-chip is-active" type="button" data-monitor-filter="all" aria-pressed="true" disabled>
+      {{.I18n.T "dashboard.all"}}<span class="filter-count">{{.Total}}</span>
+    </button>
+    <button class="filter-chip" type="button" data-monitor-filter="up" aria-pressed="false" disabled>
+      <span class="status-dot status-up" aria-hidden="true"></span>{{.I18n.T "status.up"}}<span class="filter-count">{{.Up}}</span>
+    </button>
+    <button class="filter-chip" type="button" data-monitor-filter="warning" aria-pressed="false" disabled>
+      <span class="status-dot status-warning" aria-hidden="true"></span>{{.I18n.T "status.warning"}}<span class="filter-count">{{.Warning}}</span>
+    </button>
+    <button class="filter-chip" type="button" data-monitor-filter="down" aria-pressed="false" disabled>
+      <span class="status-dot status-down" aria-hidden="true"></span>{{.I18n.T "status.down"}}<span class="filter-count">{{.Down}}</span>
+    </button>
+    <button class="filter-chip" type="button" data-monitor-filter="pending" aria-pressed="false" disabled>
+      <span class="status-dot status-pending" aria-hidden="true"></span>{{.I18n.T "status.pending"}}<span class="filter-count">{{.Pending}}</span>
+    </button>
+    <button class="filter-chip" type="button" data-monitor-filter="paused" aria-pressed="false" disabled>
+      <span class="status-dot status-paused" aria-hidden="true"></span>{{.I18n.T "status.paused"}}<span class="filter-count">{{.Paused}}</span>
+    </button>
+  </div>
+</section>
+
+<div class="dashboard-toolbar" data-dashboard-toolbar>
+  <label class="search-field">
+    <span class="visually-hidden">{{.I18n.T "dashboard.searchLabel"}}</span>
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <circle cx="11" cy="11" r="6.5"></circle>
+      <path d="M16 16l4 4"></path>
+    </svg>
+    <input type="search" data-monitor-search placeholder="{{.I18n.T "dashboard.searchPlaceholder"}}" autocomplete="off" disabled>
+  </label>
+  <span class="filter-result hint" data-monitor-result data-result-template="{{.I18n.T "dashboard.showing"}}" role="status" aria-live="polite">{{.I18n.Tf "dashboard.showing" .Total .Total}}</span>
+</div>
+
+<section class="monitor-list" aria-label="{{.I18n.T "dashboard.monitorList"}}">
+  {{range .Monitors}}
+  <article class="monitor-card {{.StatusClass}}" data-monitor-card data-status="{{.StatusKey}}" data-search="{{.SearchText}}">
+    <div class="monitor-card-top">
+      <div class="monitor-identity">
+        <div class="monitor-title-line">
+          <h2><a class="monitor-link" href="/monitors/{{.ID}}">{{.Name}}</a></h2>
+          <span class="type-badge">{{.TypeLabel}}</span>
+        </div>
+        <p class="monitor-meta">
+          <span class="target" title="{{.Target}}">{{.Target}}</span>
+          <span aria-hidden="true">·</span>
+          <span>{{.IntervalLabel}}</span>
+        </p>
+      </div>
+      <div class="monitor-state">
+        <span class="status-pill {{.StatusClass}}">{{.StatusLabel}}</span>
+        <span class="monitor-check" title="{{.LastCheckTitle}}">{{.LastCheckAgo}}</span>
+      </div>
+    </div>
+    <div class="monitor-card-body">
+      <div class="monitor-metrics">
+        <div class="metric">
+          <span>{{$.I18n.T "dashboard.uptime24h"}}</span>
+          <strong>{{.Uptime24}}</strong>
+        </div>
+        <div class="metric">
+          <span>{{$.I18n.T "dashboard.currentLatency"}}</span>
+          <strong>{{.LastLatency}}</strong>
+        </div>
+      </div>
+      <div class="monitor-heartbeat">
+        <div class="heartbeat-head">
+          <span>{{$.I18n.T "dashboard.recentChecks"}}</span>
+          <span class="hint">{{.BarsSummary}}</span>
+        </div>
+        <div class="bars" aria-hidden="true">
+          {{range .Bars}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}
+        </div>
+        <div class="bar-range" aria-hidden="true">
+          <span>{{.BarsStart}}</span>
+          <span>{{.BarsEnd}}</span>
+        </div>
+      </div>
+    </div>
+  </article>
+  {{end}}
+</section>
+
+<div class="empty-state monitor-filter-empty" data-monitor-empty hidden>
+  <h2>{{.I18n.T "dashboard.noMatches"}}</h2>
+  <p>{{.I18n.T "dashboard.noMatchesHint"}}</p>
+  <button class="button button-secondary" type="button" data-clear-filters>{{.I18n.T "dashboard.clearFilters"}}</button>
+</div>
+{{else}}
+<section class="empty-state">
+  <h2>{{.I18n.T "dashboard.emptyTitle"}}</h2>
+  <p>{{.I18n.T "dashboard.emptyBody"}}</p>
+  {{if .IsAdmin}}<p><a class="button button-primary" href="/monitors/new">{{.I18n.T "dashboard.addMonitor"}}</a></p>{{end}}
+</section>
+{{end}}
+</div>
+{{- end}}

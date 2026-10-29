@@ -1,0 +1,62 @@
+{{define "content" -}}
+<section class="page-head">
+  <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+  <h1>{{.I18n.T "settings.overviewTitle"}}</h1>
+  <p class="muted">{{.I18n.T "settings.overviewIntro"}}</p>
+</section>
+
+<section class="settings-index">
+  {{range .Items}}
+  <a class="settings-index-link" href="{{.Href}}">
+    <span class="settings-index-icon" aria-hidden="true">
+      {{if eq .Icon "general"}}{{template "icon-settings"}}
+      {{else if eq .Icon "public"}}{{template "icon-public"}}
+      {{else if eq .Icon "notifications"}}{{template "icon-bell"}}
+      {{else if eq .Icon "logs"}}{{template "icon-list"}}
+      {{else if eq .Icon "proxies"}}{{template "icon-proxy"}}
+      {{end}}
+    </span>
+    <span class="settings-index-copy">
+      <strong>{{.Title}}</strong>
+      <small>{{.Intro}}</small>
+    </span>
+    {{template "icon-chevron"}}
+  </a>
+  {{end}}
+</section>
+{{- end}}
+
+{{define "icon-public"}}
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <circle cx="12" cy="12" r="9"></circle>
+  <path d="M3 12h18"></path>
+  <path d="M12 3c2.4 2.5 3.7 5.6 3.7 9s-1.3 6.5-3.7 9c-2.4-2.5-3.7-5.6-3.7-9S9.6 5.5 12 3z"></path>
+</svg>
+{{end}}
+
+{{define "icon-bell"}}
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+  <path d="M10 21h4"></path>
+</svg>
+{{end}}
+
+{{define "icon-list"}}
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M8 6h12"></path>
+  <path d="M8 12h12"></path>
+  <path d="M8 18h12"></path>
+  <path d="M4 6h.01"></path>
+  <path d="M4 12h.01"></path>
+  <path d="M4 18h.01"></path>
+</svg>
+{{end}}
+
+{{define "icon-proxy"}}
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <circle cx="6" cy="6" r="2.5"></circle>
+  <circle cx="18" cy="18" r="2.5"></circle>
+  <path d="M8.5 6H14a4 4 0 0 1 4 4v5.5"></path>
+  <path d="M15.5 18H10a4 4 0 0 1-4-4V8.5"></path>
+</svg>
+{{end}}

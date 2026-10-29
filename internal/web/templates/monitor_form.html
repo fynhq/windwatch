@@ -1,0 +1,220 @@
+{{define "content" -}}
+<section class="page-head page-head-row">
+  <div>
+    <p class="eyebrow">{{if .IsEdit}}{{.I18n.T "common.edit"}}{{else}}{{.I18n.T "monitor.add"}}{{end}}</p>
+    <h1>{{if .IsEdit}}{{.I18n.T "monitor.editTitle"}}{{else}}{{.I18n.T "monitor.newTitle"}}{{end}}</h1>
+    <p class="monitor-meta"><span class="type-badge">{{.TypeLabel}}</span></p>
+  </div>
+  <div class="page-actions">
+    <button class="button button-primary" type="submit" form="monitor-form">{{if .IsEdit}}{{.I18n.T "monitor.saveChanges"}}{{else}}{{.I18n.T "monitor.save"}}{{end}}</button>
+  </div>
+</section>
+
+<form id="monitor-form" method="post" action="{{.Action}}" class="panel form-panel">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  {{if not .IsEdit}}<input type="hidden" name="type" value="{{.Type}}">{{end}}
+
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.basicSection"}}</h2>
+    <label class="field">
+      <span>{{.I18n.T "monitor.name"}}</span>
+      <input type="text" name="name" value="{{.Values.Name}}" maxlength="100" required autofocus>
+    </label>
+  </div>
+
+  {{if .ShowHTTP}}
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.httpSection"}}</h2>
+    <label class="field">
+      <span>{{.I18n.T "monitor.url"}}</span>
+      <input type="url" name="url" value="{{.Values.URL}}" maxlength="2048" placeholder="https://example.com" required>
+    </label>
+    <div class="form-grid">
+      <label class="field">
+        <span>{{.I18n.T "monitor.method"}}</span>
+        <select name="method">
+          <option value="GET" {{if eq .Values.Method "GET"}}selected{{end}}>GET</option>
+          <option value="HEAD" {{if eq .Values.Method "HEAD"}}selected{{end}}>HEAD</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>{{.I18n.T "monitor.expectedStatus"}}</span>
+        <input type="text" name="expected_status" value="{{.Values.ExpectedStatus}}" maxlength="20" placeholder="200-299">
+      </label>
+    </div>
+    <p class="hint">{{.I18n.T "monitor.expectedStatusHint"}}</p>
+    <label class="field">
+      <span>{{.I18n.T "monitor.keyword"}}</span>
+      <input type="text" name="keyword" value="{{.Values.Keyword}}" maxlength="500">
+    </label>
+    <p class="hint">{{.I18n.T "monitor.keywordHint"}}</p>
+    <label class="checkbox-field">
+      <input type="checkbox" name="follow_redirects" value="1" {{if .Values.FollowRedirects}}checked{{end}}>
+      <span>{{.I18n.T "monitor.followRedirects"}}</span>
+    </label>
+    <label class="checkbox-field">
+      <input type="checkbox" name="tls_skip_verify" value="1" {{if .Values.TLSSkipVerify}}checked{{end}}>
+      <span>{{.I18n.T "monitor.tlsSkipVerify"}}</span>
+    </label>
+  </div>
+
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.optionalChecks"}}</h2>
+    <p class="hint">{{.I18n.T "monitor.optionalChecksHint"}}</p>
+    <div class="form-grid">
+      <label class="checkbox-field">
+        <input type="checkbox" name="cert_check" value="1" data-toggle-target="cert-warn-days" {{if .Values.CertCheck}}checked{{end}}>
+        <span>{{.I18n.T "monitor.certCheck"}}</span>
+      </label>
+      <label class="field">
+        <span>{{.I18n.T "monitor.certWarnDays"}}</span>
+        <input type="number" id="cert-warn-days" name="cert_warn_days" value="{{.Values.CertWarnDays}}" min="1" max="365" {{if not .Values.CertCheck}}disabled{{end}}>
+      </label>
+      <label class="checkbox-field">
+        <input type="checkbox" name="domain_check" value="1" data-toggle-target="domain-warn-days" {{if .Values.DomainCheck}}checked{{end}}>
+        <span>{{.I18n.T "monitor.domainCheck"}}</span>
+      </label>
+      <label class="field">
+        <span>{{.I18n.T "monitor.domainWarnDays"}}</span>
+        <input type="number" id="domain-warn-days" name="domain_warn_days" value="{{.Values.DomainWarnDays}}" min="1" max="365" {{if not .Values.DomainCheck}}disabled{{end}}>
+      </label>
+    </div>
+  </div>
+  {{end}}
+
+  {{if .ShowTCP}}
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.tcpSection"}}</h2>
+    <div class="form-grid">
+      <label class="field">
+        <span>{{.I18n.T "monitor.host"}}</span>
+        <input type="text" name="host" value="{{.Values.Host}}" maxlength="255" placeholder="127.0.0.1" required>
+      </label>
+      <label class="field">
+        <span>{{.I18n.T "monitor.port"}}</span>
+        <input type="number" name="port" value="{{.Values.Port}}" min="1" max="65535" required>
+      </label>
+    </div>
+    <p class="hint">{{.I18n.T "monitor.tcpHint"}}</p>
+  </div>
+  {{end}}
+
+  {{if .ShowDocker}}
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.dockerSection"}}</h2>
+    <label class="field">
+      <span>{{.I18n.T "monitor.container"}}</span>
+      <input type="text" name="docker_container" value="{{.Values.DockerContainer}}" maxlength="255" placeholder="my-container" required>
+    </label>
+    <label class="checkbox-field">
+      <input type="checkbox" name="docker_healthy" value="1" {{if .Values.DockerHealthy}}checked{{end}}>
+      <span>{{.I18n.T "monitor.requireHealthy"}}</span>
+    </label>
+    <p class="hint">{{.I18n.T "monitor.dockerHint"}}</p>
+  </div>
+  {{end}}
+
+  {{if .ShowPush}}
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.pushSection"}}</h2>
+    <p class="hint">{{.I18n.T "monitor.pushHint"}}</p>
+  </div>
+  {{end}}
+
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.scheduleSection"}}</h2>
+    <div class="form-grid">
+      <label class="field">
+        <span>{{if .ShowPush}}{{.I18n.T "monitor.heartbeatInterval"}}{{else}}{{.I18n.T "monitor.interval"}}{{end}}</span>
+        <input type="number" name="interval" value="{{.Values.Interval}}" min="20" max="86400" required>
+        <small class="hint">{{.I18n.T "monitor.intervalHint"}}</small>
+      </label>
+      <label class="field">
+        <span>{{if .ShowPush}}{{.I18n.T "monitor.gracePeriod"}}{{else}}{{.I18n.T "monitor.timeout"}}{{end}}</span>
+        <input type="number" name="timeout" value="{{.Values.Timeout}}" min="1" max="300" required>
+        <small class="hint">{{if .ShowPush}}{{.I18n.T "monitor.graceHint"}}{{else}}{{.I18n.T "monitor.timeoutHint"}}{{end}}</small>
+      </label>
+      <label class="field">
+        <span>{{.I18n.T "monitor.failThreshold"}}</span>
+        <input type="number" name="fail_threshold" value="{{.Values.FailThreshold}}" min="1" max="20" required>
+      </label>
+      <label class="field">
+        <span>{{.I18n.T "monitor.recoverThreshold"}}</span>
+        <input type="number" name="recover_threshold" value="{{.Values.RecoverThreshold}}" min="1" max="20" required>
+      </label>
+    </div>
+    <p class="hint">{{.I18n.T "monitor.thresholdHint"}}</p>
+  </div>
+
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.notificationSection"}}</h2>
+    <label class="switch-field">
+      <input type="checkbox" name="notify_enabled" value="1" {{if .Values.NotifyEnabled}}checked{{end}}>
+      <span class="switch-track" aria-hidden="true"></span>
+      <span>{{.I18n.T "monitor.notificationsEnabled"}}</span>
+    </label>
+    <input type="hidden" name="notify_enabled" value="0">
+    {{if .Channels}}
+    <div class="field-group">
+      <h3 class="subheading">{{.I18n.T "monitor.notificationChannels"}}</h3>
+      <div class="checkbox-grid">
+        {{range .Channels}}
+        <label class="checkbox-field">
+          <input type="checkbox" name="notification_channel_ids" value="{{.ID}}" {{if .Selected}}checked{{end}}>
+          <span>{{.Name}} <small class="muted">{{.TypeLabel}}</small>{{if not .Enabled}} <small class="muted">({{$.I18n.T "notification.disabled"}})</small>{{end}}</span>
+        </label>
+        {{end}}
+      </div>
+      <small class="hint">{{.I18n.T "monitor.notificationChannelsHint"}}</small>
+    </div>
+    {{else}}
+    <p class="hint">{{.I18n.T "monitor.noNotificationChannels"}} <a href="/settings/notifications">{{.I18n.T "monitor.manageNotifications"}}</a></p>
+    {{end}}
+    <div class="field-group">
+      <h3 class="subheading">{{.I18n.T "notification.reminders"}}</h3>
+      <p class="hint">{{.I18n.T "notification.remindersHint"}}</p>
+      <div class="form-grid">
+        <label class="field">
+          <span>{{.I18n.T "notification.failureReminderCount"}}</span>
+          <input type="number" name="failure_reminder_count" min="0" max="100" value="{{.Values.FailureReminderCount}}">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "notification.failureReminderInterval"}}</span>
+          <input type="number" name="failure_reminder_interval_minutes" min="1" max="525600" value="{{.Values.FailureReminderMinutes}}">
+        </label>
+        {{if .ShowHTTP}}
+        <label class="field">
+          <span>{{.I18n.T "notification.warningReminderCount"}}</span>
+          <input type="number" name="warning_reminder_count" min="0" max="100" value="{{.Values.WarningReminderCount}}">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "notification.warningReminderInterval"}}</span>
+          <input type="number" name="warning_reminder_interval_minutes" min="1" max="525600" value="{{.Values.WarningReminderMinutes}}">
+        </label>
+        {{end}}
+      </div>
+    </div>
+  </div>
+
+  {{if .ShowProxy}}
+  <div class="form-section">
+    <h2>{{.I18n.T "monitor.egressSection"}}</h2>
+    <label class="field">
+      <span>{{.I18n.T "monitor.egress"}}</span>
+      <select name="proxy_id">
+        <option value="">{{.I18n.T "monitor.direct"}}</option>
+        {{range .Proxies}}
+        <option value="{{.ID}}" {{if eq $.Values.ProxyID (printf "%d" .ID)}}selected{{end}}>{{.Name}} ({{.Type}})</option>
+        {{end}}
+      </select>
+    </label>
+    <p class="hint">{{.I18n.T "monitor.egressHint"}} <a href="/settings/proxies">{{.I18n.T "nav.settings"}}</a></p>
+  </div>
+  {{end}}
+
+  <div class="form-actions">
+    <button class="button button-primary" type="submit">{{if .IsEdit}}{{.I18n.T "monitor.saveChanges"}}{{else}}{{.I18n.T "monitor.save"}}{{end}}</button>
+    <a class="button button-secondary" href="{{.CancelURL}}">{{.I18n.T "common.cancel"}}</a>
+  </div>
+</form>
+{{- end}}

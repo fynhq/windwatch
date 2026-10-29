@@ -1,0 +1,19 @@
+{{define "content" -}}
+<section class="auth-card">
+  <p class="eyebrow">{{.I18n.T "app.tagline"}}</p>
+  <h1>{{.I18n.T "login.title"}}</h1>
+  <p class="muted">{{.I18n.T "login.intro"}}</p>
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label class="field">
+      <span>{{.I18n.T "common.username"}}</span>
+      <input type="text" name="username" value="{{.Username}}" autocomplete="username" maxlength="64" required autofocus>
+    </label>
+    <label class="field">
+      <span>{{.I18n.T "common.password"}}</span>
+      <input type="password" name="password" autocomplete="current-password" maxlength="256" required>
+    </label>
+    <button class="button button-primary" type="submit">{{.I18n.T "login.submit"}}</button>
+  </form>
+</section>
+{{- end}}

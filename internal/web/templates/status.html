@@ -1,0 +1,73 @@
+{{define "content" -}}
+{{template "status-live" .}}
+<p class="public-powered muted">{{.I18n.T "public.poweredBy"}}</p>
+{{- end}}
+
+{{define "status-live" -}}
+<div data-live-region="status">
+<section class="public-hero">
+  <p class="eyebrow">{{.I18n.T "public.overall"}}</p>
+  <h1>{{.Title}}</h1>
+  {{if .Description}}<p class="public-description">{{.Description}}</p>{{end}}
+
+  <div class="public-overall-banner">
+    <div class="public-overall-state">
+      <span class="status-dot {{.OverallClass}}" aria-hidden="true"></span>
+      <div>
+        <strong>{{.Overall}}</strong>
+        <span>{{.I18n.Tf "public.monitorsCount" .Total}}</span>
+      </div>
+    </div>
+    <div class="public-counts">
+      <span><i class="status-dot status-up" aria-hidden="true"></i>{{.I18n.T "status.up"}} <strong>{{.UpCount}}</strong></span>
+      <span><i class="status-dot status-warning" aria-hidden="true"></i>{{.I18n.T "status.warning"}} <strong>{{.WarningCount}}</strong></span>
+      <span><i class="status-dot status-down" aria-hidden="true"></i>{{.I18n.T "status.down"}} <strong>{{.DownCount}}</strong></span>
+      <span><i class="status-dot status-pending" aria-hidden="true"></i>{{.I18n.T "status.pending"}} <strong>{{.PendingCount}}</strong></span>
+      <span><i class="status-dot status-paused" aria-hidden="true"></i>{{.I18n.T "status.paused"}} <strong>{{.PausedCount}}</strong></span>
+    </div>
+    <p class="public-updated">
+      <span data-refresh-label data-refresh-template="{{.I18n.T "common.secondsAgo"}}" data-just-now="{{.I18n.T "common.justNow"}}" title="{{.Updated}}">{{.I18n.T "common.updatedNow"}}</span>
+      <span aria-hidden="true">·</span>
+      <span>{{.I18n.Tf "common.autoRefreshEvery" 30}}</span>
+    </p>
+  </div>
+</section>
+
+{{if .HasMonitors}}
+<section class="public-monitor-list" aria-label="{{.I18n.T "public.monitors"}}">
+  {{range .Monitors}}
+  <article class="public-monitor">
+    <div class="public-monitor-head">
+      <div>
+        <h2>{{.Name}}</h2>
+        <p class="muted">{{.TypeLabel}}</p>
+      </div>
+      <span class="status-pill {{.StatusClass}}">{{.StatusLabel}}</span>
+    </div>
+    <dl class="public-uptime">
+      <div><dt>{{$.I18n.T "monitor.uptime24h"}}</dt><dd>{{.Uptime24}}</dd></div>
+      <div><dt>{{$.I18n.T "monitor.uptime7d"}}</dt><dd>{{.Uptime7d}}</dd></div>
+      <div><dt>{{$.I18n.T "monitor.uptime30d"}}</dt><dd>{{.Uptime30d}}</dd></div>
+      <div><dt>{{$.I18n.T "monitor.uptime90d"}}</dt><dd>{{.Uptime90d}}</dd></div>
+    </dl>
+    {{if .History}}
+    <div class="public-history">
+      <div class="history-subhead">
+        <span>{{$.I18n.T "public.history"}}</span>
+        <span class="hint">{{$.I18n.T "public.historyHint"}}</span>
+      </div>
+      <div class="bars public-history-bars" aria-hidden="true">
+        {{range .History}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}
+      </div>
+    </div>
+    {{end}}
+  </article>
+  {{end}}
+</section>
+{{else}}
+<section class="empty-state">
+  <h2>{{.I18n.T "public.noMonitors"}}</h2>
+</section>
+{{end}}
+</div>
+{{- end}}

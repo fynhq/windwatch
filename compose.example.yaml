@@ -1,0 +1,61 @@
+# Public example template. Copy it to compose.yaml and adjust locally.
+# 公开示例模板。复制为 compose.yaml 后按本地环境调整。
+# compose.yaml is gitignored and intended for local deployment only.
+# compose.yaml 已被 Git 忽略，仅用于本地部署。
+# Set WINDWATCH_IMAGE to pin a digest or use a locally built image.
+# 设置 WINDWATCH_IMAGE 可固定镜像 digest，或使用本地构建的镜像。
+name: windwatch
+
+services:
+  windwatch:
+    image: ${WINDWATCH_IMAGE:-ghcr.io/fynhq/windwatch:latest}
+    container_name: windwatch
+    restart: unless-stopped
+    # Linux default: host networking lets WindWatch reach services bound to the
+    # host's loopback address, such as a local proxy on 127.0.0.1.
+    # Linux 默认：host 网络让 WindWatch 能访问绑定在宿主机回环地址的服务，
+    # 例如 127.0.0.1 上的本地代理。
+    network_mode: host
+    # Docker Desktop (and other setups where host networking is unavailable or
+    # undesirable): remove `network_mode: host` above and publish the port
+    # instead. Use `host.docker.internal`, not 127.0.0.1, to reach the host.
+    # Docker Desktop（以及其它不适合 host 网络的环境）：删除上面的
+    # `network_mode: host`，改用端口映射；访问宿主机请用
+    # `host.docker.internal` 而不是 127.0.0.1。
+    # ports:
+    #   - "8080:8080"
+    environment:
+      WINDWATCH_ADDR: ":8080"
+      WINDWATCH_DATA_DIR: "/data"
+      WINDWATCH_HEALTH_URL: "http://127.0.0.1:8080/healthz"
+      GOMEMLIMIT: "96MiB"
+      # Set this only when a trusted reverse proxy fronts the container.
+      # 仅当容器前有可信反向代理时设置。
+      # WINDWATCH_TRUSTED_PROXIES: "172.18.0.0/16"
+    volumes:
+      - windwatch_data:/data
+      # Docker container monitoring needs the socket and the host docker group.
+      # Docker 容器监控需要访问 socket 和宿主机 docker 组。
+      # Mounting the socket grants WindWatch significant control over the host.
+      # 挂载 socket 会让 WindWatch 获得对宿主机的较高控制权限。
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    # group_add:
+    #   - "${DOCKER_GID:-999}"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  windwatch_data:
+    name: windwatch_data

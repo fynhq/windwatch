@@ -1,0 +1,29 @@
+# Runtime data
+/data/
+*.db
+*.db-wal
+*.db-shm
+secret.key
+
+# Build output
+/bin/
+/dist/
+/verify/
+/windwatch
+/windwatch.exe
+
+# Local environment
+.env
+.env.local
+
+# Local deployment file
+/compose.yaml
+
+# Logs
+*.log
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

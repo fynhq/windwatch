@@ -1,0 +1,36 @@
+{{define "content" -}}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">{{.I18n.T "monitor.add"}}</p>
+    <h1>{{.I18n.T "monitor.chooseType"}}</h1>
+    <p class="muted">{{.I18n.T "monitor.chooseTypeHint"}}</p>
+  </div>
+</section>
+
+<section class="type-grid">
+  <a class="type-card" href="/monitors/new?type=http">
+    <span class="type-badge">HTTP(S)</span>
+    <h2>{{.I18n.T "monitor.type.http"}}</h2>
+    <p>{{.I18n.T "monitor.httpDescription"}}</p>
+    <span class="type-link">{{.I18n.T "common.continue"}} →</span>
+  </a>
+  <a class="type-card" href="/monitors/new?type=tcp">
+    <span class="type-badge">TCP</span>
+    <h2>{{.I18n.T "monitor.type.tcp"}}</h2>
+    <p>{{.I18n.T "monitor.tcpDescription"}}</p>
+    <span class="type-link">{{.I18n.T "common.continue"}} →</span>
+  </a>
+  <a class="type-card" href="/monitors/new?type=docker">
+    <span class="type-badge">DOCKER</span>
+    <h2>{{.I18n.T "monitor.type.docker"}}</h2>
+    <p>{{.I18n.T "monitor.dockerDescription"}}</p>
+    <span class="type-link">{{.I18n.T "common.continue"}} →</span>
+  </a>
+  <a class="type-card" href="/monitors/new?type=push">
+    <span class="type-badge">PUSH</span>
+    <h2>{{.I18n.T "monitor.type.push"}}</h2>
+    <p>{{.I18n.T "monitor.pushDescription"}}</p>
+    <span class="type-link">{{.I18n.T "common.continue"}} →</span>
+  </a>
+</section>
+{{- end}}

@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and verify version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r' < VERSION)"
+          test "$GITHUB_REF_NAME" = "v$version"
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release binaries
+        run: make dist
+
+      - name: Smoke test binary
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          output="$(./dist/windwatch-linux-amd64-v${VERSION} version)"
+          test "$output" = "windwatch v${VERSION}"
+
+      - name: Run race tests
+        run: make race
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          assets=(
+            "dist/windwatch-linux-amd64-v${VERSION}"
+            "dist/windwatch-linux-arm64-v${VERSION}"
+            "dist/SHA256SUMS"
+          )
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)"
+            test "$draft" = "true"
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+              --title "windwatch $GITHUB_REF_NAME" \
+              --draft \
+              --verify-tag \
+              --notes-from-tag
+          fi
+
+      - name: Verify release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf verify
+          mkdir -p verify
+          gh release download "$GITHUB_REF_NAME" --dir verify
+          cd verify
+          for asset in \
+            "windwatch-linux-amd64-v${VERSION}" \
+            "windwatch-linux-arm64-v${VERSION}" \
+            "SHA256SUMS"; do
+            test -f "$asset"
+          done
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum -c --strict SHA256SUMS
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/fynhq/windwatch:latest
+          build-args: |
+            VERSION=v${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test image on both architectures
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          for platform in linux/amd64 linux/arm64; do
+            output="$(docker run --rm --platform "$platform" ghcr.io/fynhq/windwatch:latest version)"
+            test "$output" = "windwatch v${VERSION}"
+          done
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false

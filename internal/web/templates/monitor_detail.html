@@ -1,0 +1,301 @@
+{{define "content" -}}
+<section class="page-head page-head-row detail-head">
+  <div class="detail-heading">
+    <p class="eyebrow">{{.Monitor.TypeLabel}}</p>
+    <h1>{{.Monitor.Name}}</h1>
+    <p class="monitor-meta">
+      <span class="target" title="{{.Monitor.Target}}">{{.Monitor.Target}}</span>
+      {{if .Monitor.Method}}<span aria-hidden="true">·</span><span>{{.Monitor.Method}}</span>{{end}}
+    </p>
+    <p class="detail-status-line">
+      <span class="status-pill {{.Monitor.StatusClass}}">{{.Monitor.StatusLabel}}</span>
+      <span class="hint" title="{{.Monitor.StatusSince}}">{{.I18n.T "monitor.statusSince"}} {{.Monitor.StatusSinceAgo}}</span>
+      <span class="hint" aria-hidden="true">·</span>
+      <span class="hint" title="{{.Monitor.LastCheckTitle}}">{{.I18n.T "monitor.lastCheck"}} {{.Monitor.LastCheckAgo}}</span>
+    </p>
+  </div>
+  <div class="page-actions">
+    {{if .IsAdmin}}
+    <a class="button button-secondary" href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>
+    {{if .Monitor.Enabled}}
+    <form method="post" action="/monitors/{{.Monitor.ID}}/check" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <button class="button button-secondary" type="submit">{{.I18n.T "monitor.checkNow"}}</button>
+    </form>
+    {{end}}
+    <form method="post" action="/monitors/{{.Monitor.ID}}/toggle" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <button class="button button-secondary" type="submit">{{if .Monitor.Enabled}}{{.I18n.T "monitor.pause"}}{{else}}{{.I18n.T "monitor.resume"}}{{end}}</button>
+    </form>
+    {{end}}
+  </div>
+</section>
+
+<section class="detail-metrics" aria-label="{{.I18n.T "monitor.uptimeSummary"}}">
+  <div class="detail-metric"><span>{{.I18n.T "monitor.uptime24h"}}</span><strong>{{.Monitor.Uptime24}}</strong></div>
+  <div class="detail-metric"><span>{{.I18n.T "monitor.uptime7d"}}</span><strong>{{.Monitor.Uptime7d}}</strong></div>
+  <div class="detail-metric"><span>{{.I18n.T "monitor.uptime30d"}}</span><strong>{{.Monitor.Uptime30d}}</strong></div>
+  <div class="detail-metric"><span>{{.I18n.T "monitor.uptime90d"}}</span><strong>{{.Monitor.Uptime90d}}</strong></div>
+  <div class="detail-metric"><span>{{.I18n.T "monitor.avgLatency24h"}}</span><strong>{{.Monitor.AvgLatency24}}</strong></div>
+  <div class="detail-metric"><span>{{.I18n.T "monitor.lastCheck"}}</span><strong title="{{.Monitor.LastCheckTitle}}">{{.Monitor.LastCheckAgo}}</strong></div>
+</section>
+
+<div class="detail-layout">
+  <div class="detail-main">
+    <section class="panel history-card" data-history-card>
+      <div class="panel-head history-head">
+        <div>
+          <h2>{{.I18n.T "monitor.historyTitle"}}</h2>
+          <p class="hint">{{.I18n.T "monitor.historyHint"}}</p>
+        </div>
+        <div class="history-tabs" role="tablist" aria-label="{{.I18n.T "monitor.historyTabs"}}" data-history-tabs>
+          <button type="button" class="history-tab is-active" id="history-tab-recent" role="tab" aria-selected="true" aria-controls="history-recent" data-history-tab="history-recent">{{.I18n.T "monitor.tabRecent"}}</button>
+          <button type="button" class="history-tab" id="history-tab-24h" role="tab" aria-selected="false" aria-controls="history-24h" data-history-tab="history-24h" tabindex="-1">{{.I18n.T "monitor.tab24h"}}</button>
+          <button type="button" class="history-tab" id="history-tab-30d" role="tab" aria-selected="false" aria-controls="history-30d" data-history-tab="history-30d" tabindex="-1">{{.I18n.T "monitor.tab30d"}}</button>
+          <button type="button" class="history-tab" id="history-tab-90d" role="tab" aria-selected="false" aria-controls="history-90d" data-history-tab="history-90d" tabindex="-1">{{.I18n.T "monitor.tab90d"}}</button>
+        </div>
+      </div>
+
+      <div class="history-panel is-active" id="history-recent" role="tabpanel" aria-labelledby="history-tab-recent" data-history-panel>
+        <div class="history-subhead">
+          <h3>{{.I18n.T "monitor.recentStatus"}}</h3>
+          <span class="hint">{{.Monitor.RecentBarsSummary}}</span>
+        </div>
+        {{if .Monitor.HasChecks}}
+        <div class="bars bars-large history-bars" aria-hidden="true">
+          {{range .Monitor.RecentBars}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}
+        </div>
+        <div class="bar-range" aria-hidden="true">
+          <span>{{.Monitor.RecentBarsStart}}</span>
+          <span>{{.Monitor.RecentBarsEnd}}</span>
+        </div>
+        {{else}}
+        <p class="muted">{{.I18n.T "monitor.noChecks"}}</p>
+        {{end}}
+        <div class="bar-legend" aria-hidden="true">
+          <span><i class="legend-dot bar-up"></i>{{.I18n.T "status.up"}}</span>
+          <span><i class="legend-dot bar-mixed"></i>{{.I18n.T "status.warning"}}</span>
+          <span><i class="legend-dot bar-down"></i>{{.I18n.T "status.down"}}</span>
+          <span><i class="legend-dot bar-empty"></i>{{.I18n.T "common.noData"}}</span>
+        </div>
+      </div>
+
+      <div class="history-panel" id="history-24h" role="tabpanel" aria-labelledby="history-tab-24h" data-history-panel hidden>
+        <div class="history-block">
+          <div class="history-subhead">
+            <h3>{{.I18n.T "monitor.history24h"}}</h3>
+            <span class="hint">{{.Monitor.BarsSummary}}</span>
+          </div>
+          <div class="bars bars-large history-bars" aria-hidden="true">
+            {{range .Monitor.Bars}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}
+          </div>
+          <div class="bar-range" aria-hidden="true">
+            <span>{{.Monitor.BarsStart}}</span>
+            <span>{{.Monitor.BarsEnd}}</span>
+          </div>
+        </div>
+        <div class="history-block">
+          <div class="history-subhead">
+            <h3>{{.I18n.T "monitor.latency24h"}}</h3>
+            <span class="hint">{{.I18n.T "monitor.avgLatency24h"}}: {{.Monitor.AvgLatency24}}</span>
+          </div>
+          {{if .Monitor.Chart.HasData}}
+          <div class="chart-frame">
+            <svg class="latency-chart" viewBox="0 0 720 220" role="img" aria-label="{{.I18n.T "monitor.latency24h"}}">
+              {{range .Monitor.Chart.Grid}}
+              <line class="chart-grid-line" x1="48" y1="{{.Y}}" x2="708" y2="{{.Y}}"></line>
+              <text class="chart-axis-label" x="40" y="{{.Y}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>
+              {{end}}
+              {{range .Monitor.Chart.AreaPaths}}<path class="latency-area" d="{{.}}"></path>{{end}}
+              {{range .Monitor.Chart.LinePaths}}<path class="latency-line" d="{{.}}"></path>{{end}}
+              {{range .Monitor.Chart.Points}}<circle class="latency-point" cx="{{.X}}" cy="{{.Y}}" r="3"><title>{{.Title}}</title></circle>{{end}}
+              <text class="chart-axis-label" x="48" y="208">{{.Monitor.Chart.StartLabel}}</text>
+              <text class="chart-axis-label" x="708" y="208" text-anchor="end">{{.Monitor.Chart.EndLabel}}</text>
+            </svg>
+            <div class="chart-meta">
+              <span>{{.I18n.T "monitor.chartAvg"}} <strong>{{.Monitor.Chart.AvgLabel}}</strong></span>
+              <span>{{.I18n.T "monitor.chartPeak"}} <strong>{{.Monitor.Chart.PeakLabel}}</strong></span>
+            </div>
+          </div>
+          {{else}}
+          <p class="muted">{{.I18n.T "monitor.noLatencyData"}}</p>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="history-panel" id="history-30d" role="tabpanel" aria-labelledby="history-tab-30d" data-history-panel hidden>
+        <div class="history-subhead">
+          <h3>{{.I18n.T "monitor.uptime30dChart"}}</h3>
+          <span class="hint">{{.I18n.T "monitor.utcDaily"}}</span>
+        </div>
+        {{if .Monitor.Chart30.HasData}}
+        <div class="chart-frame">
+          <div class="chart-legend" aria-hidden="true">
+            <span><i class="legend-dot bar-up"></i>{{.I18n.T "monitor.chartUptime"}}</span>
+            {{if .Monitor.Chart30.HasLine}}<span><i class="legend-dot legend-line"></i>{{.I18n.T "monitor.chartLatency"}}</span>{{end}}
+          </div>
+          <svg class="long-range-chart" viewBox="0 0 720 160" role="img" aria-label="{{.I18n.T "monitor.uptime30dChart"}}">
+            {{range .Monitor.Chart30.Bars}}<rect class="{{.Class}}" x="{{.X}}" y="{{.Y}}" width="{{.Width}}" height="{{.Height}}" rx="2"><title>{{.Title}}</title></rect>{{end}}
+            {{if .Monitor.Chart30.Line}}<polyline class="latency-line" points="{{.Monitor.Chart30.Line}}"></polyline>{{end}}
+          </svg>
+          <div class="bar-range" aria-hidden="true">
+            <span>{{.Monitor.Chart30.StartLabel}}</span>
+            <span>{{.Monitor.Chart30.EndLabel}}</span>
+          </div>
+          <p class="hint">{{.I18n.T "monitor.dailyChartHint"}}</p>
+        </div>
+        {{else}}
+        <p class="muted">{{.I18n.T "monitor.noLongRangeData"}}</p>
+        {{end}}
+      </div>
+
+      <div class="history-panel" id="history-90d" role="tabpanel" aria-labelledby="history-tab-90d" data-history-panel hidden>
+        <div class="history-subhead">
+          <h3>{{.I18n.T "monitor.uptime90dChart"}}</h3>
+          <span class="hint">{{.I18n.T "monitor.utcDaily"}}</span>
+        </div>
+        {{if .Monitor.Chart90.HasData}}
+        <div class="chart-frame">
+          <div class="chart-legend" aria-hidden="true">
+            <span><i class="legend-dot bar-up"></i>{{.I18n.T "monitor.chartUptime"}}</span>
+            {{if .Monitor.Chart90.HasLine}}<span><i class="legend-dot legend-line"></i>{{.I18n.T "monitor.chartLatency"}}</span>{{end}}
+          </div>
+          <svg class="long-range-chart" viewBox="0 0 720 160" role="img" aria-label="{{.I18n.T "monitor.uptime90dChart"}}">
+            {{range .Monitor.Chart90.Bars}}<rect class="{{.Class}}" x="{{.X}}" y="{{.Y}}" width="{{.Width}}" height="{{.Height}}" rx="2"><title>{{.Title}}</title></rect>{{end}}
+            {{if .Monitor.Chart90.Line}}<polyline class="latency-line" points="{{.Monitor.Chart90.Line}}"></polyline>{{end}}
+          </svg>
+          <div class="bar-range" aria-hidden="true">
+            <span>{{.Monitor.Chart90.StartLabel}}</span>
+            <span>{{.Monitor.Chart90.EndLabel}}</span>
+          </div>
+          <p class="hint">{{.I18n.T "monitor.dailyChartHint"}}</p>
+        </div>
+        {{else}}
+        <p class="muted">{{.I18n.T "monitor.noLongRangeData"}}</p>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>{{.I18n.T "monitor.recentEvents"}}</h2>
+        <a href="/events">{{.I18n.T "events.viewAll"}}</a>
+      </div>
+      {{if .Monitor.Events}}
+      <ol class="event-timeline">
+        {{range .Monitor.Events}}
+        <li class="event-item">
+          <span class="status-dot {{.TypeClass}}" aria-hidden="true"></span>
+          <div class="event-body">
+            <div class="event-head">
+              <span class="status-pill {{.TypeClass}}">{{.TypeLabel}}</span>
+              <span class="hint">{{.Started}}</span>
+              {{if .Duration}}<span class="hint" aria-hidden="true">·</span><span class="hint">{{.Duration}}</span>{{end}}
+            </div>
+            {{if .Message}}<p class="event-message">{{.Message}}</p>{{end}}
+          </div>
+        </li>
+        {{end}}
+      </ol>
+      {{else}}
+      <p class="muted">{{.I18n.T "monitor.noEvents"}}</p>
+      {{end}}
+    </section>
+  </div>
+
+  <aside class="detail-aside">
+    {{if .Monitor.IsPush}}
+    <section class="panel detail-panel">
+      <div class="panel-head">
+        <h2>{{.I18n.T "monitor.pushTitle"}}</h2>
+        <span class="hint">{{.I18n.T "monitor.lastHeartbeat"}}: {{.Monitor.PushLastHeartbeat}}</span>
+      </div>
+      {{if .Monitor.PushURL}}
+      <div class="copy-field">
+        <span class="copy-label">{{.I18n.T "monitor.pushEndpoint"}}</span>
+        <code class="copy-value">{{.Monitor.PushURL}}</code>
+        <button class="button button-secondary button-small" type="button" data-copy-value="{{.Monitor.PushURL}}">{{.I18n.T "common.copy"}}</button>
+      </div>
+      <div class="copy-field">
+        <span class="copy-label">{{.I18n.T "monitor.pushToken"}}</span>
+        <code class="copy-value">{{.Monitor.PushToken}}</code>
+        <button class="button button-secondary button-small" type="button" data-copy-value="{{.Monitor.PushToken}}">{{.I18n.T "common.copy"}}</button>
+      </div>
+      <p class="hint">{{.I18n.T "monitor.pushHint"}}</p>
+      {{else if not .IsAdmin}}
+      <p class="muted">{{.I18n.T "monitor.pushAdminOnly"}}</p>
+      {{else}}
+      <p class="muted">{{.I18n.T "monitor.pushUnavailable"}}</p>
+      {{end}}
+    </section>
+    {{end}}
+
+    {{if .Monitor.CertEnabled}}
+    <section class="panel detail-panel">
+      <div class="panel-head">
+        <h2>{{.I18n.T "monitor.certTitle"}}</h2>
+        {{if .Monitor.Cert}}{{if .Monitor.Cert.Warning}}<span class="status-pill status-warning">{{.I18n.T "status.warning"}}</span>{{end}}{{end}}
+      </div>
+      {{if .Monitor.Cert}}
+      <dl class="config-list">
+        <div><dt>{{.I18n.T "monitor.certIssuer"}}</dt><dd>{{.Monitor.Cert.Issuer}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.certSubject"}}</dt><dd>{{.Monitor.Cert.Subject}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.certExpires"}}</dt><dd>{{.Monitor.Cert.Expires}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.certDays"}}</dt><dd>{{.Monitor.Cert.Days}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.certFingerprint"}}</dt><dd><span class="target">{{.Monitor.Cert.Fingerprint}}</span></dd></div>
+      </dl>
+      {{else}}
+      <p class="muted">{{.I18n.T "monitor.certUnavailable"}}</p>
+      {{end}}
+    </section>
+    {{end}}
+
+    {{if .Monitor.DomainEnabled}}
+    <section class="panel detail-panel">
+      <div class="panel-head">
+        <h2>{{.I18n.T "monitor.domainTitle"}}</h2>
+        {{if .Monitor.Domain}}{{if .Monitor.Domain.Warning}}<span class="status-pill status-warning">{{.I18n.T "status.warning"}}</span>{{end}}{{end}}
+      </div>
+      {{if .Monitor.Domain}}
+      <dl class="config-list">
+        <div><dt>{{.I18n.T "monitor.domainName"}}</dt><dd>{{.Monitor.Domain.Domain}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.domainRegistrar"}}</dt><dd>{{if .Monitor.Domain.Registrar}}{{.Monitor.Domain.Registrar}}{{else}}—{{end}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.domainExpires"}}</dt><dd>{{.Monitor.Domain.Expires}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.domainDays"}}</dt><dd>{{.Monitor.Domain.Days}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.domainStatus"}}</dt><dd>{{if .Monitor.Domain.Statuses}}{{.Monitor.Domain.Statuses}}{{else}}—{{end}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.domainFetched"}}</dt><dd>{{.Monitor.Domain.Fetched}}</dd></div>
+      </dl>
+      {{if .Monitor.Domain.Error}}<p class="alert alert-error">{{.Monitor.Domain.Error}}</p>{{end}}
+      {{else}}
+      <p class="muted">{{.I18n.T "monitor.domainUnavailable"}}</p>
+      {{end}}
+    </section>
+    {{end}}
+
+    <section class="panel detail-panel">
+      <div class="panel-head"><h2>{{.I18n.T "monitor.config"}}</h2>{{if .IsAdmin}}<a href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>{{end}}</div>
+      <dl class="config-list">
+        <div><dt>{{if .Monitor.IsPush}}{{.I18n.T "monitor.heartbeatInterval"}}{{else}}{{.I18n.T "monitor.interval"}}{{end}}</dt><dd>{{.Monitor.Interval}}</dd></div>
+        <div><dt>{{if .Monitor.IsPush}}{{.I18n.T "monitor.gracePeriod"}}{{else}}{{.I18n.T "monitor.timeout"}}{{end}}</dt><dd>{{.Monitor.Timeout}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.failThreshold"}}</dt><dd>{{.Monitor.FailThreshold}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.recoverThreshold"}}</dt><dd>{{.Monitor.RecoverThreshold}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.statusSince"}}</dt><dd title="{{.Monitor.StatusSince}}">{{.Monitor.StatusSinceAgo}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.lastLatency"}}</dt><dd>{{.Monitor.LastLatency}}</dd></div>
+        <div><dt>{{.I18n.T "monitor.notificationChannels"}}</dt><dd>{{if .Monitor.NotificationLabel}}{{.Monitor.NotificationLabel}}{{else}}—{{end}}</dd></div>
+        {{if .Monitor.ProxyName}}<div><dt>{{.I18n.T "monitor.egress"}}</dt><dd>{{.Monitor.ProxyName}}</dd></div>{{end}}
+      </dl>
+    </section>
+
+    {{if .IsAdmin}}
+    <details class="danger-zone">
+      <summary>{{.I18n.T "monitor.dangerZone"}}</summary>
+      <p>{{.I18n.T "monitor.deleteWarning"}}</p>
+      <form method="post" action="/monitors/{{.Monitor.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="button button-danger" type="submit">{{.I18n.T "common.delete"}}</button>
+      </form>
+    </details>
+    {{end}}
+  </aside>
+</div>
+{{- end}}

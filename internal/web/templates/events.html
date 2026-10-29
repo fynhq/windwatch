@@ -1,0 +1,124 @@
+{{define "content" -}}
+<section class="page-head">
+  <p class="eyebrow">{{.I18n.T "nav.events"}}</p>
+  <h1>{{.I18n.T "events.title"}}</h1>
+  <p class="muted">{{.I18n.T "events.intro"}}</p>
+</section>
+
+{{if .HasEvents}}
+<section class="events-overview" aria-label="{{.I18n.T "events.summary"}}">
+  <div class="event-summary">
+    <div class="event-summary-item"><span>{{.I18n.T "events.total"}}</span><strong>{{.Total}}</strong></div>
+    <div class="event-summary-item {{if .OngoingCount}}is-attention{{end}}"><span>{{.I18n.T "events.ongoingCount"}}</span><strong>{{.OngoingCount}}</strong></div>
+    <div class="event-summary-item"><span>{{.I18n.T "events.downCount"}}</span><strong>{{.DownCount}}</strong></div>
+    <div class="event-summary-item"><span>{{.I18n.T "events.upCount"}}</span><strong>{{.UpCount}}</strong></div>
+  </div>
+  <span class="hint">{{.I18n.T "events.limitHint"}}</span>
+</section>
+
+{{if .OngoingCount}}
+<div class="event-banner" role="status">
+  <span class="status-dot status-down" aria-hidden="true"></span>
+  <span>{{.I18n.T "events.ongoingBanner"}}</span>
+</div>
+{{end}}
+
+<div class="events-toolbar" data-events-toolbar>
+  <label class="search-field">
+    <span class="visually-hidden">{{.I18n.T "events.searchLabel"}}</span>
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <circle cx="11" cy="11" r="6.5"></circle>
+      <path d="M16 16l4 4"></path>
+    </svg>
+    <input type="search" data-event-search placeholder="{{.I18n.T "events.searchPlaceholder"}}" autocomplete="off" disabled>
+  </label>
+  <div class="events-filters" role="group" aria-label="{{.I18n.T "events.filterLabel"}}">
+    <button class="filter-chip is-active" type="button" data-event-filter="all" aria-pressed="true" disabled>{{.I18n.T "events.filterAll"}}</button>
+    <button class="filter-chip" type="button" data-event-filter="down" aria-pressed="false" disabled>{{.I18n.T "events.filterDown"}}</button>
+    <button class="filter-chip" type="button" data-event-filter="up" aria-pressed="false" disabled>{{.I18n.T "events.filterUp"}}</button>
+    <button class="filter-chip" type="button" data-event-filter="ongoing" aria-pressed="false" disabled>{{.I18n.T "events.filterOngoing"}}</button>
+  </div>
+  <span class="filter-result hint" data-events-result data-result-template="{{.I18n.T "events.showing"}}" role="status" aria-live="polite">{{.I18n.Tf "events.showing" .Total .Total}}</span>
+</div>
+
+<section class="panel">
+  <div class="table-scroll">
+    <table class="responsive-table events-table">
+      <thead>
+        <tr>
+          <th>{{.I18n.T "events.monitor"}}</th>
+          <th>{{.I18n.T "events.type"}}</th>
+          <th>{{.I18n.T "events.started"}}</th>
+          <th>{{.I18n.T "events.ended"}}</th>
+          <th>{{.I18n.T "events.duration"}}</th>
+          <th>{{.I18n.T "events.message"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Events}}
+        <tr data-event-row data-event-type="{{.TypeClass}}" data-event-ongoing="{{if .Ongoing}}true{{else}}false{{end}}" data-search="{{.SearchText}}">
+          <td data-label="{{$.I18n.T "events.monitor"}}"><a href="/monitors/{{.MonitorID}}">{{.MonitorName}}</a></td>
+          <td data-label="{{$.I18n.T "events.type"}}"><span class="status-pill {{.TypeClass}}">{{.TypeLabel}}</span></td>
+          <td data-label="{{$.I18n.T "events.started"}}">{{.Started}}</td>
+          <td data-label="{{$.I18n.T "events.ended"}}">{{.Ended}}</td>
+          <td data-label="{{$.I18n.T "events.duration"}}">{{.Duration}}</td>
+          <td class="is-wide event-message-cell" data-label="{{$.I18n.T "events.message"}}">
+            {{if .Message}}
+            <button class="event-message-button" type="button" data-event-detail
+              aria-haspopup="dialog"
+              aria-label="{{$.I18n.T "events.viewDetail"}} · {{.MonitorName}}"
+              data-event-monitor="{{.MonitorName}}"
+              data-event-type="{{.TypeLabel}}"
+              data-event-started="{{.Started}}"
+              data-event-ended="{{.Ended}}"
+              data-event-duration="{{.Duration}}"
+              data-event-message="{{.Message}}">
+              <span class="event-message-preview">{{.Message}}</span>
+              <span class="event-message-more">{{$.I18n.T "events.viewDetail"}}</span>
+            </button>
+            {{else}}—{{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="empty-state event-filter-empty" data-events-empty hidden>
+  <h2>{{.I18n.T "events.noMatches"}}</h2>
+  <p>{{.I18n.T "events.noMatchesHint"}}</p>
+  <button class="button button-secondary" type="button" data-clear-filters>{{.I18n.T "events.clearFilters"}}</button>
+</div>
+{{else}}
+<section class="empty-state">
+  <h2>{{.I18n.T "events.emptyTitle"}}</h2>
+  <p>{{.I18n.T "events.emptyBody"}}</p>
+</section>
+{{end}}
+
+<dialog class="dialog event-dialog" id="event-detail" aria-labelledby="event-detail-title" data-event-dialog>
+  <div class="dialog-inner">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">{{.I18n.T "events.detailTitle"}}</p>
+        <h2 id="event-detail-title" data-event-field="monitor"></h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <dl class="config-grid event-dialog-meta">
+      <div><dt>{{.I18n.T "events.type"}}</dt><dd data-event-field="type"></dd></div>
+      <div><dt>{{.I18n.T "events.started"}}</dt><dd data-event-field="started"></dd></div>
+      <div><dt>{{.I18n.T "events.ended"}}</dt><dd data-event-field="ended"></dd></div>
+      <div><dt>{{.I18n.T "events.duration"}}</dt><dd data-event-field="duration"></dd></div>
+    </dl>
+    <div class="field-group">
+      <span class="subheading">{{.I18n.T "events.message"}}</span>
+      <div class="event-dialog-message" data-event-field="message"></div>
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.close"}}</button>
+    </div>
+  </div>
+</dialog>
+{{- end}}

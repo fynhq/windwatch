@@ -1,0 +1,411 @@
+{{define "content" -}}
+{{if eq .SettingsSection "proxies"}}
+<section class="page-head page-head-row">
+  <div>
+    <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+    <h1>{{.SectionTitle}}</h1>
+    <p class="muted">{{.SectionIntro}}</p>
+  </div>
+  <div class="page-actions">
+    {{if .ProxyFormEdit}}
+    <a class="button button-primary" href="/settings/proxies">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "proxy.add"}}</span>
+    </a>
+    {{else}}
+    <button class="button button-primary" type="button" data-dialog-open="proxy-form">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "proxy.add"}}</span>
+    </button>
+    {{end}}
+  </div>
+</section>
+{{else if eq .SettingsSection "notifications"}}
+<section class="page-head page-head-row">
+  <div>
+    <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+    <h1>{{.SectionTitle}}</h1>
+    <p class="muted">{{.SectionIntro}}</p>
+  </div>
+  <div class="page-actions">
+    {{if .ChannelFormEdit}}
+    <a class="button button-primary" href="/settings/notifications">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "notification.addChannel"}}</span>
+    </a>
+    {{else}}
+    <button class="button button-primary" type="button" data-dialog-open="notification-channel">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "notification.addChannel"}}</span>
+    </button>
+    {{end}}
+  </div>
+</section>
+{{else}}
+<section class="page-head">
+  <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+  <h1>{{.SectionTitle}}</h1>
+  <p class="muted">{{.SectionIntro}}</p>
+</section>
+{{end}}
+
+{{if eq .SettingsSection "general"}}
+<section class="panel settings-section">
+  <form method="post" action="/settings/timezone" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label class="field">
+      <span>{{.I18n.T "settings.timezone"}}</span>
+      <input type="text" name="timezone" value="{{.Timezone}}" list="timezone-options"
+        autocomplete="off" spellcheck="false" required>
+      <small class="hint">{{.I18n.T "settings.timezoneSearchHint"}}</small>
+    </label>
+    <datalist id="timezone-options">
+      {{range .TimezoneOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+    </datalist>
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">{{.I18n.T "settings.timezoneSave"}}</button>
+    </div>
+  </form>
+</section>
+{{end}}
+
+{{if eq .SettingsSection "public"}}
+<section class="panel settings-section">
+  <form method="post" action="/settings/public-status" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label class="switch-field">
+      <input type="checkbox" name="public_status_enabled" value="1" data-toggle-target="public-status-fields" {{if .PublicStatus.Enabled}}checked{{end}}>
+      <span class="switch-track" aria-hidden="true"></span>
+      <span>{{.I18n.T "public.enabled"}}</span>
+    </label>
+    <fieldset class="stack field-group" id="public-status-fields" {{if not .PublicStatus.Enabled}}disabled{{end}}>
+      <div class="form-grid">
+        <label class="field">
+          <span>{{.I18n.T "public.pageTitle"}}</span>
+          <input type="text" name="public_status_title" value="{{.PublicStatus.Title}}" maxlength="100" placeholder="{{.I18n.T "public.titleDefault"}}">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "public.pageDescription"}}</span>
+          <input type="text" name="public_status_description" value="{{.PublicStatus.Description}}" maxlength="500" placeholder="{{.I18n.T "public.descriptionDefault"}}">
+        </label>
+      </div>
+      <div class="field-group">
+        <h3 class="subheading">{{.I18n.T "public.monitors"}}</h3>
+        <p class="hint">{{.I18n.T "public.monitorsHint"}}</p>
+        <div class="checkbox-grid">
+          {{range .PublicMonitors}}
+          <label class="checkbox-field">
+            <input type="checkbox" name="public_monitors" value="{{.ID}}" {{if .Selected}}checked{{end}}>
+            <span>{{.Name}} <small class="muted">{{.TypeLabel}}</small></span>
+          </label>
+          {{else}}
+          <p class="muted">{{.I18n.T "public.noMonitors"}}</p>
+          {{end}}
+        </div>
+      </div>
+    </fieldset>
+    {{if .PublicStatus.Enabled}}
+    <div class="field">
+      <span>{{.I18n.T "public.address"}}</span>
+      <div class="input-action">
+        <input class="copy-input" type="text" value="{{.PublicStatusURL}}" readonly
+          aria-label="{{.I18n.T "public.address"}}"
+          data-copy-value="{{.PublicStatusURL}}">
+        <button class="button button-secondary" type="button"
+          data-copy-value="{{.PublicStatusURL}}">{{.I18n.T "public.copy"}}</button>
+      </div>
+      <small class="hint">{{.I18n.T "public.copyHint"}}</small>
+    </div>
+    {{end}}
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">{{.I18n.T "public.save"}}</button>
+      {{if .PublicStatus.Enabled}}
+      <a class="button button-secondary" href="/status" target="_blank" rel="noopener">{{.I18n.T "public.view"}}</a>
+      {{end}}
+    </div>
+  </form>
+</section>
+{{end}}
+
+{{if eq .SettingsSection "notifications"}}
+<section class="panel settings-section">
+  <div class="panel-head">
+    <h2>{{.I18n.T "notification.channels"}}</h2>
+    <span class="muted">{{.I18n.Tf "notification.channelCount" (len .Channels)}}</span>
+  </div>
+  <p class="hint">{{.I18n.T "notification.channelsHint"}}</p>
+  {{if .Channels}}
+  <div class="table-scroll">
+    <table class="responsive-table">
+      <thead>
+        <tr>
+          <th>{{.I18n.T "notification.channelName"}}</th>
+          <th>{{.I18n.T "notification.channelType"}}</th>
+          <th>{{.I18n.T "notification.language"}}</th>
+          <th>{{.I18n.T "notification.target"}}</th>
+          <th>{{.I18n.T "notification.proxy"}}</th>
+          <th>{{.I18n.T "users.status"}}</th>
+          <th>{{.I18n.T "common.actions"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Channels}}
+        <tr>
+          <td data-label="{{$.I18n.T "notification.channelName"}}"><strong>{{.Name}}</strong></td>
+          <td data-label="{{$.I18n.T "notification.channelType"}}">{{.TypeLabel}}</td>
+          <td data-label="{{$.I18n.T "notification.language"}}">{{.LanguageLabel}}</td>
+          <td data-label="{{$.I18n.T "notification.target"}}"><span class="target">{{.Target}}</span></td>
+          <td data-label="{{$.I18n.T "notification.proxy"}}">{{if .ProxyName}}{{.ProxyName}}{{else}}{{$.I18n.T "monitor.direct"}}{{end}}</td>
+          <td data-label="{{$.I18n.T "users.status"}}"><span class="status-pill {{.StatusClass}}">{{.StatusLabel}}</span></td>
+          <td class="is-wide" data-label="{{$.I18n.T "common.actions"}}">
+            <div class="user-actions">
+              <form method="post" action="/settings/notifications/channels/{{.ID}}/test" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <button class="button button-secondary button-small" type="submit">{{$.I18n.T "notification.testChannel"}}</button>
+              </form>
+              <a class="button button-secondary button-small" href="/settings/notifications?channel={{.ID}}">{{$.I18n.T "common.edit"}}</a>
+              <form method="post" action="/settings/notifications/channels/{{.ID}}/delete" class="inline-form"
+                data-confirm="{{$.I18n.T "notification.deleteConfirm"}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <button class="button button-danger-outline button-small" type="submit">{{$.I18n.T "common.delete"}}</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">{{.I18n.T "notification.empty"}}</p>
+  {{end}}
+</section>
+
+<dialog class="dialog" id="notification-channel" aria-labelledby="notification-channel-title"
+  {{if .ChannelFormOpen}}data-auto-open="true"{{end}}>
+  <form method="post" action="{{.ChannelFormAction}}" class="dialog-form">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="dialog-head">
+      <div>
+        <h2 id="notification-channel-title">{{if .ChannelFormEdit}}{{.I18n.T "notification.editChannel"}}{{else}}{{.I18n.T "notification.addChannel"}}{{end}}</h2>
+        <p class="hint">{{.I18n.T "notification.channelFormHint"}}</p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <div class="dialog-body">
+      {{if .Error}}<p class="alert alert-error">{{.Error}}</p>{{end}}
+      <div class="form-grid">
+        <label class="field">
+          <span>{{.I18n.T "notification.channelName"}}</span>
+          <input type="text" name="name" value="{{.ChannelForm.Name}}" maxlength="100" required autofocus>
+          <small class="hint">{{.I18n.T "notification.channelNameHint"}}</small>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "notification.channelType"}}</span>
+          <select name="type" data-channel-type-select>
+            <option value="telegram" {{if eq .ChannelForm.Type "telegram"}}selected{{end}}>{{.I18n.T "notification.telegram"}}</option>
+            <option value="webhook" {{if eq .ChannelForm.Type "webhook"}}selected{{end}}>{{.I18n.T "notification.webhook"}}</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="form-grid" data-channel-fields="telegram" {{if ne .ChannelForm.Type "telegram"}}hidden{{end}}>
+        <label class="field">
+          <span>{{.I18n.T "notification.botToken"}}</span>
+          <input type="password" name="telegram_token" autocomplete="new-password"
+            placeholder="{{if and .ChannelFormEdit .ChannelSecretConfigured}}{{.I18n.T "notification.tokenConfigured"}}{{end}}">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "notification.chatIDs"}}</span>
+          <input type="text" name="telegram_chat_ids" value="{{.ChannelForm.TelegramChatIDs}}" placeholder="123456789">
+          <small class="hint">{{.I18n.T "notification.chatIDsHint"}}</small>
+        </label>
+      </div>
+
+      <div class="form-grid" data-channel-fields="webhook" {{if ne .ChannelForm.Type "webhook"}}hidden{{end}}>
+        <label class="field is-wide">
+          <span>{{.I18n.T "notification.webhookURL"}}</span>
+          <input type="url" name="webhook_url" value="{{.ChannelForm.WebhookURL}}" placeholder="https://example.com/hooks/windwatch">
+          <small class="hint">{{.I18n.T "notification.webhookHint"}}</small>
+        </label>
+        <div class="field" data-secret-group>
+          <span>{{.I18n.T "notification.webhookSecret"}}</span>
+          <div class="input-action">
+            <input type="text" name="webhook_secret" autocomplete="new-password"
+              placeholder="{{if and .ChannelFormEdit .ChannelSecretConfigured}}{{.I18n.T "notification.secretConfigured"}}{{else}}{{.I18n.T "notification.secretPlaceholder"}}{{end}}">
+            <button class="button button-secondary button-small" type="button" data-generate-secret>{{.I18n.T "notification.generateSecret"}}</button>
+          </div>
+          <small class="hint">{{.I18n.T "notification.secretHint"}}</small>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <label class="field is-wide">
+          <span>{{.I18n.T "notification.language"}}</span>
+          <select name="language">
+            <option value="zh-CN" {{if eq .ChannelForm.Language "zh-CN"}}selected{{end}}>{{.I18n.T "language.zhCN"}}</option>
+            <option value="en" {{if eq .ChannelForm.Language "en"}}selected{{end}}>{{.I18n.T "language.en"}}</option>
+          </select>
+          <small class="hint">{{.I18n.T "notification.languageHint"}}</small>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "notification.proxy"}}</span>
+          <select name="proxy_id">
+            <option value="">{{.I18n.T "monitor.direct"}}</option>
+            {{range .Proxies}}
+            <option value="{{.ID}}" {{if eq $.ChannelForm.ProxyID (printf "%d" .ID)}}selected{{end}}>{{.Name}} ({{.Type}})</option>
+            {{end}}
+          </select>
+        </label>
+        <label class="switch-field">
+          <input type="checkbox" name="enabled" value="1" {{if .ChannelForm.Enabled}}checked{{end}}>
+          <span class="switch-track" aria-hidden="true"></span>
+          <span>{{.I18n.T "notification.enabled"}}</span>
+        </label>
+        <input type="hidden" name="enabled" value="0">
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.cancel"}}</button>
+      <button class="button button-primary" type="submit">{{if .ChannelFormEdit}}{{.I18n.T "notification.saveChannel"}}{{else}}{{.I18n.T "notification.addChannel"}}{{end}}</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+
+{{if eq .SettingsSection "logs"}}
+<section class="panel settings-section">
+  {{if .NotificationLogs}}
+  <div class="table-scroll">
+    <table class="responsive-table">
+      <thead><tr><th>{{.I18n.T "notification.channelName"}}</th><th>{{.I18n.T "notification.channelType"}}</th><th>{{.I18n.T "notification.target"}}</th><th>{{.I18n.T "notification.status"}}</th><th>{{.I18n.T "notification.time"}}</th><th>{{.I18n.T "notification.error"}}</th><th>{{.I18n.T "notification.content"}}</th></tr></thead>
+      <tbody>
+        {{range .NotificationLogs}}
+        <tr>
+          <td data-label="{{$.I18n.T "notification.channelName"}}">{{if .Channel}}{{.Channel}}{{else}}—{{end}}</td>
+          <td data-label="{{$.I18n.T "notification.channelType"}}">{{.Method}}</td>
+          <td data-label="{{$.I18n.T "notification.target"}}"><span class="target">{{.Target}}</span></td>
+          <td class="notification-log-status" data-label="{{$.I18n.T "notification.status"}}">{{.Status}}</td>
+          <td class="notification-log-time" data-label="{{$.I18n.T "notification.time"}}">{{.Time}}</td>
+          <td class="is-wide" data-label="{{$.I18n.T "notification.error"}}">{{if .Error}}{{.Error}}{{else}}—{{end}}</td>
+          <td class="is-wide" data-label="{{$.I18n.T "notification.content"}}">
+            {{if .Payload}}
+            <button class="link-button notification-content-open" type="button" data-notification-content
+              aria-haspopup="dialog"
+              data-channel="{{.Channel}}"
+              data-time="{{.Time}}"
+              data-status="{{.Status}}"
+              data-payload="{{.Payload}}">{{$.I18n.T "notification.viewContent"}}</button>
+            {{else}}—{{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">{{.I18n.T "notification.logEmpty"}}</p>
+  {{end}}
+</section>
+
+<dialog class="dialog notification-dialog" id="notification-content-dialog"
+  aria-labelledby="notification-content-dialog-title" data-notification-content-dialog>
+  <div class="dialog-inner">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">{{.I18n.T "notification.content"}}</p>
+        <h2 id="notification-content-dialog-title" data-notification-content-field="channel"></h2>
+        <p class="hint" data-notification-content-field="meta"></p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <pre class="notification-payload" data-notification-content-field="payload"></pre>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.close"}}</button>
+    </div>
+  </div>
+</dialog>
+{{end}}
+
+{{if eq .SettingsSection "proxies"}}
+<section class="panel settings-section">
+  {{if .Proxies}}
+  <div class="table-scroll">
+    <table class="responsive-table">
+      <thead><tr><th>{{.I18n.T "proxy.name"}}</th><th>{{.I18n.T "proxy.type"}}</th><th>{{.I18n.T "proxy.address"}}</th><th>{{.I18n.T "common.actions"}}</th></tr></thead>
+      <tbody>
+        {{range .Proxies}}
+        <tr>
+          <td data-label="{{$.I18n.T "proxy.name"}}"><strong>{{.Name}}</strong></td>
+          <td data-label="{{$.I18n.T "proxy.type"}}">{{.Type}}</td>
+          <td data-label="{{$.I18n.T "proxy.address"}}"><span class="target">{{.Address}}</span></td>
+          <td class="is-wide" data-label="{{$.I18n.T "common.actions"}}">
+            <div class="user-actions">
+              <a class="button button-secondary button-small" href="/settings/proxies?edit={{.ID}}">{{$.I18n.T "common.edit"}}</a>
+              <form class="inline-form" method="post" action="/settings/proxies/{{.ID}}/delete"
+                data-confirm="{{$.I18n.T "proxy.deleteConfirm"}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <button class="button button-danger-outline button-small" type="submit">{{$.I18n.T "common.delete"}}</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">{{.I18n.T "proxy.empty"}}</p>
+  {{end}}
+</section>
+
+<dialog class="dialog" id="proxy-form" aria-labelledby="proxy-form-title" {{if .ProxyFormOpen}}data-auto-open="true"{{end}}>
+  <form method="post" action="{{.ProxyFormAction}}" class="dialog-form">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="dialog-head">
+      <div>
+        <h2 id="proxy-form-title">{{if .ProxyFormEdit}}{{.I18n.T "proxy.editTitle"}}{{else}}{{.I18n.T "proxy.addTitle"}}{{end}}</h2>
+        <p class="hint">{{.I18n.T "proxy.formHint"}}</p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <div class="dialog-body">
+      {{if .Error}}<p class="alert alert-error">{{.Error}}</p>{{end}}
+      <div class="form-grid">
+        <label class="field">
+          <span>{{.I18n.T "proxy.name"}}</span>
+          <input type="text" name="name" value="{{.ProxyForm.Name}}" maxlength="100" required autofocus>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.type"}}</span>
+          <select name="type">
+            {{range .ProxyTypeOptions}}
+            <option value="{{.}}" {{if eq . $.ProxyForm.Type}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.address"}}</span>
+          <input type="text" name="address" value="{{.ProxyForm.Address}}" placeholder="127.0.0.1:7890" required>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.username"}}</span>
+          <input type="text" name="username" value="{{.ProxyForm.Username}}" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.password"}}</span>
+          <input type="password" name="password" autocomplete="new-password" placeholder="{{if .ProxyFormEdit}}{{.I18n.T "proxy.passwordKeep"}}{{end}}">
+        </label>
+      </div>
+      <p class="hint">{{.I18n.T "proxy.testHint"}}</p>
+      {{if .ProxyTestDetail}}<p class="hint">{{.ProxyTestDetail}}</p>{{end}}
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="submit" formaction="{{.ProxyTestAction}}" formnovalidate>{{.I18n.T "proxy.test"}}</button>
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.cancel"}}</button>
+      <button class="button button-primary" type="submit">{{if .ProxyFormEdit}}{{.I18n.T "proxy.saveChanges"}}{{else}}{{.I18n.T "proxy.save"}}{{end}}</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+{{- end}}
