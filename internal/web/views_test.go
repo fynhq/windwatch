@@ -93,6 +93,66 @@ func TestPublicOverallIgnoresPaused(t *testing.T) {
 	}
 }
 
+func TestBuildRecentChart(t *testing.T) {
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("i18n.Load: %v", err)
+	}
+	translator := catalogs.Translator(i18n.LangEN)
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	checks := []model.Check{
+		{CheckedAt: now, Status: model.CheckDown},
+		{CheckedAt: now.Add(-time.Hour), Status: model.CheckUp, Latency: 40 * time.Millisecond},
+		{CheckedAt: now.Add(-2 * time.Hour), Status: model.CheckWarning, Latency: 30 * time.Millisecond},
+		{CheckedAt: now.Add(-3 * time.Hour), Status: model.CheckUp, Latency: 20 * time.Millisecond},
+	}
+	chart := buildRecentChart(translator, checks, 24, time.UTC)
+	if !chart.HasData || len(chart.Bars) != 4 {
+		t.Fatalf("recent chart hasData=%v bars=%d, want true/4", chart.HasData, len(chart.Bars))
+	}
+	wantClasses := []string{"bar-up", "bar-mixed", "bar-up", "bar-down"}
+	for index, want := range wantClasses {
+		if got := chart.Bars[index].Class; got != want {
+			t.Fatalf("recent bar %d class = %q, want %q", index, got, want)
+		}
+	}
+	if len(chart.LinePaths) != 1 {
+		t.Fatalf("recent line paths = %d, want 1 segment before the failed check", len(chart.LinePaths))
+	}
+	if chart.BarLabel == "" || chart.LineLabel == "" || chart.Hint == "" || chart.AriaLabel == "" {
+		t.Fatal("recent chart labels are incomplete")
+	}
+}
+
+func TestBuildHourlyChart(t *testing.T) {
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("i18n.Load: %v", err)
+	}
+	translator := catalogs.Translator(i18n.LangEN)
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	firstHour := now.Add(-23 * time.Hour)
+	buckets := []model.HourBucket{
+		{Start: firstHour, Total: 2, Up: 2, AvgLatency: 10 * time.Millisecond},
+		{Start: firstHour.Add(time.Hour), Total: 2, Up: 1, Warning: 1, AvgLatency: 20 * time.Millisecond},
+		{Start: firstHour.Add(2 * time.Hour), Total: 2, Down: 2},
+		{Start: now, Total: 2, Up: 2, AvgLatency: 30 * time.Millisecond},
+	}
+	chart := buildHourlyChart(translator, now, buckets, time.UTC)
+	if !chart.HasData || len(chart.Bars) != 24 {
+		t.Fatalf("hourly chart hasData=%v bars=%d, want true/24", chart.HasData, len(chart.Bars))
+	}
+	wantClasses := []string{"bar-up", "bar-mixed", "bar-down", "bar-empty"}
+	for index, want := range wantClasses {
+		if got := chart.Bars[index].Class; got != want {
+			t.Fatalf("hourly bar %d class = %q, want %q", index, got, want)
+		}
+	}
+	if len(chart.LinePaths) != 2 {
+		t.Fatalf("hourly line paths = %d, want 2 segments around the failed hour", len(chart.LinePaths))
+	}
+}
+
 func TestBuildPublicHistoryBars(t *testing.T) {
 	catalogs, err := i18n.Load()
 	if err != nil {

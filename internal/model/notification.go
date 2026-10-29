@@ -130,6 +130,7 @@ type NotificationLog struct {
 	Channel     string
 	ChannelID   int64
 	ChannelName string
+	MonitorName string
 	Target      string
 	Status      string
 	Error       string

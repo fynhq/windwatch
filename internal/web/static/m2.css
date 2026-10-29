@@ -193,8 +193,8 @@
 
 .monitor-list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .monitor-card {
@@ -470,6 +470,7 @@
   grid-template-columns: minmax(0, 1fr) 316px;
   align-items: start;
   gap: 16px;
+  margin-top: 16px;
 }
 
 .detail-main,
@@ -992,6 +993,23 @@
   margin-top: 2px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+@media (min-width: 1201px) {
+  .monitor-card-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 11px;
+  }
+
+  .monitor-metrics {
+    gap: 8px 24px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .monitor-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 1100px) {

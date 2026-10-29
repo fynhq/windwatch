@@ -15,7 +15,7 @@ English | [简体中文](#chinese)
 - **Docker container monitors** — check that a container is running and, optionally, healthy.
 - **Push / heartbeat monitors** — give scripts, cron jobs, or remote devices a secret URL to report to. Silence beyond the heartbeat interval plus grace period marks the monitor down.
 - **HTTPS extras** — optional TLS certificate and domain expiry checks, with warning thresholds and expiry details on the monitor page.
-- **Dashboard and history** — an overall status band, search, and status filters sit above a single-column monitor list. Each row shows 24-hour and current latency, a relative last-check time, and its latest 24 checks at the configured interval. Monitor details use a two-column layout with a switchable history card, 24-hour latency chart, 30-day/90-day daily uptime, recent events, and configuration. Display and daily charts use a configurable IANA timezone; storage remains UTC.
+- **Dashboard and history** — an overall status band, search, and status filters sit above a monitor card grid that uses two columns on wide screens and one on smaller screens. Each card shows 24-hour and current latency, a relative last-check time, and its latest 24 checks at the configured interval. Monitor details place a full-width status history card above recent events and configuration; the recent, 24-hour, 30-day, and 90-day ranges share one layout and combine uptime bars with a latency line. Display and daily charts use a configurable IANA timezone; storage remains UTC.
 - **Notifications** — any number of named Telegram bot and webhook methods; webhooks support Generic, DingTalk, WeCom, and Feishu formats. Each method has its own credentials, notification language, optional outbound proxy, and test action. Monitors choose which methods receive their alerts and configure their own repeat reminders. Retries, deduplication, and delivery history are included.
 - **Multi-user web UI** — administrators manage monitors, proxies, notifications, and accounts; read-only viewers can inspect the dashboard, monitor details, and events. Simplified Chinese and English, a fixed desktop sidebar, a mobile top bar with a bottom dock, and a color theme that follows the operating system. Dashboard and event filters run in the browser. Dashboard and public status pages refresh a server-rendered fragment in place every 30 seconds, pause while the tab is hidden, and keep full-page refresh as the no-JavaScript fallback.
 - **Public status page** — an optional login-free page with a selected monitor list; it shows names, statuses, 24h/7d/30d/90d uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) without targets, configuration, or secrets.
@@ -202,7 +202,7 @@ Notification methods are managed under **Settings → Notifications**. You can a
 
 Each method has its own optional outbound proxy, notification language, and a **Test** action. Each monitor selects which methods receive its alerts; new monitors preselect all enabled methods. Turning off notifications for a monitor keeps its selection but pauses delivery. Repeat reminders are configured per monitor under its notification settings: failure reminders apply to every monitor type, and certificate/domain warning reminders appear only for HTTP monitors. The generic webhook payload includes the event type, monitor status, monitor identity, message, text, and timestamp; signing secrets add `X-WindWatch-Signature: sha256=<hex>` for Generic, or the platform's timestamp and signature parameters for DingTalk and Feishu.
 
-Delivery is attempted up to three times with short backoff, duplicate events are deduplicated per method and target, and **Settings → Delivery log** shows the last 100 delivery attempts, with the sent content in a dialog, and keeps records for 365 days. Notification language is independent of the UI language.
+Delivery is attempted up to three times with short backoff, duplicate events are deduplicated per method and target, and **Settings → Delivery log** shows the last 100 delivery attempts with the triggering monitor, the sent content in a dialog, and keeps records for 365 days. Notification language is independent of the UI language.
 
 ## Data and backup
 
@@ -239,7 +239,7 @@ At least one active administrator must remain. Disabling an account or resetting
 
 ## Public status page
 
-Enable the page under **Settings → Public page**, set a title and optional description, and select the monitors to publish. The page is available at `/status` without a login and refreshes its server-rendered content in place every 30 seconds; its full address is shown in settings with a click-to-copy button.
+Enable the page under **Settings → Public page**, set a title and optional description, and select the monitors to publish. The page is available at `/status` without a login and refreshes its server-rendered content in place every 30 seconds; its full address is shown in settings, and clicking the address copies it.
 
 Only monitor names, types, current status, 24-hour, 7-day, 30-day, and 90-day uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) are shown. Paused monitors are counted separately and do not turn the overall status into an attention state. Target URLs, monitor configuration, notification settings, and secrets are never exposed. The page is marked `noindex, nofollow` while enabled; disabling it makes `/status` return 404.
 
@@ -320,7 +320,7 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 - **Docker 容器监控**：检查容器是否运行，并可要求容器处于 healthy 状态。
 - **Push / 心跳监控**：为脚本、定时任务或远程设备生成一个秘密 URL，由对方主动上报心跳。超过“心跳间隔 + 宽限期”没有上报时判定为异常。
 - **HTTPS 附加检查**：可选检查 TLS 证书和域名到期时间，支持告警提前天数，并在详情页展示到期信息。
-- **仪表盘与历史**：仪表盘以总体状态带、搜索和状态筛选开头，监控为单列列表，每行展示 24 小时可用率、当前延迟、相对最近检查时间和按监控间隔计算的最近 24 次检查。详情页采用双栏布局，主列是可切换的状态历史、24 小时延迟图和最近事件，侧栏是配置、证书、域名和危险操作。界面和日图使用可配置的 IANA 时区，存储仍使用 UTC。
+- **仪表盘与历史**：仪表盘以总体状态带、搜索和状态筛选开头，监控卡片在宽屏为两列、窄屏为单列，每张卡片展示 24 小时可用率、当前延迟、相对最近检查时间和按监控间隔计算的最近 24 次检查。详情页的状态历史卡片通栏，下方是最近事件与配置、证书、域名和危险操作；最近、24 小时、30 天和 90 天四个区间使用同一布局，把可用率柱和延迟线画在同一张图中。界面和日图使用可配置的 IANA 时区，存储仍使用 UTC。
 - **通知**：可添加任意数量、名称唯一的 Telegram Bot 和 Webhook 通知方式，Webhook 支持通用、钉钉、企微、飞书四种格式；每种方式独立配置凭据、通知语言、可选代理，并支持测试发送；每个监控选择使用哪些方式，并在监控项中配置重复提醒。支持重试、去重和投递记录。
 - **多用户 Web 界面**：管理员管理监控、代理、通知和账号；只读观察者可以查看仪表盘、监控详情和事件。简体中文和英文，桌面固定侧边栏，手机顶部工具栏 + 底部 dock 导航，主题强制跟随操作系统。仪表盘和事件筛选在浏览器内完成；仪表盘和公开状态页每 30 秒局部刷新服务端渲染的 fragment，页面隐藏时暂停，并以整页刷新作为无 JavaScript 回退。
 - **公开状态页**：可选的免登录页面，只展示选定监控的名称、状态、24h/7d/30d/90d 可用率和逐日可用率条（桌面最近 90 天，手机默认最近 30 天），不暴露目标 URL、配置或密钥。
@@ -505,7 +505,7 @@ WindWatch 会在以下情况发送通知：`DOWN`、恢复、证书临期和域�
 
 每个通知方式都可以单独选择出站代理和通知语言，并有**测试**按钮。每个监控选择哪些通知方式接收告警；新建监控时默认选中所有已启用的方式。关闭某个监控的通知开关会暂停发送，但保留选择。重复提醒在监控项的通知设置中配置：故障提醒适用于所有监控类型，证书/域名警告提醒只在 HTTP 监控中显示。通用格式的 Webhook 请求体包含事件类型、监控状态、监控信息、消息、文本和时间戳；配置签名密钥后，通用格式附带 `X-WindWatch-Signature: sha256=<hex>`，钉钉和飞书使用平台的时间戳与签名字段。
 
-发送最多尝试三次（包含首次发送），并按通知方式和目标对重复事件去重；**设置 → 发送记录**显示最近 100 条投递记录（发送内容弹窗查看），记录保留 365 天。通知语言独立于界面语言。
+发送最多尝试三次（包含首次发送），并按通知方式和目标对重复事件去重；**设置 → 发送记录**显示最近 100 条投递记录、触发监控和发送内容（弹窗查看），记录保留 365 天。通知语言独立于界面语言。
 
 ## 数据与备份
 

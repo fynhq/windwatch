@@ -142,7 +142,7 @@ func (s *Service) Test(ctx context.Context, channelID int64) error {
 		if err != nil {
 			return err
 		}
-		return s.sendTelegramText(ctx, channel, token, translator.T("notify.test"), "")
+		return s.sendTelegramText(ctx, channel, token, translator.T("notify.test"), "", "")
 	case model.NotificationChannelWebhook:
 		body, err := s.webhookBody(channel, notification, translator.T("notify.test"))
 		if err != nil {
@@ -163,13 +163,13 @@ func (s *Service) sendChannel(ctx context.Context, config Config, channel model.
 		if err != nil {
 			return err
 		}
-		return s.sendTelegramText(ctx, channel, token, text, notification.Key)
+		return s.sendTelegramText(ctx, channel, token, text, notification.Key, notification.MonitorName)
 	case model.NotificationChannelWebhook:
 		body, err := s.webhookBody(channel, notification, s.render(language, notification, config.Timezone))
 		if err != nil {
 			return err
 		}
-		return s.sendWebhook(ctx, channel, notification.Key, body)
+		return s.sendWebhook(ctx, channel, notification.Key, body, notification.MonitorName)
 	default:
 		return fmt.Errorf("unknown notification channel type %q", channel.Type)
 	}
@@ -186,7 +186,7 @@ func (s *Service) channelSecret(channel model.NotificationChannel) (string, erro
 	return value, nil
 }
 
-func (s *Service) sendTelegramText(ctx context.Context, channel model.NotificationChannel, token, text, dedupeKey string) error {
+func (s *Service) sendTelegramText(ctx context.Context, channel model.NotificationChannel, token, text, dedupeKey, monitorName string) error {
 	if strings.TrimSpace(token) == "" {
 		return errors.New("telegram token is not configured")
 	}
@@ -203,7 +203,7 @@ func (s *Service) sendTelegramText(ctx context.Context, channel model.Notificati
 	var firstErr error
 	for _, chatID := range chatIDs {
 		if dedupeKey != "" {
-			claimed, err := s.store.ClaimNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, chatID, text, time.Now().UTC())
+			claimed, err := s.store.ClaimNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, chatID, text, monitorName, time.Now().UTC())
 			if err != nil {
 				return err
 			}
@@ -293,11 +293,11 @@ func (s *Service) postTelegram(ctx context.Context, client *http.Client, token, 
 	return nil
 }
 
-func (s *Service) sendWebhook(ctx context.Context, channel model.NotificationChannel, dedupeKey string, body []byte) error {
+func (s *Service) sendWebhook(ctx context.Context, channel model.NotificationChannel, dedupeKey string, body []byte, monitorName string) error {
 	if strings.TrimSpace(channel.WebhookURL) == "" {
 		return errors.New("webhook URL is not configured")
 	}
-	claimed, err := s.store.ClaimNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, channel.NotificationTarget(), string(body), time.Now().UTC())
+	claimed, err := s.store.ClaimNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, channel.NotificationTarget(), string(body), monitorName, time.Now().UTC())
 	if err != nil {
 		return err
 	}

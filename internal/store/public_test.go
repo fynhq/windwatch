@@ -114,16 +114,16 @@ func TestOpenAppliesConnectionPragmas(t *testing.T) {
 func TestDeleteNotificationsBefore(t *testing.T) {
 	st := newStoreTest(t)
 	now := time.Now().UTC()
-	if ok, err := st.ClaimNotification(t.Context(), "old-sent", "webhook", 1, "Old hook", "webhook", "old", now.Add(-2*time.Hour)); err != nil || !ok {
+	if ok, err := st.ClaimNotification(t.Context(), "old-sent", "webhook", 1, "Old hook", "webhook", "old", "", now.Add(-2*time.Hour)); err != nil || !ok {
 		t.Fatalf("claim old sent: ok=%v err=%v", ok, err)
 	}
 	if err := st.CompleteNotification(t.Context(), "old-sent", "webhook", 1, "webhook", "sent", "", now.Add(-2*time.Hour)); err != nil {
 		t.Fatalf("complete old sent: %v", err)
 	}
-	if ok, err := st.ClaimNotification(t.Context(), "old-pending", "webhook", 1, "Old hook", "webhook", "pending", now.Add(-2*time.Hour)); err != nil || !ok {
+	if ok, err := st.ClaimNotification(t.Context(), "old-pending", "webhook", 1, "Old hook", "webhook", "pending", "", now.Add(-2*time.Hour)); err != nil || !ok {
 		t.Fatalf("claim old pending: ok=%v err=%v", ok, err)
 	}
-	if ok, err := st.ClaimNotification(t.Context(), "new-sent", "webhook", 1, "Old hook", "webhook", "new", now); err != nil || !ok {
+	if ok, err := st.ClaimNotification(t.Context(), "new-sent", "webhook", 1, "Old hook", "webhook", "new", "", now); err != nil || !ok {
 		t.Fatalf("claim new sent: ok=%v err=%v", ok, err)
 	}
 	if err := st.CompleteNotification(t.Context(), "new-sent", "webhook", 1, "webhook", "sent", "", now); err != nil {

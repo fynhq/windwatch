@@ -52,6 +52,7 @@ type notificationChannelRow struct {
 type notificationLogRow struct {
 	Channel string
 	Method  string
+	Monitor string
 	Target  string
 	Status  string
 	Time    string
@@ -249,6 +250,7 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 		logRows = append(logRows, notificationLogRow{
 			Channel: entry.ChannelName,
 			Method:  notificationChannelTypeLabel(data.I18n, model.NotificationChannelType(entry.Channel)),
+			Monitor: entry.MonitorName,
 			Target:  entry.Target,
 			Status:  status,
 			Time:    formatTime(data.I18n, entry.CreatedAt, data.Location),

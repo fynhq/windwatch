@@ -54,12 +54,12 @@ func (s *Store) SetSettings(ctx context.Context, values map[string]string, now t
 	return nil
 }
 
-func (s *Store) ClaimNotification(ctx context.Context, dedupeKey, channel string, channelID int64, channelName, target, payload string, now time.Time) (bool, error) {
+func (s *Store) ClaimNotification(ctx context.Context, dedupeKey, channel string, channelID int64, channelName, target, payload, monitorName string, now time.Time) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO notify_log (
-			dedupe_key, channel, channel_id, channel_name, target, status, payload, created_at_ms
-		) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-	`, dedupeKey, channel, channelID, channelName, target, payload, now.UTC().UnixMilli())
+			dedupe_key, channel, channel_id, channel_name, monitor_name, target, status, payload, created_at_ms
+		) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+	`, dedupeKey, channel, channelID, channelName, monitorName, target, payload, now.UTC().UnixMilli())
 	if err != nil {
 		return false, fmt.Errorf("claim notification: %w", err)
 	}
@@ -86,7 +86,7 @@ func (s *Store) PendingNotifications(ctx context.Context, limit int) ([]model.No
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT dedupe_key, channel, channel_id, channel_name, target, status, error, payload, created_at_ms, sent_at_ms
+		SELECT dedupe_key, channel, channel_id, channel_name, monitor_name, target, status, error, payload, created_at_ms, sent_at_ms
 		FROM notify_log WHERE status = 'pending' ORDER BY created_at_ms ASC LIMIT ?
 	`, limit)
 	if err != nil {
@@ -102,7 +102,7 @@ func (s *Store) PendingNotifications(ctx context.Context, limit int) ([]model.No
 			sentAt  sql.NullInt64
 		)
 		if err := rows.Scan(
-			&entry.DedupeKey, &entry.Channel, &entry.ChannelID, &entry.ChannelName,
+			&entry.DedupeKey, &entry.Channel, &entry.ChannelID, &entry.ChannelName, &entry.MonitorName,
 			&entry.Target, &entry.Status, &entry.Error, &entry.Payload, &created, &sentAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending notification: %w", err)
@@ -133,7 +133,7 @@ func (s *Store) RecentNotifications(ctx context.Context, limit int) ([]model.Not
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT dedupe_key, channel, channel_id, channel_name, target, status, error, payload, created_at_ms, sent_at_ms
+		SELECT dedupe_key, channel, channel_id, channel_name, monitor_name, target, status, error, payload, created_at_ms, sent_at_ms
 		FROM notify_log ORDER BY created_at_ms DESC LIMIT ?
 	`, limit)
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *Store) RecentNotifications(ctx context.Context, limit int) ([]model.Not
 			sentAt  sql.NullInt64
 		)
 		if err := rows.Scan(
-			&entry.DedupeKey, &entry.Channel, &entry.ChannelID, &entry.ChannelName,
+			&entry.DedupeKey, &entry.Channel, &entry.ChannelID, &entry.ChannelName, &entry.MonitorName,
 			&entry.Target, &entry.Status, &entry.Error, &entry.Payload, &created, &sentAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan notification log: %w", err)

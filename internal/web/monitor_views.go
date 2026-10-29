@@ -14,30 +14,7 @@ type statusBar struct {
 	Title string
 }
 
-type latencyPoint struct {
-	X     float64
-	Y     float64
-	Title string
-}
-
-type chartGridLine struct {
-	Y     float64
-	Label string
-}
-
-type latencyChart struct {
-	HasData    bool
-	LinePaths  []string
-	AreaPaths  []string
-	Points     []latencyPoint
-	Grid       []chartGridLine
-	StartLabel string
-	EndLabel   string
-	AvgLabel   string
-	PeakLabel  string
-}
-
-type longRangeBar struct {
+type historyBar struct {
 	X      float64
 	Y      float64
 	Width  float64
@@ -46,13 +23,17 @@ type longRangeBar struct {
 	Title  string
 }
 
-type longRangeChart struct {
+type historyChart struct {
 	HasData    bool
-	Bars       []longRangeBar
-	Line       string
+	Bars       []historyBar
+	LinePaths  []string
 	HasLine    bool
 	StartLabel string
 	EndLabel   string
+	BarLabel   string
+	LineLabel  string
+	Hint       string
+	AriaLabel  string
 }
 
 type eventRow struct {
@@ -131,18 +112,12 @@ type monitorDetailView struct {
 	Uptime30d         string
 	Uptime90d         string
 	AvgLatency24      string
-	RecentBars        []statusBar
 	RecentBarsSummary string
-	RecentBarsStart   string
-	RecentBarsEnd     string
-	Bars              []statusBar
 	BarsSummary       string
-	BarsStart         string
-	BarsEnd           string
-	Chart             latencyChart
-	Chart30           longRangeChart
-	Chart90           longRangeChart
-	HasChecks         bool
+	ChartRecent       historyChart
+	Chart24           historyChart
+	Chart30           historyChart
+	Chart90           historyChart
 	Events            []eventRow
 	ProxyName         string
 	NotificationLabel string
@@ -401,39 +376,6 @@ func eventTypeClass(eventType model.EventType) string {
 	return "status-down"
 }
 
-func buildStatusBars(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, location *time.Location) []statusBar {
-	byStart := make(map[int64]model.HourBucket, len(buckets))
-	for _, bucket := range buckets {
-		byStart[bucket.Start.UnixMilli()] = bucket
-	}
-	currentHour := now.UTC().Truncate(time.Hour)
-	firstHour := currentHour.Add(-23 * time.Hour)
-
-	bars := make([]statusBar, 0, 24)
-	for index := 0; index < 24; index++ {
-		hour := firstHour.Add(time.Duration(index) * time.Hour)
-		label := hour.In(location).Format("15:04")
-		bucket, ok := byStart[hour.UnixMilli()]
-		if !ok || bucket.Total == 0 {
-			bars = append(bars, statusBar{Class: "bar-empty", Title: label + " · " + translator.T("common.noData")})
-			continue
-		}
-		good := bucket.Up + bucket.Warning
-		class := "bar-mixed"
-		switch {
-		case bucket.Down == bucket.Total:
-			class = "bar-down"
-		case good == bucket.Total:
-			class = "bar-up"
-		}
-		bars = append(bars, statusBar{
-			Class: class,
-			Title: label + " · " + formatPercent(good, bucket.Total),
-		})
-	}
-	return bars
-}
-
 func buildCheckBars(translator *i18n.Translator, checks []model.Check, limit int, location *time.Location) []statusBar {
 	if limit <= 0 {
 		limit = 24
@@ -500,101 +442,98 @@ func summarizeHourBuckets(translator *i18n.Translator, now time.Time, buckets []
 	return translator.Tf("monitor.hourlySummary", upHours, warningHours, downHours)
 }
 
-func hourlyBarRange(now time.Time, location *time.Location) (string, string) {
-	if location == nil {
-		location = time.UTC
+func buildRecentChart(translator *i18n.Translator, checks []model.Check, limit int, location *time.Location) historyChart {
+	if limit <= 0 {
+		limit = 24
 	}
-	currentHour := now.UTC().Truncate(time.Hour)
-	firstHour := currentHour.Add(-23 * time.Hour)
-	return firstHour.In(location).Format("15:04"), currentHour.In(location).Format("15:04")
+	if len(checks) > limit {
+		checks = checks[:limit]
+	}
+	if len(checks) == 0 {
+		return historyChart{}
+	}
+	data := make([]chartDatum, 0, len(checks))
+	for index := len(checks) - 1; index >= 0; index-- {
+		check := checks[index]
+		ratio := 0.0
+		class := "bar-down"
+		switch check.Status {
+		case model.CheckUp:
+			ratio = 1
+			class = "bar-up"
+		case model.CheckWarning:
+			ratio = 1
+			class = "bar-mixed"
+		}
+		title := formatChartMoment(translator, check.CheckedAt, location) + " · " + checkStatusLabel(translator, check.Status)
+		if check.Latency > 0 {
+			title += " · " + formatLatency(check.Latency)
+		}
+		data = append(data, chartDatum{
+			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: check.Latency,
+		})
+	}
+	chart := buildHistoryChart(data,
+		formatChartMoment(translator, checks[len(checks)-1].CheckedAt, location),
+		formatChartMoment(translator, checks[0].CheckedAt, location),
+	)
+	chart.BarLabel = translator.T("monitor.chartUptime")
+	chart.LineLabel = translator.T("monitor.chartLatency")
+	chart.Hint = translator.T("monitor.rangeChartHint")
+	chart.AriaLabel = translator.T("monitor.recentStatus")
+	return chart
 }
 
-func buildLatencyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, location *time.Location, average time.Duration) latencyChart {
-	const (
-		plotLeft   = 48.0
-		plotRight  = 708.0
-		plotTop    = 16.0
-		plotBottom = 184.0
-	)
+func buildHourlyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, location *time.Location) historyChart {
 	if location == nil {
 		location = time.UTC
 	}
 	byStart := make(map[int64]model.HourBucket, len(buckets))
-	maxLatency := int64(0)
 	for _, bucket := range buckets {
 		byStart[bucket.Start.UnixMilli()] = bucket
-		if bucket.AvgLatency.Milliseconds() > maxLatency {
-			maxLatency = bucket.AvgLatency.Milliseconds()
-		}
 	}
-	if maxLatency <= 0 {
-		return latencyChart{}
-	}
-
 	currentHour := now.UTC().Truncate(time.Hour)
 	firstHour := currentHour.Add(-23 * time.Hour)
-	step := (plotRight - plotLeft) / 24
-	chart := latencyChart{
-		HasData:    true,
-		StartLabel: firstHour.In(location).Format("15:04"),
-		EndLabel:   currentHour.In(location).Format("15:04"),
-		AvgLabel:   formatLatency(average),
-		PeakLabel:  formatLatency(time.Duration(maxLatency) * time.Millisecond),
-	}
-	for _, fraction := range []float64{0, 0.5, 1} {
-		value := float64(maxLatency) * fraction
-		y := plotBottom - fraction*(plotBottom-plotTop)
-		chart.Grid = append(chart.Grid, chartGridLine{
-			Y:     y,
-			Label: fmt.Sprintf("%d ms", int64(value+0.5)),
-		})
-	}
-
-	var line strings.Builder
-	var area strings.Builder
-	lastX := 0.0
-	flush := func() {
-		if line.Len() == 0 {
-			return
-		}
-		fmt.Fprintf(&area, " L %.1f %.1f Z", lastX, plotBottom)
-		chart.LinePaths = append(chart.LinePaths, line.String())
-		chart.AreaPaths = append(chart.AreaPaths, area.String())
-		line.Reset()
-		area.Reset()
-	}
-
+	data := make([]chartDatum, 0, 24)
 	for index := 0; index < 24; index++ {
 		hour := firstHour.Add(time.Duration(index) * time.Hour)
+		label := hour.In(location).Format("15:04")
 		bucket, ok := byStart[hour.UnixMilli()]
-		if !ok || bucket.Total == 0 || bucket.AvgLatency <= 0 {
-			flush()
+		if !ok || bucket.Total == 0 {
+			data = append(data, chartDatum{Title: label + " · " + translator.T("common.noData")})
 			continue
 		}
-		x := plotLeft + step*(float64(index)+0.5)
-		y := plotBottom - (float64(bucket.AvgLatency.Milliseconds())/float64(maxLatency))*(plotBottom-plotTop)
-		if line.Len() == 0 {
-			fmt.Fprintf(&line, "M %.1f %.1f", x, y)
-			fmt.Fprintf(&area, "M %.1f %.1f L %.1f %.1f", x, plotBottom, x, y)
-		} else {
-			fmt.Fprintf(&line, " L %.1f %.1f", x, y)
-			fmt.Fprintf(&area, " L %.1f %.1f", x, y)
+		good := bucket.Up + bucket.Warning
+		ratio := float64(good) / float64(bucket.Total)
+		class := "bar-mixed"
+		switch {
+		case good == 0:
+			class = "bar-down"
+		case good == bucket.Total && bucket.Warning == 0:
+			class = "bar-up"
 		}
-		lastX = x
-		chart.Points = append(chart.Points, latencyPoint{
-			X:     x,
-			Y:     y,
-			Title: hour.In(location).Format("15:04") + " · " + formatLatency(bucket.AvgLatency),
+		title := label + " · " + formatPercent(good, bucket.Total)
+		if bucket.AvgLatency > 0 {
+			title += " · " + formatLatency(bucket.AvgLatency)
+		}
+		data = append(data, chartDatum{
+			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: bucket.AvgLatency,
 		})
 	}
-	flush()
-	chart.HasData = len(chart.Points) > 0
+	chart := buildHistoryChart(data,
+		firstHour.In(location).Format("15:04"),
+		currentHour.In(location).Format("15:04"),
+	)
+	chart.BarLabel = translator.T("monitor.chartUptime")
+	chart.LineLabel = translator.T("monitor.chartLatency")
+	chart.Hint = translator.T("monitor.rangeChartHint")
+	chart.AriaLabel = translator.T("monitor.history24h")
 	return chart
 }
 
-func buildLongRangeChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, days int, location *time.Location) longRangeChart {
+func buildDailyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, days int, location *time.Location, ariaKey string) historyChart {
 	if days <= 0 {
-		return longRangeChart{}
+		return historyChart{}
 	}
 	if location == nil {
 		location = time.UTC
@@ -607,42 +546,17 @@ func buildLongRangeChart(translator *i18n.Translator, now time.Time, buckets []m
 	localNow := now.In(location)
 	end := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
 	start := end.AddDate(0, 0, -days)
-	step := 704.0 / float64(days)
-	bars := make([]longRangeBar, 0, days)
-	type latencyPoint struct {
-		x       float64
-		latency float64
-	}
-	points := make([]latencyPoint, 0, days)
-	maxLatency := int64(0)
-	hasData := false
-
+	data := make([]chartDatum, 0, days)
 	for index := 0; index < days; index++ {
 		day := start.AddDate(0, 0, index)
-		x := 8 + float64(index)*step
-		width := step * 0.62
-		if width < 2 {
-			width = 2
-		}
-		if width > 18 {
-			width = 18
-		}
 		dateLabel := formatChartDate(translator, day, location)
 		bucket, ok := byStart[day.UnixMilli()]
 		if !ok || bucket.Total == 0 {
-			bars = append(bars, longRangeBar{
-				X: x, Y: 138, Width: width, Height: 2,
-				Class: "bar-empty", Title: dateLabel + " · —",
-			})
+			data = append(data, chartDatum{Title: dateLabel + " · —"})
 			continue
 		}
-		hasData = true
 		good := bucket.Up + bucket.Warning
 		ratio := float64(good) / float64(bucket.Total)
-		height := ratio * 118
-		if height < 2 {
-			height = 2
-		}
 		class := "bar-up"
 		switch {
 		case ratio < 0.95:
@@ -653,44 +567,101 @@ func buildLongRangeChart(translator *i18n.Translator, now time.Time, buckets []m
 		title := dateLabel + " · " + translator.Tf("monitor.uptimePercent", int(ratio*100+0.5))
 		if bucket.AvgLatency > 0 {
 			title += " · " + formatLatency(bucket.AvgLatency)
-			if milliseconds := bucket.AvgLatency.Milliseconds(); milliseconds > maxLatency {
-				maxLatency = milliseconds
-			}
 		}
-		bars = append(bars, longRangeBar{
-			X: x, Y: 140 - height, Width: width, Height: height,
-			Class: class, Title: title,
-		})
-		points = append(points, latencyPoint{
-			x:       x + width/2,
-			latency: float64(bucket.AvgLatency.Milliseconds()),
+		data = append(data, chartDatum{
+			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: bucket.AvgLatency,
 		})
 	}
+	chart := buildHistoryChart(data,
+		formatChartDate(translator, start, location),
+		formatChartDate(translator, end.AddDate(0, 0, -1), location),
+	)
+	chart.BarLabel = translator.T("monitor.chartUptime")
+	chart.LineLabel = translator.T("monitor.chartLatency")
+	chart.Hint = translator.T("monitor.dailyChartHint")
+	chart.AriaLabel = translator.T(ariaKey)
+	return chart
+}
 
-	var line strings.Builder
+const (
+	chartPlotLeft  = 8.0
+	chartPlotRight = 712.0
+	chartBaseY     = 140.0
+	chartBarHeight = 118.0
+)
+
+type chartDatum struct {
+	Title   string
+	Class   string
+	HasData bool
+	Ratio   float64
+	Latency time.Duration
+}
+
+func buildHistoryChart(data []chartDatum, startLabel, endLabel string) historyChart {
+	chart := historyChart{StartLabel: startLabel, EndLabel: endLabel}
+	if len(data) == 0 {
+		return chart
+	}
+	step := (chartPlotRight - chartPlotLeft) / float64(len(data))
+	width := step * 0.62
+	if width < 2 {
+		width = 2
+	}
+	if width > 18 {
+		width = 18
+	}
+	maxLatency := time.Duration(0)
+	for index, datum := range data {
+		x := chartPlotLeft + float64(index)*step
+		if !datum.HasData {
+			chart.Bars = append(chart.Bars, historyBar{
+				X: x, Y: chartBaseY - 2, Width: width, Height: 2,
+				Class: "bar-empty", Title: datum.Title,
+			})
+			continue
+		}
+		chart.HasData = true
+		height := datum.Ratio * chartBarHeight
+		if height < 2 {
+			height = 2
+		}
+		chart.Bars = append(chart.Bars, historyBar{
+			X: x, Y: chartBaseY - height, Width: width, Height: height,
+			Class: datum.Class, Title: datum.Title,
+		})
+		if datum.Latency > maxLatency {
+			maxLatency = datum.Latency
+		}
+	}
 	if maxLatency > 0 {
-		for _, point := range points {
-			if point.latency <= 0 {
+		var segment strings.Builder
+		flush := func() {
+			if segment.Len() > 0 {
+				chart.LinePaths = append(chart.LinePaths, segment.String())
+				segment.Reset()
+			}
+		}
+		for index, datum := range data {
+			if !datum.HasData || datum.Latency <= 0 {
+				flush()
 				continue
 			}
-			y := 140 - (point.latency/float64(maxLatency))*118
+			x := chartPlotLeft + float64(index)*step + width/2
+			y := chartBaseY - (float64(datum.Latency)/float64(maxLatency))*chartBarHeight
 			if y < 22 {
 				y = 22
 			}
-			if line.Len() > 0 {
-				line.WriteByte(' ')
+			if segment.Len() == 0 {
+				fmt.Fprintf(&segment, "M %.1f %.1f", x, y)
+			} else {
+				fmt.Fprintf(&segment, " L %.1f %.1f", x, y)
 			}
-			fmt.Fprintf(&line, "%.1f,%.1f", point.x, y)
 		}
+		flush()
+		chart.HasLine = len(chart.LinePaths) > 0
 	}
-	return longRangeChart{
-		HasData:    hasData,
-		Bars:       bars,
-		Line:       line.String(),
-		HasLine:    line.Len() > 0,
-		StartLabel: formatChartDate(translator, start, location),
-		EndLabel:   formatChartDate(translator, end.AddDate(0, 0, -1), location),
-	}
+	return chart
 }
 
 func formatChartDate(translator *i18n.Translator, value time.Time, location *time.Location) string {
@@ -702,6 +673,17 @@ func formatChartDate(translator *i18n.Translator, value time.Time, location *tim
 		return value.Format("01-02")
 	}
 	return value.Format("Jan 2")
+}
+
+func formatChartMoment(translator *i18n.Translator, value time.Time, location *time.Location) string {
+	if location == nil {
+		location = time.UTC
+	}
+	value = value.In(location)
+	if translator.Lang() == i18n.LangZH {
+		return value.Format("01-02 15:04")
+	}
+	return value.Format("Jan 2 15:04")
 }
 
 func buildEventRows(translator *i18n.Translator, events []model.Event, includeMonitor bool, location *time.Location) []eventRow {

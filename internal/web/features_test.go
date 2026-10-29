@@ -365,17 +365,20 @@ func TestLongRangeChartRendering(t *testing.T) {
 	adminClient, _ := setupAdminSession(t, testServer)
 	id := createHTTPMonitor(t, srv, "Daily chart", "https://example.com/health")
 
-	now := time.Now().UTC().Truncate(24 * time.Hour)
-	checkAt := now.Add(-24*time.Hour + 2*time.Hour)
-	if err := srv.store.RecordCheck(t.Context(), model.Check{
-		MonitorID: id, CheckedAt: checkAt, Status: model.CheckUp,
-		Latency: 25 * time.Millisecond, MetaJSON: "{}",
-	}, model.MonitorState{
-		Status: model.StatusUp, StatusSince: checkAt, LastCheck: checkAt, UpdatedAt: checkAt,
-	}, nil, false); err != nil {
-		t.Fatalf("RecordCheck: %v", err)
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	checkAt := day.Add(-24*time.Hour + 2*time.Hour)
+	recent := time.Now().UTC().Add(-10 * time.Minute)
+	for _, checkedAt := range []time.Time{checkAt, recent} {
+		if err := srv.store.RecordCheck(t.Context(), model.Check{
+			MonitorID: id, CheckedAt: checkedAt, Status: model.CheckUp,
+			Latency: 25 * time.Millisecond, MetaJSON: "{}",
+		}, model.MonitorState{
+			Status: model.StatusUp, StatusSince: checkedAt, LastCheck: checkedAt, UpdatedAt: checkedAt,
+		}, nil, false); err != nil {
+			t.Fatalf("RecordCheck: %v", err)
+		}
 	}
-	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), now.Add(-48*time.Hour), now, time.Now()); err != nil {
+	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), day.Add(-48*time.Hour), time.Now(), time.Now()); err != nil {
 		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
 	}
 
@@ -389,6 +392,12 @@ func TestLongRangeChartRendering(t *testing.T) {
 	}
 	if !strings.Contains(body, "30d daily uptime") || !strings.Contains(body, "long-range-chart") || !strings.Contains(body, "bar-up") {
 		t.Fatalf("long-range chart missing: %s", body)
+	}
+	if got := strings.Count(body, `class="long-range-chart"`); got != 4 {
+		t.Fatalf("history charts = %d, want 4 (recent, 24h, 30d, 90d)", got)
+	}
+	if got := strings.Count(body, `class="latency-line"`); got != 4 {
+		t.Fatalf("latency lines = %d, want one per history chart", got)
 	}
 }
 

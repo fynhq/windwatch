@@ -887,7 +887,7 @@ fieldset:disabled {
 /* Dialogs */
 .dialog {
   width: min(540px, calc(100vw - 32px));
-  max-height: min(84vh, 760px);
+  max-height: min(90vh, 880px);
   margin: auto;
   padding: 0;
   overflow: auto;

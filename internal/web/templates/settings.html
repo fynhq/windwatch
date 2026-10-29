@@ -107,13 +107,9 @@
     {{if .PublicStatus.Enabled}}
     <div class="field">
       <span>{{.I18n.T "public.address"}}</span>
-      <div class="input-action">
-        <input class="copy-input" type="text" value="{{.PublicStatusURL}}" readonly
-          aria-label="{{.I18n.T "public.address"}}"
-          data-copy-value="{{.PublicStatusURL}}">
-        <button class="button button-secondary" type="button"
-          data-copy-value="{{.PublicStatusURL}}">{{.I18n.T "public.copy"}}</button>
-      </div>
+      <input class="copy-input" type="text" value="{{.PublicStatusURL}}" readonly
+        aria-label="{{.I18n.T "public.address"}}" title="{{.I18n.T "public.copyHint"}}"
+        data-copy-value="{{.PublicStatusURL}}">
       <small class="hint">{{.I18n.T "public.copyHint"}}</small>
     </div>
     {{end}}
@@ -250,7 +246,7 @@
       </div>
 
       <div class="form-grid">
-        <label class="field is-wide">
+        <label class="field">
           <span>{{.I18n.T "notification.language"}}</span>
           <select name="language">
             <option value="zh-CN" {{if eq .ChannelForm.Language "zh-CN"}}selected{{end}}>{{.I18n.T "language.zhCN"}}</option>
@@ -267,13 +263,13 @@
             {{end}}
           </select>
         </label>
-        <label class="switch-field">
-          <input type="checkbox" name="enabled" value="1" {{if .ChannelForm.Enabled}}checked{{end}}>
-          <span class="switch-track" aria-hidden="true"></span>
-          <span>{{.I18n.T "notification.enabled"}}</span>
-        </label>
-        <input type="hidden" name="enabled" value="0">
       </div>
+      <label class="switch-field">
+        <input type="checkbox" name="enabled" value="1" {{if .ChannelForm.Enabled}}checked{{end}}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>{{.I18n.T "notification.enabled"}}</span>
+      </label>
+      <input type="hidden" name="enabled" value="0">
     </div>
     <div class="dialog-actions">
       <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.cancel"}}</button>
@@ -288,12 +284,13 @@
   {{if .NotificationLogs}}
   <div class="table-scroll">
     <table class="responsive-table">
-      <thead><tr><th>{{.I18n.T "notification.channelName"}}</th><th>{{.I18n.T "notification.channelType"}}</th><th>{{.I18n.T "notification.target"}}</th><th>{{.I18n.T "notification.status"}}</th><th>{{.I18n.T "notification.time"}}</th><th>{{.I18n.T "notification.error"}}</th><th>{{.I18n.T "notification.content"}}</th></tr></thead>
+      <thead><tr><th>{{.I18n.T "notification.channelName"}}</th><th>{{.I18n.T "notification.channelType"}}</th><th>{{.I18n.T "notification.monitor"}}</th><th>{{.I18n.T "notification.target"}}</th><th>{{.I18n.T "notification.status"}}</th><th>{{.I18n.T "notification.time"}}</th><th>{{.I18n.T "notification.error"}}</th><th>{{.I18n.T "notification.content"}}</th></tr></thead>
       <tbody>
         {{range .NotificationLogs}}
         <tr>
           <td data-label="{{$.I18n.T "notification.channelName"}}">{{if .Channel}}{{.Channel}}{{else}}—{{end}}</td>
           <td data-label="{{$.I18n.T "notification.channelType"}}">{{.Method}}</td>
+          <td data-label="{{$.I18n.T "notification.monitor"}}">{{if .Monitor}}{{.Monitor}}{{else}}—{{end}}</td>
           <td data-label="{{$.I18n.T "notification.target"}}"><span class="target">{{.Target}}</span></td>
           <td class="notification-log-status" data-label="{{$.I18n.T "notification.status"}}">{{.Status}}</td>
           <td class="notification-log-time" data-label="{{$.I18n.T "notification.time"}}">{{.Time}}</td>

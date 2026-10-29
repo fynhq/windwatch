@@ -455,7 +455,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNotificationChannel: %v", err)
 	}
-	claimed, err := st.ClaimNotification(t.Context(), "delivery-test", string(channel.Type), channelID, channel.Name, "https://example.com/hook", `{"version":1,"event":"down","text":"delivery-body"}`, now)
+	claimed, err := st.ClaimNotification(t.Context(), "delivery-test", string(channel.Type), channelID, channel.Name, "https://example.com/hook", `{"version":1,"event":"down","text":"delivery-body"}`, "Example site", now)
 	if err != nil || !claimed {
 		t.Fatalf("ClaimNotification claimed=%v err=%v", claimed, err)
 	}
@@ -469,7 +469,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	}
 	body := readResponseBody(t, response)
 	for _, want := range []string{
-		"Primary hook", "Webhook", ">Sent</td>",
+		"Primary hook", "Webhook", "Monitor", "Example site", ">Sent</td>",
 		`data-notification-content`, `data-notification-content-dialog`,
 		`data-notification-content-field="payload"`, "delivery-body",
 	} {
@@ -491,7 +491,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 		t.Fatalf("GET settings logs in Chinese: %v", err)
 	}
 	body = readResponseBody(t, response)
-	for _, want := range []string{"Primary hook", "Webhook", ">已发送</td>", "查看内容"} {
+	for _, want := range []string{"Primary hook", "Webhook", "监控项", "Example site", ">已发送</td>", "查看内容"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Chinese delivery log missing %q: %s", want, body)
 		}

@@ -823,8 +823,6 @@ func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, mo
 	data.BackURL = "/"
 	translator := data.I18n
 
-	recentStart, recentEnd := checkBarRange(translator, now, checks, 24)
-	hourStart, hourEnd := hourlyBarRange(now, data.Location)
 	view := monitorDetailView{
 		ID:                monitor.ID,
 		Name:              monitor.Name,
@@ -848,18 +846,12 @@ func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, mo
 		Uptime90d:         formatPercent(stats90.Up+stats90.Warning, stats90.Total),
 		AvgLatency24:      formatLatency(stats24.AvgLatency),
 		LastLatency:       "—",
-		RecentBars:        buildCheckBars(translator, checks, 24, data.Location),
 		RecentBarsSummary: summarizeChecks(translator, checks, 24),
-		RecentBarsStart:   recentStart,
-		RecentBarsEnd:     recentEnd,
-		Bars:              buildStatusBars(translator, now, buckets, data.Location),
 		BarsSummary:       summarizeHourBuckets(translator, now, buckets),
-		BarsStart:         hourStart,
-		BarsEnd:           hourEnd,
-		Chart:             buildLatencyChart(translator, now, buckets, data.Location, stats24.AvgLatency),
-		Chart30:           buildLongRangeChart(translator, now, daily30, 30, data.Location),
-		Chart90:           buildLongRangeChart(translator, now, daily90, 90, data.Location),
-		HasChecks:         len(checks) > 0,
+		ChartRecent:       buildRecentChart(translator, checks, 24, data.Location),
+		Chart24:           buildHourlyChart(translator, now, buckets, data.Location),
+		Chart30:           buildDailyChart(translator, now, daily30, 30, data.Location, "monitor.uptime30dChart"),
+		Chart90:           buildDailyChart(translator, now, daily90, 90, data.Location, "monitor.uptime90dChart"),
 		Events:            buildEventRows(translator, events, false, data.Location),
 	}
 	if monitor.HTTP != nil {
