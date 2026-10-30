@@ -53,16 +53,21 @@ WindWatch supports two deployment paths: Docker Compose and a single Linux binar
 
 The included [Dockerfile](Dockerfile) builds a static binary and runs it as an unprivileged user on an Alpine runtime. CA certificates are installed in the runtime image, and templates, static assets, migrations, locales, and time zone data are embedded in the binary.
 
-Copy the tracked [compose.example.yaml](compose.example.yaml) to the local, gitignored `compose.yaml` before the first run:
+Copy the tracked [compose.example.yaml](compose.example.yaml) to the local, gitignored `compose.yaml`, create the host data directory, and start:
 
 ```bash
 cp compose.example.yaml compose.yaml
+mkdir -p data
+# Linux only: make ./data writable by the container user (UID 65532).
+sudo chown 65532:65532 data && sudo chmod 700 data
 docker compose up -d
 ```
 
-The example references the published GHCR image. To build locally instead, run `docker build -t windwatch:latest .` and set `WINDWATCH_IMAGE=windwatch:latest` before `docker compose up -d`. To upgrade, back up the data volume or directory, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous version tag or the digest recorded before the upgrade.
+On Docker Desktop, skip the `chown` line and use port mapping instead of host networking. Docker Desktop shares host folders through its VM; keep backups of `./data` and never run two instances against the same directory. Existing deployments that used the previous `windwatch_data` volume must copy it into `./data` before switching the mount; see Data and backup.
 
-Open [http://localhost:8080/setup](http://localhost:8080/setup) and create the administrator account. Data is stored in the named volume `windwatch_data`; `docker compose down` keeps it, while `docker compose down -v` deletes it.
+The example references the published GHCR image. To build locally instead, run `docker build -t windwatch:latest .` and set `WINDWATCH_IMAGE=windwatch:latest` before `docker compose up -d`. To upgrade, back up the `./data` directory, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous version tag or the digest recorded before the upgrade.
+
+Open [http://localhost:8080/setup](http://localhost:8080/setup) and create the administrator account. Data and daily logs are stored in the local `./data` directory next to `compose.yaml` (`./data/logs` for logs). `docker compose down` leaves the directory in place, and `docker compose down -v` does not delete bind-mounted data; delete `./data` manually if you really want to remove it.
 
 The example uses host networking by default, the simplest way to reach services on the host (such as a local proxy) on Linux. On Docker Desktop, or when you prefer bridge networking, comment out `network_mode: host` and uncomment the `ports` mapping; use `host.docker.internal` instead of `127.0.0.1` to reach the host.
 
@@ -74,7 +79,7 @@ docker compose down
 
 Local Docker builds use the standard Go module proxy by default. The image embeds the version from `VERSION` and the current commit; pass `VERSION`, `COMMIT`, and `BUILD_TIME` as build args to override them. To use a mirror, pass `GOPROXY` to `make docker-build` or build with the appropriate `--build-arg`. The service runs with a read-only root filesystem, a 16 MB `/tmp` tmpfs, all capabilities dropped, `no-new-privileges`, a 128 MB memory limit, and `GOMEMLIMIT=96MiB`; adjust these in [compose.example.yaml](compose.example.yaml) or your local copy. If you change the internal listen address, update `WINDWATCH_HEALTH_URL` to match.
 
-The Alpine runtime includes a shell; use `docker compose logs` for output and volume-level tooling for backups. If a reverse proxy fronts the container, set `WINDWATCH_TRUSTED_PROXIES` to the proxy's address or network.
+The Alpine runtime includes a shell; use `docker compose logs` for output and copy the `./data` directory for backups. If a reverse proxy fronts the container, set `WINDWATCH_TRUSTED_PROXIES` to the proxy's address or network.
 
 Docker container monitoring is off by default. To enable it, uncomment the socket mount and `group_add` entries, then set `DOCKER_GID` to the socket's group ID (`stat -c '%g' /var/run/docker.sock`). Mounting the Docker socket gives WindWatch significant control over the host.
 
@@ -214,12 +219,14 @@ data/
 ├── windwatch.db
 ├── windwatch.db-wal
 ├── windwatch.db-shm
-└── secret.key
+├── secret.key
+└── logs/
+    └── windwatch-YYYY-MM-DD.log
 ```
 
-`secret.key` encrypts stored secrets such as proxy passwords, Push tokens, and notification credentials. Keep it private and keep it together with the database: if it is lost, those encrypted values cannot be recovered. To back up, stop WindWatch and copy the entire data directory; to restore, put both the database and the matching key file back in place.
+`secret.key` encrypts stored secrets such as proxy passwords, Push tokens, and notification credentials. Keep it private and keep it together with the database: if it is lost, those encrypted values cannot be recovered. To back up, stop WindWatch and copy the entire data directory, including `logs/`; to restore, put both the database and the matching key file back in place.
 
-With Docker Compose, the data directory is the `windwatch_data` volume and its files are owned by UID 65532. Stop the stack before copying the volume, and preserve that ownership when restoring. `docker compose down` keeps the volume; `docker compose down -v` deletes it.
+With Docker Compose, data and logs are in the `./data` directory next to `compose.yaml`. On Linux, stop the stack before copying and keep the files owned by UID 65532 (directory 0700); on Docker Desktop, the shared directory is mapped to the container user. `docker compose down` leaves the directory in place, and `down -v` does not delete bind-mounted data. Existing deployments that used the old named volume can stop the stack, run `docker cp windwatch:/data/. ./data/`, run `sudo chown -R 65532:65532 data` on Linux, then switch the mount.
 
 Database migrations run automatically at startup. Back up the data directory before upgrading. Downgrades are not supported automatically.
 
@@ -359,16 +366,21 @@ WindWatch 支持两种部署方式：Docker Compose 和单文件 Linux 二进制
 
 仓库自带 [Dockerfile](Dockerfile)，使用多阶段构建生成静态二进制，并在 Alpine 运行时中以非 root 用户运行。CA 证书安装在运行镜像中，模板、静态资源、数据库迁移、语言包和时区数据都嵌入在二进制中。
 
-首次运行前，把仓库中的 [compose.example.yaml](compose.example.yaml) 复制成本地、已被 Git 忽略的 `compose.yaml`：
+首次运行前，把仓库中的 [compose.example.yaml](compose.example.yaml) 复制成本地、已被 Git 忽略的 `compose.yaml`，创建宿主数据目录后启动：
 
 ```bash
 cp compose.example.yaml compose.yaml
+mkdir -p data
+# 仅 Linux：让容器用户（UID 65532）可写 ./data。
+sudo chown 65532:65532 data && sudo chmod 700 data
 docker compose up -d
 ```
 
-示例默认引用已发布的 GHCR 镜像。需要本地构建时执行 `docker build -t windwatch:latest .`，并在 `docker compose up -d` 前设置 `WINDWATCH_IMAGE=windwatch:latest`。升级时先备份数据卷或数据目录，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或事先记录的 digest。
+在 Docker Desktop 上跳过 `chown`，改用端口映射而不是 host 网络。Docker Desktop 通过虚拟机共享宿主目录；请备份 `./data`，并确保同一目录只有一个实例在运行。旧部署如果使用命名卷 `windwatch_data`，必须先把它复制到 `./data` 再切换挂载；步骤见“数据与备份”。
 
-打开 [http://localhost:8080/setup](http://localhost:8080/setup) 创建管理员账号。数据保存在命名卷 `windwatch_data` 中；`docker compose down` 会保留数据，`docker compose down -v` 会删除数据。
+示例默认引用已发布的 GHCR 镜像。需要本地构建时执行 `docker build -t windwatch:latest .`，并在 `docker compose up -d` 前设置 `WINDWATCH_IMAGE=windwatch:latest`。升级时先备份 `./data` 数据目录，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或事先记录的 digest。
+
+打开 [http://localhost:8080/setup](http://localhost:8080/setup) 创建管理员账号。数据与日志保存在 `compose.yaml` 旁的 `./data` 目录（日志在 `./data/logs`）。`docker compose down` 保留该目录，`docker compose down -v` 不会删除绑定目录；确实要清空时手动删除 `./data`。
 
 示例默认使用 host 网络，这是在 Linux 上访问宿主机服务（例如本地代理）最简单的方式。在 Docker Desktop 上，或希望改用 bridge 网络时，请注释掉 `network_mode: host` 并取消 `ports` 映射的注释；访问宿主机请用 `host.docker.internal` 而不是 `127.0.0.1`。
 
@@ -380,7 +392,7 @@ docker compose down
 
 本地 Docker 构建默认使用标准 Go 模块代理；镜像会嵌入 `VERSION` 文件中的版本和当前 commit，可用 `VERSION`、`COMMIT`、`BUILD_TIME` 构建参数覆盖。如需镜像源，可给 `make docker-build` 传入 `GOPROXY`，或使用相应的 `--build-arg`。服务默认使用只读根文件系统、16 MB 的 `/tmp` tmpfs、丢弃全部 capabilities、`no-new-privileges`、128 MB 内存限制和 `GOMEMLIMIT=96MiB`；如有需要可在 [compose.example.yaml](compose.example.yaml) 或本地副本中调整。如果修改容器内监听地址，请同时更新 `WINDWATCH_HEALTH_URL`。
 
-Alpine 运行时包含 shell；请使用 `docker compose logs` 查看输出，并使用卷级工具备份。如果容器前有反向代理，请把 `WINDWATCH_TRUSTED_PROXIES` 设为代理地址或网段。
+Alpine 运行时包含 shell；请使用 `docker compose logs` 查看输出，并直接复制 `./data` 目录备份。如果容器前有反向代理，请把 `WINDWATCH_TRUSTED_PROXIES` 设为代理地址或网段。
 
 Docker 容器监控默认关闭。需要时取消 socket 挂载和 `group_add` 的注释，并把 `DOCKER_GID` 设为 socket 的组 ID（`stat -c '%g' /var/run/docker.sock`）。挂载 Docker socket 会让 WindWatch 获得较高的宿主机控制权限。
 
@@ -518,12 +530,14 @@ data/
 ├── windwatch.db
 ├── windwatch.db-wal
 ├── windwatch.db-shm
-└── secret.key
+├── secret.key
+└── logs/
+    └── windwatch-YYYY-MM-DD.log
 ```
 
-`secret.key` 用于加密代理密码、Push Token 和通知凭据等敏感配置。请妥善保管，并始终与数据库一起备份：密钥一旦丢失，这些加密字段将无法恢复。备份时先停止 WindWatch，再复制整个数据目录；恢复时把数据库和匹配的密钥文件一起放回原位置。
+`secret.key` 用于加密代理密码、Push Token 和通知凭据等敏感配置。请妥善保管，并始终与数据库一起备份：密钥一旦丢失，这些加密字段将无法恢复。备份时先停止 WindWatch，再复制整个数据目录（含 `logs/`）；恢复时把数据库和匹配的密钥文件一起放回原位置。
 
-使用 Docker Compose 时，数据目录是 `windwatch_data` 卷，文件属主为 UID 65532。备份前先停止服务栈，恢复时保持该属主；`docker compose down` 保留卷，`docker compose down -v` 会删除卷。
+使用 Docker Compose 时，数据与日志在 `compose.yaml` 旁的 `./data` 目录。Linux 下备份前先停止服务栈，恢复时保持文件属主为 UID 65532（目录 0700）；Docker Desktop 的共享目录会映射给容器用户。`docker compose down` 保留目录，`down -v` 不会删除绑定目录。旧部署如果使用命名卷，可停止服务栈后执行 `docker cp windwatch:/data/. ./data/`，Linux 下再执行 `sudo chown -R 65532:65532 data`，然后切换挂载。
 
 数据库迁移会在启动时自动执行。升级前请先备份数据目录；系统不支持自动降级。
 

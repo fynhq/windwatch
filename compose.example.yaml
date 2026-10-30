@@ -4,6 +4,10 @@
 # compose.yaml 已被 Git 忽略，仅用于本地部署。
 # Set WINDWATCH_IMAGE to pin a version tag or digest, or use a locally built image.
 # 设置 WINDWATCH_IMAGE 可固定版本标签或 digest，或使用本地构建的镜像。
+# Upgrading from the old windwatch_data volume? Stop the stack and copy /data
+# into ./data before the first start; see README "Data and backup".
+# 从旧命名卷 windwatch_data 升级？首次启动前停机，把 /data 复制到 ./data；
+# 详见 README“数据与备份”。
 name: windwatch
 
 services:
@@ -32,8 +36,15 @@ services:
       # Set this only when a trusted reverse proxy fronts the container.
       # 仅当容器前有可信反向代理时设置。
       # WINDWATCH_TRUSTED_PROXIES: "172.18.0.0/16"
+    # Data and daily logs share one host directory next to this file. On Linux,
+    # create it first and hand it to the container user:
+    #   sudo install -d -o 65532 -g 65532 -m 0700 data
+    # On Docker Desktop, create ./data with mkdir and verify the container can write it.
+    # 数据与按天日志共用本文件旁的宿主目录。Linux 下先创建并交给容器用户：
+    #   sudo install -d -o 65532 -g 65532 -m 0700 data
+    # Docker Desktop 下先 mkdir，再验证容器可写。
     volumes:
-      - windwatch_data:/data
+      - ./data:/data
       # Docker container monitoring needs the socket and the host docker group.
       # Docker 容器监控需要访问 socket 和宿主机 docker 组。
       # Mounting the socket grants WindWatch significant control over the host.
@@ -55,7 +66,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  windwatch_data:
-    name: windwatch_data
