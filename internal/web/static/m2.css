@@ -87,7 +87,7 @@
   padding: 4px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--muted);
   font: inherit;
   font-size: 12px;
