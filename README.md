@@ -104,12 +104,12 @@ make dist
 This writes:
 
 ```text
-dist/windwatch-linux-amd64-v0.1.2.tar.gz
-dist/windwatch-linux-arm64-v0.1.2.tar.gz
+dist/windwatch-linux-amd64-v0.2.0.tar.gz
+dist/windwatch-linux-arm64-v0.2.0.tar.gz
 dist/SHA256SUMS
 ```
 
-If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy before building. Verify the archives with `cd dist && sha256sum -c --strict SHA256SUMS`. Each archive contains a single statically linked `windwatch` binary with no runtime dependencies; it embeds the UI, migrations, locales, and time zone data. HTTPS checks use the system CA bundle, so install a `ca-certificates` package on minimal hosts. `make dist` runs the formatting, vet, and test checks first. The version is read from the repository `VERSION` file; pass `VERSION=0.1.2` to override it for a local build.
+If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy before building. Verify the archives with `cd dist && sha256sum -c --strict SHA256SUMS`. Each archive contains a single statically linked `windwatch` binary with no runtime dependencies; it embeds the UI, migrations, locales, and time zone data. HTTPS checks use the system CA bundle, so install a `ca-certificates` package on minimal hosts. `make dist` runs the formatting, vet, and test checks first. The version is read from the repository `VERSION` file; pass `VERSION=0.2.0` to override it for a local build.
 
 Install on a systemd host, choosing the binary that matches `uname -m`:
 
@@ -417,12 +417,12 @@ make dist
 输出：
 
 ```text
-dist/windwatch-linux-amd64-v0.1.2.tar.gz
-dist/windwatch-linux-arm64-v0.1.2.tar.gz
+dist/windwatch-linux-amd64-v0.2.0.tar.gz
+dist/windwatch-linux-arm64-v0.2.0.tar.gz
 dist/SHA256SUMS
 ```
 
-如果模块下载受阻，请在构建前把 `GOPROXY` 设为可访问的 Go 模块代理。可用 `cd dist && sha256sum -c --strict SHA256SUMS` 校验压缩包。每个压缩包内是一个静态链接的 `windwatch` 二进制，无运行时依赖；界面、迁移、语言包和时区数据都已内嵌。HTTPS 检查使用系统 CA 证书，因此最小化系统需要安装 `ca-certificates` 包。`make dist` 会先执行格式检查、vet 和测试。版本号从仓库 `VERSION` 文件读取；本地构建可用 `VERSION=0.1.2` 覆盖。
+如果模块下载受阻，请在构建前把 `GOPROXY` 设为可访问的 Go 模块代理。可用 `cd dist && sha256sum -c --strict SHA256SUMS` 校验压缩包。每个压缩包内是一个静态链接的 `windwatch` 二进制，无运行时依赖；界面、迁移、语言包和时区数据都已内嵌。HTTPS 检查使用系统 CA 证书，因此最小化系统需要安装 `ca-certificates` 包。`make dist` 会先执行格式检查、vet 和测试。版本号从仓库 `VERSION` 文件读取；本地构建可用 `VERSION=0.2.0` 覆盖。
 
 在 systemd 主机上安装时，按 `uname -m` 选择对应二进制：
 
