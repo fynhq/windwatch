@@ -194,7 +194,7 @@
         <div><dt>{{.I18n.T "monitor.domainStatus"}}</dt><dd>{{if .Monitor.Domain.Statuses}}{{.Monitor.Domain.Statuses}}{{else}}—{{end}}</dd></div>
         <div><dt>{{.I18n.T "monitor.domainFetched"}}</dt><dd>{{.Monitor.Domain.Fetched}}</dd></div>
       </dl>
-      {{if .Monitor.Domain.Error}}<p class="alert alert-error">{{.Monitor.Domain.Error}}</p>{{end}}
+      {{if .Monitor.Domain.Error}}<p class="alert alert-error">{{.I18n.T "monitor.domainRefreshFailed"}}<br>{{.Monitor.Domain.Error}}</p>{{end}}
       {{else}}
       <p class="muted">{{.I18n.T "monitor.domainUnavailable"}}</p>
       {{end}}

@@ -158,6 +158,7 @@
   "monitor.domainStatus": "Status",
   "monitor.domainFetched": "Last queried",
   "monitor.domainUnavailable": "No domain information yet.",
+  "monitor.domainRefreshFailed": "Domain refresh failed; it will be retried later. Data may come from the last successful lookup.",
   "settings.navLabel": "Settings sections",
   "settings.navGeneral": "General",
   "settings.navPublic": "Public page",

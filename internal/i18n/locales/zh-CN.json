@@ -158,6 +158,7 @@
   "monitor.domainStatus": "状态",
   "monitor.domainFetched": "最近查询",
   "monitor.domainUnavailable": "尚无域名信息。",
+  "monitor.domainRefreshFailed": "域名信息刷新失败，系统会稍后自动重试；当前数据可能来自上次成功的查询。",
   "settings.navLabel": "设置分区",
   "settings.navGeneral": "常规",
   "settings.navPublic": "公开页",
