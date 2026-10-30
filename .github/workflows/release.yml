@@ -8,6 +8,10 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Publish release
@@ -29,6 +33,13 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag is on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -56,6 +67,8 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
+          notes_file="$(mktemp)"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > "$notes_file"
           assets=(
             "dist/windwatch-linux-amd64-v${VERSION}"
             "dist/windwatch-linux-arm64-v${VERSION}"
@@ -64,13 +77,17 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)"
             test "$draft" = "true"
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "windwatch $GITHUB_REF_NAME" \
+              --notes-file "$notes_file" \
+              --draft
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           else
             gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
               --title "windwatch $GITHUB_REF_NAME" \
               --draft \
               --verify-tag \
-              --notes-from-tag
+              --notes-file "$notes_file"
           fi
 
       - name: Verify release assets
@@ -121,13 +138,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify image tags
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          export NO_COLOR=1
+          version_digest="$(docker buildx imagetools inspect "ghcr.io/fynhq/windwatch:v${VERSION}" | awk '/^Digest:/ {print $2; exit}')"
+          latest_digest="$(docker buildx imagetools inspect "ghcr.io/fynhq/windwatch:latest" | awk '/^Digest:/ {print $2; exit}')"
+          test -n "$version_digest"
+          test -n "$latest_digest"
+          test "$version_digest" = "$latest_digest"
+
       - name: Smoke test image on both architectures
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
+          image="ghcr.io/fynhq/windwatch:v${VERSION}"
           for platform in linux/amd64 linux/arm64; do
-            output="$(docker run --rm --platform "$platform" ghcr.io/fynhq/windwatch:latest version)"
+            output="$(docker run --rm --platform "$platform" "$image" version)"
             test "$output" = "windwatch v${VERSION}"
           done
 
