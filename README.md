@@ -99,12 +99,12 @@ make dist
 This writes:
 
 ```text
-dist/windwatch-linux-amd64-v0.1.0
-dist/windwatch-linux-arm64-v0.1.0
+dist/windwatch-linux-amd64-v0.1.1
+dist/windwatch-linux-arm64-v0.1.1
 dist/SHA256SUMS
 ```
 
-If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy before building. Verify the artifacts with `cd dist && sha256sum -c --strict SHA256SUMS`. The binaries are statically linked and have no runtime dependencies. They embed the UI, migrations, locales, and time zone data; HTTPS checks use the system CA bundle, so install a `ca-certificates` package on minimal hosts. `make dist` runs the formatting, vet, and test checks first. The version is read from the repository `VERSION` file; pass `VERSION=0.1.0` to override it for a local build.
+If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy before building. Verify the artifacts with `cd dist && sha256sum -c --strict SHA256SUMS`. The binaries are statically linked and have no runtime dependencies. They embed the UI, migrations, locales, and time zone data; HTTPS checks use the system CA bundle, so install a `ca-certificates` package on minimal hosts. `make dist` runs the formatting, vet, and test checks first. The version is read from the repository `VERSION` file; pass `VERSION=0.1.1` to override it for a local build.
 
 Install on a systemd host, choosing the binary that matches `uname -m`:
 
@@ -404,12 +404,12 @@ make dist
 输出：
 
 ```text
-dist/windwatch-linux-amd64-v0.1.0
-dist/windwatch-linux-arm64-v0.1.0
+dist/windwatch-linux-amd64-v0.1.1
+dist/windwatch-linux-arm64-v0.1.1
 dist/SHA256SUMS
 ```
 
-如果模块下载受阻，请在构建前把 `GOPROXY` 设为可访问的 Go 模块代理。可用 `cd dist && sha256sum -c --strict SHA256SUMS` 校验产物。二进制为静态链接，无运行时依赖；界面、迁移、语言包和时区数据都已内嵌，HTTPS 检查使用系统 CA 证书，因此最小化系统需要安装 `ca-certificates` 包。`make dist` 会先执行格式检查、vet 和测试。版本号从仓库 `VERSION` 文件读取；本地构建可用 `VERSION=0.1.0` 覆盖。
+如果模块下载受阻，请在构建前把 `GOPROXY` 设为可访问的 Go 模块代理。可用 `cd dist && sha256sum -c --strict SHA256SUMS` 校验产物。二进制为静态链接，无运行时依赖；界面、迁移、语言包和时区数据都已内嵌，HTTPS 检查使用系统 CA 证书，因此最小化系统需要安装 `ca-certificates` 包。`make dist` 会先执行格式检查、vet 和测试。版本号从仓库 `VERSION` 文件读取；本地构建可用 `VERSION=0.1.1` 覆盖。
 
 在 systemd 主机上安装时，按 `uname -m` 选择对应二进制：
 
