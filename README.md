@@ -88,7 +88,7 @@ docker buildx build --platform linux/arm64 --load -t windwatch:arm64 .
 
 Standalone binaries are provided only for Linux on x86-64 (`amd64`) and ARM64 (`aarch64`). Other platforms should use the container image. Building requires Go 1.27 or newer and `make`.
 
-Tagged releases also publish `windwatch-linux-amd64-vX.Y.Z`, `windwatch-linux-arm64-vX.Y.Z`, and a single `SHA256SUMS` on the [GitHub Releases page](https://github.com/fynhq/windwatch/releases). Verify them with `sha256sum -c --strict SHA256SUMS` and check the running version with `windwatch version`.
+Tagged releases also publish `windwatch-linux-amd64-vX.Y.Z.tar.gz`, `windwatch-linux-arm64-vX.Y.Z.tar.gz`, and a single `SHA256SUMS` on the [GitHub Releases page](https://github.com/fynhq/windwatch/releases). Verify them with `sha256sum -c --strict SHA256SUMS`, extract the archive for your architecture, and check the running version with `windwatch version`.
 
 Build both binaries and their checksums:
 
@@ -99,17 +99,18 @@ make dist
 This writes:
 
 ```text
-dist/windwatch-linux-amd64-v0.1.1
-dist/windwatch-linux-arm64-v0.1.1
+dist/windwatch-linux-amd64-v0.1.1.tar.gz
+dist/windwatch-linux-arm64-v0.1.1.tar.gz
 dist/SHA256SUMS
 ```
 
-If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy before building. Verify the artifacts with `cd dist && sha256sum -c --strict SHA256SUMS`. The binaries are statically linked and have no runtime dependencies. They embed the UI, migrations, locales, and time zone data; HTTPS checks use the system CA bundle, so install a `ca-certificates` package on minimal hosts. `make dist` runs the formatting, vet, and test checks first. The version is read from the repository `VERSION` file; pass `VERSION=0.1.1` to override it for a local build.
+If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy before building. Verify the archives with `cd dist && sha256sum -c --strict SHA256SUMS`. Each archive contains a single statically linked `windwatch` binary with no runtime dependencies; it embeds the UI, migrations, locales, and time zone data. HTTPS checks use the system CA bundle, so install a `ca-certificates` package on minimal hosts. `make dist` runs the formatting, vet, and test checks first. The version is read from the repository `VERSION` file; pass `VERSION=0.1.1` to override it for a local build.
 
 Install on a systemd host, choosing the binary that matches `uname -m`:
 
 ```bash
-sudo install -m 0755 dist/windwatch-linux-amd64-v$(cat VERSION) /usr/local/bin/windwatch
+tar -xzf dist/windwatch-linux-amd64-v$(cat VERSION).tar.gz -C /tmp
+sudo install -m 0755 /tmp/windwatch /usr/local/bin/windwatch
 sudo useradd --system --user-group --home-dir /var/lib/windwatch --shell /usr/sbin/nologin windwatch
 sudo install -d -o windwatch -g windwatch -m 0750 /var/lib/windwatch
 sudo install -m 0644 deploy/windwatch.service /etc/systemd/system/windwatch.service
@@ -393,7 +394,7 @@ docker buildx build --platform linux/arm64 --load -t windwatch:arm64 .
 
 单文件只提供 Linux x86-64（`amd64`）和 ARM64（`aarch64`）版本。其他平台请使用容器镜像。构建需要 Go 1.27 或更高版本以及 `make`。
 
-正式发布同时提供 `windwatch-linux-amd64-vX.Y.Z`、`windwatch-linux-arm64-vX.Y.Z` 和单一 `SHA256SUMS`，可从 [GitHub Releases 页面](https://github.com/fynhq/windwatch/releases)下载。可执行 `sha256sum -c --strict SHA256SUMS` 校验，并用 `windwatch version` 查看当前版本。
+正式发布同时提供 `windwatch-linux-amd64-vX.Y.Z.tar.gz`、`windwatch-linux-arm64-vX.Y.Z.tar.gz` 和单一 `SHA256SUMS`，可从 [GitHub Releases 页面](https://github.com/fynhq/windwatch/releases)下载。可执行 `sha256sum -c --strict SHA256SUMS` 校验，解压对应架构的压缩包，并用 `windwatch version` 查看当前版本。
 
 构建两个二进制和校验文件：
 
@@ -404,17 +405,18 @@ make dist
 输出：
 
 ```text
-dist/windwatch-linux-amd64-v0.1.1
-dist/windwatch-linux-arm64-v0.1.1
+dist/windwatch-linux-amd64-v0.1.1.tar.gz
+dist/windwatch-linux-arm64-v0.1.1.tar.gz
 dist/SHA256SUMS
 ```
 
-如果模块下载受阻，请在构建前把 `GOPROXY` 设为可访问的 Go 模块代理。可用 `cd dist && sha256sum -c --strict SHA256SUMS` 校验产物。二进制为静态链接，无运行时依赖；界面、迁移、语言包和时区数据都已内嵌，HTTPS 检查使用系统 CA 证书，因此最小化系统需要安装 `ca-certificates` 包。`make dist` 会先执行格式检查、vet 和测试。版本号从仓库 `VERSION` 文件读取；本地构建可用 `VERSION=0.1.1` 覆盖。
+如果模块下载受阻，请在构建前把 `GOPROXY` 设为可访问的 Go 模块代理。可用 `cd dist && sha256sum -c --strict SHA256SUMS` 校验压缩包。每个压缩包内是一个静态链接的 `windwatch` 二进制，无运行时依赖；界面、迁移、语言包和时区数据都已内嵌。HTTPS 检查使用系统 CA 证书，因此最小化系统需要安装 `ca-certificates` 包。`make dist` 会先执行格式检查、vet 和测试。版本号从仓库 `VERSION` 文件读取；本地构建可用 `VERSION=0.1.1` 覆盖。
 
 在 systemd 主机上安装时，按 `uname -m` 选择对应二进制：
 
 ```bash
-sudo install -m 0755 dist/windwatch-linux-amd64-v$(cat VERSION) /usr/local/bin/windwatch
+tar -xzf dist/windwatch-linux-amd64-v$(cat VERSION).tar.gz -C /tmp
+sudo install -m 0755 /tmp/windwatch /usr/local/bin/windwatch
 sudo useradd --system --user-group --home-dir /var/lib/windwatch --shell /usr/sbin/nologin windwatch
 sudo install -d -o windwatch -g windwatch -m 0750 /var/lib/windwatch
 sudo install -m 0644 deploy/windwatch.service /etc/systemd/system/windwatch.service

@@ -33,9 +33,12 @@ dist: check
 	mkdir -p $(DIST)
 	@set -e; for arch in amd64 arm64; do \
 		echo "building linux/$$arch"; \
-		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS)' -o $(DIST)/windwatch-linux-$$arch-$(VERSION_TAG) ./cmd/windwatch; \
+		work="$$(mktemp -d)"; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS)' -o "$$work/windwatch" ./cmd/windwatch; \
+		tar -C "$$work" -czf "$(DIST)/windwatch-linux-$$arch-$(VERSION_TAG).tar.gz" windwatch; \
+		rm -rf "$$work"; \
 	done
-	cd $(DIST) && sha256sum windwatch-linux-amd64-$(VERSION_TAG) windwatch-linux-arm64-$(VERSION_TAG) > SHA256SUMS
+	cd $(DIST) && sha256sum windwatch-linux-amd64-$(VERSION_TAG).tar.gz windwatch-linux-arm64-$(VERSION_TAG).tar.gz > SHA256SUMS
 	@echo "artifacts:"; ls -lh $(DIST)
 
 docker-build:
