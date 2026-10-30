@@ -32,6 +32,8 @@ const (
 	notificationRetention = 365 * 24 * time.Hour
 	certificateRetention  = 30 * 24 * time.Hour
 	domainInfoRetention   = 90 * 24 * time.Hour
+	domainRefreshInterval = 24 * time.Hour
+	domainRetryBase       = 30 * time.Minute
 )
 
 type NotificationSink interface {
@@ -744,11 +746,21 @@ func (s *Scheduler) warningNotification(monitor model.Monitor, result model.Chec
 }
 
 func (s *Scheduler) refreshDomains(ctx context.Context) {
-	refresh := func() {
+	retryDelay := domainRetryBase
+	nextDelay := func(retry bool) time.Duration {
+		if !retry {
+			retryDelay = domainRetryBase
+			return domainRefreshInterval
+		}
+		delay := retryDelay
+		retryDelay = min(retryDelay*2, domainRefreshInterval)
+		return delay
+	}
+	refresh := func() time.Duration {
 		monitors, err := s.store.ListMonitors(ctx)
 		if err != nil {
 			s.log.Warn("list monitors for domain refresh", "error", err)
-			return
+			return nextDelay(true)
 		}
 		resolver := func(proxyID *int64) (*outboundproxy.Config, error) {
 			if proxyID == nil {
@@ -758,23 +770,29 @@ func (s *Scheduler) refreshDomains(ctx context.Context) {
 			defer cancel()
 			return s.resolveProxy(proxyCtx, *proxyID)
 		}
-		if err := domains.Refresh(ctx, s.store, monitors, resolver, s.now().UTC()); err != nil {
+		retry, err := domains.Refresh(ctx, s.store, monitors, resolver, s.now().UTC())
+		if err != nil {
 			s.log.Warn("refresh domains", "error", err)
 		}
+		return nextDelay(retry)
 	}
-	refresh()
 
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
+	timer := time.NewTimer(refresh())
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			refresh()
+		case <-timer.C:
 		case <-s.domainWake:
-			refresh()
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
 		}
+		timer.Reset(refresh())
 	}
 }
 
