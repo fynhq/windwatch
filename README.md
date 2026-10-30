@@ -43,7 +43,7 @@ Useful commands:
 
 `serve` is the default command, so `./windwatch` is equivalent to `./windwatch serve`.
 
-> Prebuilt release artifacts and the GHCR image are planned for the first tagged release. Until then, build the Docker image locally or use `make dist` as described below.
+> Prebuilt release artifacts and the GHCR image are published with tagged releases. To build locally instead, use the Dockerfile or `make dist` as described below.
 
 ## Deployment
 
@@ -60,7 +60,7 @@ cp compose.example.yaml compose.yaml
 docker compose up -d
 ```
 
-The container image is published with the first release. Until then, build locally with `docker build -t windwatch:latest .` and run `WINDWATCH_IMAGE=windwatch:latest docker compose up -d`. To upgrade, back up the data volume or directory, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous version tag or the digest recorded before the upgrade.
+The example references the published GHCR image. To build locally instead, run `docker build -t windwatch:latest .` and set `WINDWATCH_IMAGE=windwatch:latest` before `docker compose up -d`. To upgrade, back up the data volume or directory, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous version tag or the digest recorded before the upgrade.
 
 Open [http://localhost:8080/setup](http://localhost:8080/setup) and create the administrator account. Data is stored in the named volume `windwatch_data`; `docker compose down` keeps it, while `docker compose down -v` deletes it.
 
@@ -109,7 +109,7 @@ If module downloads are blocked, set `GOPROXY` to a reachable Go module proxy be
 Install on a systemd host, choosing the binary that matches `uname -m`:
 
 ```bash
-sudo install -m 0755 dist/windwatch-linux-amd64-$(cat VERSION) /usr/local/bin/windwatch
+sudo install -m 0755 dist/windwatch-linux-amd64-v$(cat VERSION) /usr/local/bin/windwatch
 sudo useradd --system --user-group --home-dir /var/lib/windwatch --shell /usr/sbin/nologin windwatch
 sudo install -d -o windwatch -g windwatch -m 0750 /var/lib/windwatch
 sudo install -m 0644 deploy/windwatch.service /etc/systemd/system/windwatch.service
@@ -348,7 +348,7 @@ CGO_ENABLED=0 go build -trimpath -o windwatch ./cmd/windwatch
 
 `serve` 是默认子命令，因此 `./windwatch` 等价于 `./windwatch serve`。
 
-> 预编译发布产物和 GHCR 镜像计划在首次正式发布时提供；在此之前请本地构建 Docker 镜像或使用 `make dist`。
+> 预编译发布产物和 GHCR 镜像随 tagged release 提供；需要本地构建时请使用 Dockerfile 或 `make dist`。
 
 ## 部署
 
@@ -365,7 +365,7 @@ cp compose.example.yaml compose.yaml
 docker compose up -d
 ```
 
-容器镜像随首次正式发布提供。在此之前可本地构建 `docker build -t windwatch:latest .`，再用 `WINDWATCH_IMAGE=windwatch:latest docker compose up -d`。升级时先备份数据卷或数据目录，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或事先记录的 digest。
+示例默认引用已发布的 GHCR 镜像。需要本地构建时执行 `docker build -t windwatch:latest .`，并在 `docker compose up -d` 前设置 `WINDWATCH_IMAGE=windwatch:latest`。升级时先备份数据卷或数据目录，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或事先记录的 digest。
 
 打开 [http://localhost:8080/setup](http://localhost:8080/setup) 创建管理员账号。数据保存在命名卷 `windwatch_data` 中；`docker compose down` 会保留数据，`docker compose down -v` 会删除数据。
 
@@ -414,7 +414,7 @@ dist/SHA256SUMS
 在 systemd 主机上安装时，按 `uname -m` 选择对应二进制：
 
 ```bash
-sudo install -m 0755 dist/windwatch-linux-amd64-$(cat VERSION) /usr/local/bin/windwatch
+sudo install -m 0755 dist/windwatch-linux-amd64-v$(cat VERSION) /usr/local/bin/windwatch
 sudo useradd --system --user-group --home-dir /var/lib/windwatch --shell /usr/sbin/nologin windwatch
 sudo install -d -o windwatch -g windwatch -m 0750 /var/lib/windwatch
 sudo install -m 0644 deploy/windwatch.service /etc/systemd/system/windwatch.service
