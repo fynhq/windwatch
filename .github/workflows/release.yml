@@ -109,8 +109,13 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
-          output="$(./dist/windwatch-linux-amd64-v${VERSION} version)"
+          archive="./dist/windwatch-linux-amd64-v${VERSION}.tar.gz"
+          test "$(tar -tzf "$archive")" = "windwatch"
+          tmp="$(mktemp -d)"
+          tar -xzf "$archive" -C "$tmp"
+          output="$("$tmp/windwatch" version)"
           test "$output" = "windwatch v${VERSION}"
+          rm -rf "$tmp"
 
       - name: Create or update draft release
         env:
@@ -120,25 +125,20 @@ jobs:
         run: |
           set -euo pipefail
           assets=(
-            "dist/windwatch-linux-amd64-v${VERSION}"
-            "dist/windwatch-linux-arm64-v${VERSION}"
+            "dist/windwatch-linux-amd64-v${VERSION}.tar.gz"
+            "dist/windwatch-linux-arm64-v${VERSION}.tar.gz"
             "dist/SHA256SUMS"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)"
             test "$draft" = "true"
-            gh release edit "$GITHUB_REF_NAME" \
-              --title "windwatch $GITHUB_REF_NAME" \
-              --notes-file "$NOTES_FILE" \
-              --draft
-            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-              --title "windwatch $GITHUB_REF_NAME" \
-              --draft \
-              --verify-tag \
-              --notes-file "$NOTES_FILE"
+            gh release delete "$GITHUB_REF_NAME" --yes
           fi
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+            --title "windwatch $GITHUB_REF_NAME" \
+            --draft \
+            --verify-tag \
+            --notes-file "$NOTES_FILE"
 
       - name: Verify release assets
         env:
@@ -151,13 +151,15 @@ jobs:
           gh release download "$GITHUB_REF_NAME" --dir verify
           cd verify
           for asset in \
-            "windwatch-linux-amd64-v${VERSION}" \
-            "windwatch-linux-arm64-v${VERSION}" \
+            "windwatch-linux-amd64-v${VERSION}.tar.gz" \
+            "windwatch-linux-arm64-v${VERSION}.tar.gz" \
             "SHA256SUMS"; do
             test -f "$asset"
           done
           test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
           sha256sum -c --strict SHA256SUMS
+          test "$(tar -tzf "windwatch-linux-amd64-v${VERSION}.tar.gz")" = "windwatch"
+          test "$(tar -tzf "windwatch-linux-arm64-v${VERSION}.tar.gz")" = "windwatch"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -191,14 +193,38 @@ jobs:
       - name: Verify image tags
         env:
           VERSION: ${{ needs.check.outputs.version }}
+          GHCR_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          export NO_COLOR=1
-          version_digest="$(docker buildx imagetools inspect "ghcr.io/fynhq/windwatch:v${VERSION}" | awk '/^Digest:/ {print $2; exit}')"
-          latest_digest="$(docker buildx imagetools inspect "ghcr.io/fynhq/windwatch:latest" | awk '/^Digest:/ {print $2; exit}')"
-          test -n "$version_digest"
-          test -n "$latest_digest"
-          test "$version_digest" = "$latest_digest"
+          registry="ghcr.io"
+          repo="fynhq/windwatch"
+          token="$(curl -fsS -u "${GITHUB_ACTOR}:${GHCR_TOKEN}" \
+            "https://${registry}/token?scope=repository:${repo}:pull&service=${registry}" |
+            sed -n 's/.*"token":"\([^"]*\)".*/\1/p' || true)"
+          if [ -z "$token" ]; then
+            echo "authenticated token request failed; falling back to anonymous pull token"
+            token="$(curl -fsS "https://${registry}/token?scope=repository:${repo}:pull&service=${registry}" |
+              sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+          fi
+          digest() {
+            curl -fsSI \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://${registry}/v2/${repo}/manifests/$1" |
+              tr -d '\r' |
+              awk -F': ' 'tolower($1) == "docker-content-digest" {print $2}'
+          }
+          for attempt in 1 2 3 4 5; do
+            version_digest="$(digest "v${VERSION}" || true)"
+            latest_digest="$(digest latest || true)"
+            echo "attempt ${attempt}: version=${version_digest:-<empty>} latest=${latest_digest:-<empty>}"
+            if [ -n "${version_digest}" ] && [ "${version_digest}" = "${latest_digest}" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::latest and v${VERSION} do not point to the same image"
+          exit 1
 
       - name: Smoke test image on both architectures
         env:
