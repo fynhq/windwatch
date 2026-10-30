@@ -702,8 +702,11 @@
           return;
         }
         var groups = form.querySelectorAll("[data-channel-fields]");
+        var typeField = form.querySelector("[data-channel-type-field]");
+        var formatField = form.querySelector("[data-webhook-format-field]");
         function refresh() {
           var active = select.value;
+          var webhook = active === "webhook";
           for (var j = 0; j < groups.length; j++) {
             var group = groups[j];
             var match = group.getAttribute("data-channel-fields") === active;
@@ -711,6 +714,16 @@
             var fields = group.querySelectorAll("input, select, textarea");
             for (var k = 0; k < fields.length; k++) {
               fields[k].disabled = !match;
+            }
+          }
+          if (typeField) {
+            typeField.classList.toggle("is-wide", !webhook);
+          }
+          if (formatField) {
+            formatField.hidden = !webhook;
+            var formatSelects = formatField.querySelectorAll("select");
+            for (var m = 0; m < formatSelects.length; m++) {
+              formatSelects[m].disabled = !webhook;
             }
           }
         }

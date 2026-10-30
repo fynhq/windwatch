@@ -929,6 +929,27 @@
   width: min(720px, calc(100vw - 24px));
 }
 
+#notification-channel .dialog-form {
+  padding-bottom: 0;
+}
+
+#notification-channel .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 -22px;
+  padding: 14px 22px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+@media (max-width: 640px) {
+  #notification-channel .dialog-actions {
+    margin: 0 -18px;
+    padding: 14px 18px 18px;
+  }
+}
+
 .notification-payload {
   max-height: min(52vh, 420px);
   margin: 0;
