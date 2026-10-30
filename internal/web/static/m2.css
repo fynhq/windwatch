@@ -949,10 +949,51 @@
   background: var(--surface);
 }
 
-@media (min-width: 961px) {
-  .table-scroll:has(.events-table) {
-    max-height: calc(100vh - 310px);
+@media (min-width: 961px) and (min-height: 640px) {
+  .page-events {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .page-events .app-shell,
+  .page-events .main-shell {
+    height: 100vh;
+    min-height: 0;
+  }
+
+  .page-events .main-shell {
+    overflow: hidden;
+  }
+
+  .page-events .main-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .page-events .page-head,
+  .page-events .events-overview,
+  .page-events .event-banner,
+  .page-events .events-toolbar {
+    flex: 0 0 auto;
+  }
+
+  .page-events .panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .page-events .table-scroll:has(.events-table) {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
     overflow: auto;
+  }
+
+  .page-events .main-content:has(.event-filter-empty:not([hidden])) .panel {
+    flex: 0 0 auto;
   }
 }
 

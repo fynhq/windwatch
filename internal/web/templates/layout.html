@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/static/m1.css?v={{.AssetVersion}}">
   <link rel="stylesheet" href="/static/m2.css?v={{.AssetVersion}}">
 </head>
-<body class="{{if .Authenticated}}app-body{{else if .PublicView}}public-body{{else}}auth-body{{end}}"{{if .AutoRefresh}} data-auto-refresh="30" data-refresh-target="{{if .PublicView}}status{{else}}dashboard{{end}}"{{end}}>
+<body class="{{if .Authenticated}}app-body{{else if .PublicView}}public-body{{else}}auth-body{{end}}{{if eq .ActiveNav "events"}} page-events{{end}}"{{if .AutoRefresh}} data-auto-refresh="30" data-refresh-target="{{if .PublicView}}status{{else}}dashboard{{end}}"{{end}}>
 <a class="skip-link" href="#main">{{.I18n.T "common.skipToContent"}}</a>
 <div class="toast-region" data-toast-region
   data-close-label="{{.I18n.T "common.dismiss"}}"
