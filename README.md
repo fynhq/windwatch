@@ -6,7 +6,7 @@
 
 WindWatch watches websites, TCP ports, Docker containers, and external heartbeats, and lets you know when something goes wrong. It is built for a single person or a small team: one binary, one SQLite database, no external services to operate, and no frontend build chain.
 
-English | [简体中文](#chinese)
+English | [中文](#chinese)
 
 ## Features
 
@@ -63,7 +63,9 @@ sudo chown 65532:65532 data && sudo chmod 700 data
 docker compose up -d
 ```
 
-On Docker Desktop, skip the `chown` line and use port mapping instead of host networking. Docker Desktop shares host folders through its VM; keep backups of `./data` and never run two instances against the same directory. Existing deployments that used the previous `windwatch_data` volume must copy it into `./data` before switching the mount; see Data and backup.
+On Docker Desktop, skip the `chown` line and use port mapping instead of host networking. Docker Desktop shares host folders through its VM; keep backups of `./data` and never run two instances against the same directory.
+
+On Docker Desktop, outbound probes also go through the VM's user-space network. If HTTPS checks show multi-second latency or false timeouts, set `GODEBUG=tlsmlkem=0` in the service environment; [compose.example.yaml](compose.example.yaml) has a commented example. This disables Go's post-quantum hybrid key exchange for outbound probes; certificate verification is unchanged. Do not enable it on Linux unless you see the same problem.
 
 The example references the published GHCR image. To build locally instead, run `docker build -t windwatch:latest .` and set `WINDWATCH_IMAGE=windwatch:latest` before `docker compose up -d`. To upgrade, back up the `./data` directory, then run `docker compose pull && docker compose up -d`. Database migrations run on startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous version tag or the digest recorded before the upgrade.
 
@@ -226,7 +228,7 @@ data/
 
 `secret.key` encrypts stored secrets such as proxy passwords, Push tokens, and notification credentials. Keep it private and keep it together with the database: if it is lost, those encrypted values cannot be recovered. To back up, stop WindWatch and copy the entire data directory, including `logs/`; to restore, put both the database and the matching key file back in place.
 
-With Docker Compose, data and logs are in the `./data` directory next to `compose.yaml`. On Linux, stop the stack before copying and keep the files owned by UID 65532 (directory 0700); on Docker Desktop, the shared directory is mapped to the container user. `docker compose down` leaves the directory in place, and `down -v` does not delete bind-mounted data. Existing deployments that used the old named volume can stop the stack, run `docker cp windwatch:/data/. ./data/`, run `sudo chown -R 65532:65532 data` on Linux, then switch the mount.
+With Docker Compose, data and logs are in the `./data` directory next to `compose.yaml`. On Linux, stop the stack before copying and keep the files owned by UID 65532 (directory 0700); on Docker Desktop, the shared directory is mapped to the container user. `docker compose down` leaves the directory in place, and `down -v` does not delete bind-mounted data.
 
 Database migrations run automatically at startup. Back up the data directory before upgrading. Downgrades are not supported automatically.
 
@@ -319,7 +321,7 @@ Released under the MIT License. See [LICENSE](LICENSE).
 
 WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部心跳，并在服务出现问题时通知你。它面向个人和小团队：一个二进制、一个 SQLite 数据库，不需要维护外部服务，也没有前端构建链。
 
-[English](#english) | 简体中文
+[English](#english) | 中文
 
 ## 功能
 
@@ -376,7 +378,9 @@ sudo chown 65532:65532 data && sudo chmod 700 data
 docker compose up -d
 ```
 
-在 Docker Desktop 上跳过 `chown`，改用端口映射而不是 host 网络。Docker Desktop 通过虚拟机共享宿主目录；请备份 `./data`，并确保同一目录只有一个实例在运行。旧部署如果使用命名卷 `windwatch_data`，必须先把它复制到 `./data` 再切换挂载；步骤见“数据与备份”。
+在 Docker Desktop 上跳过 `chown`，改用端口映射而不是 host 网络。Docker Desktop 通过虚拟机共享宿主目录；请备份 `./data`，并确保同一目录只有一个实例在运行。
+
+在 Docker Desktop 上，出站探测还会经过虚拟机的用户态网络。如果 HTTPS 检查出现数秒延迟或误报超时，可在 service 的 environment 中设置 `GODEBUG=tlsmlkem=0`；[compose.example.yaml](compose.example.yaml) 里有注释示例。这会让出站探测放弃 Go 的后量子混合密钥交换，证书校验不变。Linux 上没有同样问题时不要开启。
 
 示例默认引用已发布的 GHCR 镜像。需要本地构建时执行 `docker build -t windwatch:latest .`，并在 `docker compose up -d` 前设置 `WINDWATCH_IMAGE=windwatch:latest`。升级时先备份 `./data` 数据目录，再执行 `docker compose pull && docker compose up -d`。数据库迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或事先记录的 digest。
 
@@ -537,7 +541,7 @@ data/
 
 `secret.key` 用于加密代理密码、Push Token 和通知凭据等敏感配置。请妥善保管，并始终与数据库一起备份：密钥一旦丢失，这些加密字段将无法恢复。备份时先停止 WindWatch，再复制整个数据目录（含 `logs/`）；恢复时把数据库和匹配的密钥文件一起放回原位置。
 
-使用 Docker Compose 时，数据与日志在 `compose.yaml` 旁的 `./data` 目录。Linux 下备份前先停止服务栈，恢复时保持文件属主为 UID 65532（目录 0700）；Docker Desktop 的共享目录会映射给容器用户。`docker compose down` 保留目录，`down -v` 不会删除绑定目录。旧部署如果使用命名卷，可停止服务栈后执行 `docker cp windwatch:/data/. ./data/`，Linux 下再执行 `sudo chown -R 65532:65532 data`，然后切换挂载。
+使用 Docker Compose 时，数据与日志在 `compose.yaml` 旁的 `./data` 目录。Linux 下备份前先停止服务栈，恢复时保持文件属主为 UID 65532（目录 0700）；Docker Desktop 的共享目录会映射给容器用户。`docker compose down` 保留目录，`down -v` 不会删除绑定目录。
 
 数据库迁移会在启动时自动执行。升级前请先备份数据目录；系统不支持自动降级。
 

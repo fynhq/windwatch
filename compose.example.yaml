@@ -4,10 +4,6 @@
 # compose.yaml 已被 Git 忽略，仅用于本地部署。
 # Set WINDWATCH_IMAGE to pin a version tag or digest, or use a locally built image.
 # 设置 WINDWATCH_IMAGE 可固定版本标签或 digest，或使用本地构建的镜像。
-# Upgrading from the old windwatch_data volume? Stop the stack and copy /data
-# into ./data before the first start; see README "Data and backup".
-# 从旧命名卷 windwatch_data 升级？首次启动前停机，把 /data 复制到 ./data；
-# 详见 README“数据与备份”。
 name: windwatch
 
 services:
@@ -33,6 +29,15 @@ services:
       WINDWATCH_DATA_DIR: "/data"
       WINDWATCH_HEALTH_URL: "http://127.0.0.1:8080/healthz"
       GOMEMLIMIT: "96MiB"
+      # Docker Desktop only: Go's default ML-KEM TLS handshake can be slow on
+      # Docker Desktop's user-space network. Uncomment only if outbound HTTPS
+      # checks show multi-second TLS latency or false timeouts. This disables
+      # the post-quantum hybrid key exchange for outbound probes; certificate
+      # verification is unchanged.
+      # 仅 Docker Desktop：Go 默认的 ML-KEM TLS 握手在 Docker Desktop 的
+      # 用户态网络上可能偏慢。仅当出站 HTTPS 检查出现数秒 TLS 延迟或误报
+      # 超时时再取消注释；这会让出站探测放弃后量子混合密钥交换，证书校验不变。
+      # GODEBUG: "tlsmlkem=0"
       # Set this only when a trusted reverse proxy fronts the container.
       # 仅当容器前有可信反向代理时设置。
       # WINDWATCH_TRUSTED_PROXIES: "172.18.0.0/16"
