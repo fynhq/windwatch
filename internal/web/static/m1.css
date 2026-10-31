@@ -877,14 +877,10 @@
   min-width: 0;
 }
 
-.users-table td {
-  vertical-align: top;
-}
-
 .user-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
 }
 
@@ -892,28 +888,31 @@
   margin: 0;
 }
 
-/* Text actions sit in the same flex row as small buttons; match their line
-   box so all action labels align on one baseline. */
-.user-actions .link-button {
+.user-actions .inline-form {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
+}
+
+.role-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.role-select {
   min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
 }
 
-.inline-details {
-  display: inline-block;
-}
-
-.inline-details > summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  list-style-position: inside;
-}
-
-.inline-details[open] > summary {
-  margin-bottom: 8px;
+.role-select:hover {
+  border-color: var(--accent);
 }
 
 .notification-log-status,

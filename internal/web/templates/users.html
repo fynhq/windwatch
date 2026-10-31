@@ -37,7 +37,23 @@
             <strong>{{.Username}}</strong>
             {{if .IsSelf}}<span class="muted">({{$.I18n.T "users.you"}})</span>{{end}}
           </td>
-          <td data-label="{{$.I18n.T "users.role"}}">{{.RoleLabel}}</td>
+          <td data-label="{{$.I18n.T "users.role"}}">
+            {{if .IsSelf}}
+            {{.RoleLabel}}
+            {{else}}
+            <form method="post" action="/settings/users/{{.ID}}/role" class="role-form" data-auto-submit>
+              <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+              <select name="role" class="role-select" aria-label="{{$.I18n.T "users.role"}}">
+                {{range $.Roles}}
+                <option value="{{.Value}}" {{if eq .Value $userRole}}selected{{end}}>{{.Label}}</option>
+                {{end}}
+              </select>
+              <noscript>
+                <button class="button button-secondary button-small" type="submit">{{$.I18n.T "users.saveRole"}}</button>
+              </noscript>
+            </form>
+            {{end}}
+          </td>
           <td data-label="{{$.I18n.T "users.status"}}">
             {{if .Disabled}}
             <span class="status-pill status-paused">{{$.I18n.T "users.disabled"}}</span>
@@ -49,15 +65,6 @@
           <td class="is-wide" data-label="{{$.I18n.T "users.actions"}}">
             <div class="user-actions">
               {{if not .IsSelf}}
-              <form method="post" action="/settings/users/{{.ID}}/role" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-                <select name="role" aria-label="{{$.I18n.T "users.role"}}">
-                  {{range $.Roles}}
-                  <option value="{{.Value}}" {{if eq .Value $userRole}}selected{{end}}>{{.Label}}</option>
-                  {{end}}
-                </select>
-                <button class="button button-secondary button-small" type="submit">{{$.I18n.T "users.saveRole"}}</button>
-              </form>
               <form method="post" action="/settings/users/{{.ID}}/disabled" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
                 <input type="hidden" name="disabled" value="{{if .Disabled}}0{{else}}1{{end}}">
@@ -65,15 +72,15 @@
                   {{if .Disabled}}{{$.I18n.T "users.enable"}}{{else}}{{$.I18n.T "users.disable"}}{{end}}
                 </button>
               </form>
-              <details class="inline-details">
-                <summary>{{$.I18n.T "users.delete"}}</summary>
-                <form method="post" action="/settings/users/{{.ID}}/delete" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-                  <button class="button button-danger button-small" type="submit">{{$.I18n.T "users.deleteConfirm"}}</button>
-                </form>
-              </details>
               {{end}}
-              <button class="link-button" type="button" data-dialog-open="reset-password-{{.ID}}">{{$.I18n.T "users.resetPassword"}}</button>
+              <button class="button button-secondary button-small" type="button" data-dialog-open="reset-password-{{.ID}}">{{$.I18n.T "users.resetPassword"}}</button>
+              {{if not .IsSelf}}
+              <form method="post" action="/settings/users/{{.ID}}/delete" class="inline-form"
+                data-confirm="{{$.I18n.T "users.deleteConfirm"}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <button class="button button-danger-outline button-small" type="submit">{{$.I18n.T "common.delete"}}</button>
+              </form>
+              {{end}}
             </div>
           </td>
         </tr>

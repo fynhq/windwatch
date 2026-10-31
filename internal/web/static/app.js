@@ -754,6 +754,19 @@
     }
   }
 
+  function initAutoSubmitForms() {
+    var forms = document.querySelectorAll("form[data-auto-submit]");
+    for (var i = 0; i < forms.length; i++) {
+      forms[i].addEventListener("change", function () {
+        if (typeof this.requestSubmit === "function") {
+          this.requestSubmit();
+        } else {
+          this.submit();
+        }
+      });
+    }
+  }
+
   function initConfirmForms() {
     document.addEventListener("submit", function (event) {
       var form = event.target.closest("form[data-confirm]");
@@ -814,6 +827,7 @@
     initToasts();
     initDialogs();
     initCopyFields();
+    initAutoSubmitForms();
     initConfirmForms();
     initEventDialog();
     initNotificationContentDialog();

@@ -217,6 +217,51 @@ func TestUsersCreateDialog(t *testing.T) {
 	}
 }
 
+func TestUsersRoleUpdate(t *testing.T) {
+	_, st, testServer := newWebTestServer(t)
+	client, csrf := setupAdminSession(t, testServer)
+	hash, err := secret.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	user, err := st.CreateUser(t.Context(), "operator", hash, model.RoleViewer, time.Now())
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	rolePath := "/settings/users/" + strconv.FormatInt(user.ID, 10) + "/role"
+
+	response, err := client.PostForm(testServer.URL+rolePath, url.Values{
+		"csrf_token": {csrf},
+		"role":       {model.RoleAdmin},
+	})
+	if err != nil {
+		t.Fatalf("POST role: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.Request.URL.Path != "/settings/users" {
+		t.Fatalf("role update ended at %q, want /settings/users", response.Request.URL.Path)
+	}
+	updated, err := st.AdminByUsername(t.Context(), "operator")
+	if err != nil {
+		t.Fatalf("AdminByUsername: %v", err)
+	}
+	if updated.Role != model.RoleAdmin {
+		t.Fatalf("role=%q, want %q", updated.Role, model.RoleAdmin)
+	}
+	for _, want := range []string{
+		`action="` + rolePath + `" class="role-form" data-auto-submit`,
+		`data-confirm="Delete this user?`,
+		`class="button button-danger-outline button-small" type="submit">Delete</button>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("users page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "inline-details") {
+		t.Fatal("delete action still uses an inline details toggle")
+	}
+}
+
 func TestUsersResetPasswordDialogReopensOnError(t *testing.T) {
 	_, st, testServer := newWebTestServer(t)
 	client, csrf := setupAdminSession(t, testServer)
