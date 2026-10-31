@@ -124,6 +124,12 @@ func TestConsoleBrandVersionAndSettingsCards(t *testing.T) {
 	if strings.Contains(body, `class="mobile-version"`) {
 		t.Fatal("mobile topbar still renders the version")
 	}
+	if !strings.Contains(body, `class="mobile-lang"`) {
+		t.Fatal("mobile topbar language switch is missing")
+	}
+	if strings.Contains(body, "mobile-avatar") {
+		t.Fatal("mobile topbar still renders the user avatar")
+	}
 
 	response, err = client.Get(testServer.URL + "/language/zh-CN?next=%2Fsettings")
 	if err != nil {

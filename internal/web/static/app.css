@@ -1369,34 +1369,25 @@ tbody tr:last-child td {
   .mobile-topbar-actions {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 4px;
     flex: 0 0 auto;
   }
 
-  .mobile-action {
+  .mobile-lang {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-width: var(--touch-target);
     height: var(--touch-target);
-    padding: 0 9px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    background: var(--surface-2);
+    padding: 0 4px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     text-decoration: none;
   }
 
-  .mobile-action:hover {
-    border-color: var(--border-strong);
+  .mobile-lang:hover {
     color: var(--text);
-  }
-
-  .mobile-topbar .avatar {
-    width: 30px;
-    height: 30px;
   }
 
   .mobile-topbar .icon-button {

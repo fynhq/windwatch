@@ -43,8 +43,7 @@
     <strong>{{.I18n.T "app.name"}}</strong>
   </a>
   <div class="mobile-topbar-actions">
-    <a class="mobile-action" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}" title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}EN{{else}}中{{end}}</a>
-    <span class="avatar mobile-avatar" title="{{.Username}}" aria-hidden="true">{{template "icon-user"}}</span>
+    <a class="mobile-lang" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}" title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}EN{{else}}中{{end}}</a>
     <form class="inline-form" method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{.CSRF}}">
       <button class="icon-button" type="submit" title="{{.I18n.T "nav.signout"}}" aria-label="{{.I18n.T "nav.signout"}}">
