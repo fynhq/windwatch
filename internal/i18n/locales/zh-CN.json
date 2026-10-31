@@ -107,7 +107,7 @@
   "monitor.timeoutHint": "1–300 秒，必须小于间隔。",
   "monitor.failThreshold": "失败阈值",
   "monitor.recoverThreshold": "恢复阈值",
-  "monitor.thresholdHint": "连续失败/成功次数，范围 1–20。",
+  "monitor.thresholdHint": "连续失败/成功次数，范围 1–20。主动检查在判定 DOWN 前会自动复核一次；复核成功则不会判定 DOWN。",
   "monitor.save": "创建监控",
   "monitor.saveChanges": "保存修改",
   "monitor.checkNow": "立即检测",

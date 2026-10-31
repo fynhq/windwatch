@@ -158,7 +158,7 @@ Business settings — users, the public status page, notification channels, outb
 
 ## Monitoring
 
-Each monitor has an interval, timeout, failure threshold, and recovery threshold. The defaults are a 60-second interval, a 10-second timeout, two consecutive failures before `DOWN`, and one success before recovery. Intervals range from 20 seconds to 24 hours; timeouts from 1 second to 5 minutes and must be shorter than the interval. Each monitor selects which notification methods receive its alerts and can pause notifications without losing that selection; scheduling and checks are unchanged.
+Each monitor has an interval, timeout, failure threshold, and recovery threshold. The defaults are a 60-second interval, a 10-second timeout, two consecutive failures before `DOWN`, and one success before recovery. Intervals range from 20 seconds to 24 hours; timeouts from 1 second to 5 minutes and must be shorter than the interval. Before an active check is allowed to mark a monitor `DOWN`, WindWatch rechecks once after a short delay; a successful recheck prevents the `DOWN` transition. This makes a failure threshold of 1 safer, at the cost of a short delay before a real outage alerts; Push monitors cannot be rechecked. Each monitor selects which notification methods receive its alerts and can pause notifications without losing that selection; scheduling and checks are unchanged.
 
 ### HTTP(S)
 
@@ -179,7 +179,7 @@ All probes run from the WindWatch process. When WindWatch runs in a container, `
 
 ### Docker container
 
-A Docker monitor checks a container by name or ID and can additionally require a healthy Docker health status. The Docker Engine endpoint comes from `DOCKER_HOST` and supports Unix sockets, `tcp://` endpoints, and Windows named pipes (`npipe:////./pipe/docker_engine`). The default is a Unix socket on Linux and a named pipe on Windows. Named pipes require a Windows build; the official standalone binaries are Linux-only, so Windows users should build from source or use a `tcp://` endpoint. Docker checks always connect directly and ignore outbound proxy settings.
+A Docker monitor checks a container by name or ID and can additionally require a healthy Docker health status. When a healthy status is required, Docker's `starting` health state is the healthcheck start period and is not treated as a failure; the check fails once Docker reports `unhealthy`. The Docker Engine endpoint comes from `DOCKER_HOST` and supports Unix sockets, `tcp://` endpoints, and Windows named pipes (`npipe:////./pipe/docker_engine`). The default is a Unix socket on Linux and a named pipe on Windows. Named pipes require a Windows build; the official standalone binaries are Linux-only, so Windows users should build from source or use a `tcp://` endpoint. Docker checks always connect directly and ignore outbound proxy settings.
 
 Mounting `/var/run/docker.sock` into a container gives WindWatch significant control over the Docker host. Only do this when Docker monitoring is needed, and restrict access to the socket.
 
@@ -473,7 +473,7 @@ journalctl -u windwatch -f
 
 ## 监控
 
-每个监控都有检查间隔、超时、失败阈值和恢复阈值。默认值为 60 秒间隔、10 秒超时、连续失败 2 次判定 `DOWN`、连续成功 1 次恢复。检查间隔范围为 20 秒到 24 小时；超时范围为 1 秒到 5 分钟，且必须小于检查间隔。每个监控选择哪些通知方式接收告警，也可以暂停通知而不丢失选择；检查和调度行为不变。
+每个监控都有检查间隔、超时、失败阈值和恢复阈值。默认值为 60 秒间隔、10 秒超时、连续失败 2 次判定 `DOWN`、连续成功 1 次恢复。检查间隔范围为 20 秒到 24 小时；超时范围为 1 秒到 5 分钟，且必须小于检查间隔。主动检查在判定 `DOWN` 前会等待数秒自动复核一次；复核成功则不会判定 `DOWN`，因此失败阈值 1 也更安全，代价是真故障告警会晚几秒到几十秒。Push 监控无法主动复核。每个监控选择哪些通知方式接收告警，也可以暂停通知而不丢失选择；检查和调度行为不变。
 
 ### HTTP(S)
 
@@ -492,7 +492,7 @@ TCP 监控检查 `host:port` 是否可以建立连接。原生部署时可以用
 
 ### Docker 容器
 
-Docker 监控按容器名称或 ID 检查容器，可以额外要求容器处于 Docker healthy 状态。Docker Engine 端点来自 `DOCKER_HOST`，支持 Unix socket、`tcp://` 端点和 Windows named pipe（`npipe:////./pipe/docker_engine`）。Linux 默认使用 Unix socket，Windows 默认使用 named pipe。named pipe 需要 Windows 构建；正式单文件只提供 Linux 版本，Windows 用户需要自行构建或改用 `tcp://` 端点。Docker 检查始终直连，不受出站代理设置影响。
+Docker 监控按容器名称或 ID 检查容器，可以额外要求容器处于 Docker healthy 状态。要求 healthy 时，Docker 的 `starting` 健康状态表示健康检查启动期，不视为失败；只有 `unhealthy` 等状态才失败。Docker Engine 端点来自 `DOCKER_HOST`，支持 Unix socket、`tcp://` 端点和 Windows named pipe（`npipe:////./pipe/docker_engine`）。Linux 默认使用 Unix socket，Windows 默认使用 named pipe。named pipe 需要 Windows 构建；正式单文件只提供 Linux 版本，Windows 用户需要自行构建或改用 `tcp://` 端点。Docker 检查始终直连，不受出站代理设置影响。
 
 把 `/var/run/docker.sock` 挂载进容器，相当于把 Docker 宿主机的较高控制权限交给 WindWatch。只有确实需要 Docker 监控时才挂载，并限制该 socket 的访问范围。
 

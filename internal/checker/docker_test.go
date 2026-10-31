@@ -67,6 +67,7 @@ func dockerMonitor(container string, requireHealthy bool) model.Monitor {
 func TestDockerChecker(t *testing.T) {
 	server := fakeDockerServer(t, map[string]fakeDockerContainer{
 		"healthy":   {running: true, health: "healthy"},
+		"starting":  {running: true, health: "starting"},
 		"unhealthy": {running: true, health: "unhealthy"},
 		"stopped":   {running: false},
 		"plain":     {running: true},
@@ -80,6 +81,11 @@ func TestDockerChecker(t *testing.T) {
 	result, err := registry.CheckWithProxy(ctx, dockerMonitor("healthy", true), nil)
 	if err != nil || !result.Success {
 		t.Fatalf("healthy result=%+v err=%v", result, err)
+	}
+
+	result, err = registry.CheckWithProxy(ctx, dockerMonitor("starting", true), nil)
+	if err != nil || !result.Success {
+		t.Fatalf("starting result=%+v err=%v", result, err)
 	}
 
 	result, err = registry.CheckWithProxy(ctx, dockerMonitor("unhealthy", true), nil)

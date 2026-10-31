@@ -34,6 +34,8 @@ const (
 	domainInfoRetention   = 90 * 24 * time.Hour
 	domainRefreshInterval = 24 * time.Hour
 	domainRetryBase       = 30 * time.Minute
+	failureRecheckDelay   = 5 * time.Second
+	failureRecheckTimeout = 10 * time.Second
 )
 
 type NotificationSink interface {
@@ -48,6 +50,9 @@ type outcome struct {
 	monitorID int64
 	result    model.CheckResult
 	checkedAt time.Time
+	// failureStartedAt is the first failed probe of a recheck cycle. The DOWN
+	// event must start there even though the failure is confirmed later.
+	failureStartedAt time.Time
 }
 
 type runnerHandle struct {
@@ -64,6 +69,9 @@ type Scheduler struct {
 	now          func() time.Time
 	initialDelay func(time.Duration) time.Duration
 	nextDelay    func(time.Duration) time.Duration
+
+	recheckDelay   time.Duration
+	recheckTimeout time.Duration
 
 	semaphore  chan struct{}
 	results    chan outcome
@@ -109,6 +117,8 @@ func New(st *store.Store, registry *checker.Registry, logger *slog.Logger) *Sche
 			}
 			return interval + time.Duration(rand.Int64N(window+1))
 		},
+		recheckDelay:    failureRecheckDelay,
+		recheckTimeout:  failureRecheckTimeout,
 		semaphore:       make(chan struct{}, globalConcurrency),
 		results:         make(chan outcome, resultBuffer),
 		domainWake:      make(chan struct{}, 1),
@@ -292,13 +302,6 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		s.mu.Unlock()
 	}()
 
-	select {
-	case s.semaphore <- struct{}{}:
-		defer func() { <-s.semaphore }()
-	case <-ctx.Done():
-		return
-	}
-
 	monitor, err := s.store.MonitorByID(ctx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
 		return
@@ -310,7 +313,6 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 	if !monitor.Enabled && !manual {
 		return
 	}
-
 	if monitor.Type == model.MonitorTypePush {
 		s.enqueuePushOutcome(ctx, monitor)
 		return
@@ -324,12 +326,63 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 				ErrorKind:    model.ErrorKindProxy,
 				ErrorMessage: truncateErrorText(err.Error()),
 				MetaJSON:     "{}",
-			}, s.now().UTC())
+			}, s.now().UTC(), time.Time{})
 			return
 		}
 	}
 
-	checkCtx, cancel := context.WithTimeout(ctx, monitor.Timeout)
+	startedAt := s.now().UTC()
+	result, ok := s.probe(ctx, monitor, egress, monitor.Timeout)
+	if !ok {
+		return
+	}
+
+	failureStartedAt := time.Time{}
+	if !result.Success {
+		// The collector may have applied an earlier result while this probe was
+		// running. Reload the state before deciding whether the failure would
+		// cross the threshold.
+		if latest, loadErr := s.store.MonitorByID(ctx, monitorID); loadErr == nil {
+			monitor.State = latest.State
+		}
+	}
+	if s.shouldRecheck(monitor, result) {
+		firstFailure := result
+		result, ok = s.recheckFailure(ctx, monitor, egress, result)
+		if !ok {
+			return
+		}
+		if result.Success {
+			s.log.Info("failure cleared by recheck",
+				"monitor_id", monitor.ID,
+				"name", monitor.Name,
+				"error_kind", firstFailure.ErrorKind,
+			)
+		} else {
+			failureStartedAt = startedAt
+			s.log.Info("failure confirmed after recheck",
+				"monitor_id", monitor.ID,
+				"name", monitor.Name,
+				"error_kind", firstFailure.ErrorKind,
+			)
+		}
+	}
+
+	s.sendOutcome(ctx, monitorID, result, s.now().UTC(), failureStartedAt)
+}
+
+// probe runs one check attempt under the global concurrency limit. Each
+// attempt acquires and releases the semaphore separately so the delay before a
+// recheck does not hold a slot.
+func (s *Scheduler) probe(ctx context.Context, monitor model.Monitor, egress *outboundproxy.Config, timeout time.Duration) (model.CheckResult, bool) {
+	select {
+	case s.semaphore <- struct{}{}:
+		defer func() { <-s.semaphore }()
+	case <-ctx.Done():
+		return model.CheckResult{}, false
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	result, err := s.registry.CheckWithProxy(checkCtx, monitor, egress)
 	cancel()
 	if err != nil {
@@ -340,11 +393,58 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		}
 	}
 	if ctx.Err() != nil {
-		return
+		return model.CheckResult{}, false
 	}
+	return result, true
+}
 
-	checkedAt := s.now().UTC()
-	s.sendOutcome(ctx, monitorID, result, checkedAt)
+// shouldRecheck reports whether a failed probe is about to cross the failure
+// threshold. Configuration and internal errors cannot be fixed by probing
+// again, so they keep the original immediate behavior.
+func (s *Scheduler) shouldRecheck(monitor model.Monitor, result model.CheckResult) bool {
+	if result.Success || monitor.Type == model.MonitorTypePush {
+		return false
+	}
+	if monitor.State.Status == model.StatusDown {
+		return false
+	}
+	if monitor.State.ConsecutiveFailures+1 < failedThreshold(monitor) {
+		return false
+	}
+	switch result.ErrorKind {
+	case model.ErrorKindInvalidConfig, model.ErrorKindInternal:
+		return false
+	}
+	return true
+}
+
+// recheckFailure probes one more time before a monitor enters DOWN. A single
+// transient network or TLS hiccup is common, so a successful recheck clears
+// the failure for this cycle; if the recheck also fails the first failure
+// remains the canonical result. The recheck uses a shorter timeout because the
+// first full-timeout probe already established that the target is failing.
+func (s *Scheduler) recheckFailure(ctx context.Context, monitor model.Monitor, egress *outboundproxy.Config, first model.CheckResult) (model.CheckResult, bool) {
+	if delay := s.recheckDelay; delay > 0 {
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return first, false
+		case <-timer.C:
+		}
+	}
+	timeout := monitor.Timeout
+	if s.recheckTimeout > 0 && timeout > s.recheckTimeout {
+		timeout = s.recheckTimeout
+	}
+	result, ok := s.probe(ctx, monitor, egress, timeout)
+	if !ok {
+		return first, false
+	}
+	if result.Success {
+		return result, true
+	}
+	return first, true
 }
 
 func (s *Scheduler) runPushMonitor(ctx context.Context, monitor model.Monitor) {
@@ -398,12 +498,17 @@ func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monito
 		result.ErrorKind = model.ErrorKindHeartbeatTimeout
 		result.ErrorMessage = fmt.Sprintf("no heartbeat since %s", token.LastHeartbeat.Format(time.RFC3339))
 	}
-	s.sendOutcome(ctx, monitor.ID, result, now)
+	s.sendOutcome(ctx, monitor.ID, result, now, time.Time{})
 }
 
-func (s *Scheduler) sendOutcome(ctx context.Context, monitorID int64, result model.CheckResult, checkedAt time.Time) {
+func (s *Scheduler) sendOutcome(ctx context.Context, monitorID int64, result model.CheckResult, checkedAt time.Time, failureStartedAt time.Time) {
 	select {
-	case s.results <- outcome{monitorID: monitorID, result: result, checkedAt: checkedAt}:
+	case s.results <- outcome{
+		monitorID:        monitorID,
+		result:           result,
+		checkedAt:        checkedAt,
+		failureStartedAt: failureStartedAt,
+	}:
 	case <-ctx.Done():
 	}
 }
@@ -462,6 +567,10 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	if !job.result.Success && previousStatus != model.StatusDown &&
 		monitor.State.ConsecutiveFailures+1 >= failedThreshold(monitor) {
 		downStartedAt = s.firstFailureStart(ctx, monitor, job.checkedAt)
+		if !job.failureStartedAt.IsZero() &&
+			(downStartedAt.IsZero() || job.failureStartedAt.Before(downStartedAt)) {
+			downStartedAt = job.failureStartedAt
+		}
 	}
 	aux := s.auxiliaryWarning(ctx, monitor, job.result)
 	warning := job.result.Success && aux.active

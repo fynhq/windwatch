@@ -240,6 +240,7 @@ func TestSchedulerManualCheckPersistsResults(t *testing.T) {
 	s := New(st, checker.NewRegistry(), logger)
 	s.initialDelay = func(time.Duration) time.Duration { return 0 }
 	s.nextDelay = func(d time.Duration) time.Duration { return d }
+	s.recheckDelay = 0
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	if err := s.Start(runCtx); err != nil {

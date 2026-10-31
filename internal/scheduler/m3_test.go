@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,17 +17,28 @@ import (
 )
 
 type fakeNotificationSink struct {
+	mu            sync.Mutex
 	notifications []model.Notification
 	enabled       bool
 }
 
 func (f *fakeNotificationSink) Enqueue(notification model.Notification) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.notifications = append(f.notifications, notification)
 	return true
 }
 
 func (f *fakeNotificationSink) NotificationsEnabled(context.Context) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.enabled, nil
+}
+
+func (f *fakeNotificationSink) snapshot() []model.Notification {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]model.Notification(nil), f.notifications...)
 }
 
 func newNotificationTestScheduler(t *testing.T) (*Scheduler, *store.Store, *fakeNotificationSink, int64) {

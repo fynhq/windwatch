@@ -168,14 +168,22 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 			MetaJSON:     metaJSON,
 		}, nil
 	}
-	if monitor.Docker.RequireHealthy && inspect.State.Health != nil && inspect.State.Health.Status != "healthy" {
-		return model.CheckResult{
-			Success:      false,
-			Latency:      time.Since(start),
-			ErrorKind:    model.ErrorKindContainerUnhealthy,
-			ErrorMessage: "container health status is " + inspect.State.Health.Status,
-			MetaJSON:     metaJSON,
-		}, nil
+	if monitor.Docker.RequireHealthy && inspect.State.Health != nil {
+		switch inspect.State.Health.Status {
+		case "starting":
+			// Docker reports starting during the healthcheck start period;
+			// it is not a failure yet. Docker will move the container to
+			// healthy or unhealthy when that period ends.
+		case "healthy":
+		default:
+			return model.CheckResult{
+				Success:      false,
+				Latency:      time.Since(start),
+				ErrorKind:    model.ErrorKindContainerUnhealthy,
+				ErrorMessage: "container health status is " + inspect.State.Health.Status,
+				MetaJSON:     metaJSON,
+			}, nil
+		}
 	}
 
 	return model.CheckResult{

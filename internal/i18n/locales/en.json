@@ -107,7 +107,7 @@
   "monitor.timeoutHint": "1–300 seconds and less than the interval.",
   "monitor.failThreshold": "Failure threshold",
   "monitor.recoverThreshold": "Recovery threshold",
-  "monitor.thresholdHint": "Consecutive failures or successes, from 1 to 20.",
+  "monitor.thresholdHint": "Consecutive failures or successes, from 1 to 20. Active checks are rechecked once before a monitor is marked down; a successful recheck prevents the DOWN transition.",
   "monitor.save": "Create monitor",
   "monitor.saveChanges": "Save changes",
   "monitor.checkNow": "Check now",
