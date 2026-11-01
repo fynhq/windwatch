@@ -27,7 +27,8 @@ import (
 )
 
 const (
-	maxQueueSize = 128
+	maxQueueSize  = 128
+	maxRetryAfter = 30 * time.Second
 )
 
 type Service struct {
@@ -38,6 +39,13 @@ type Service struct {
 	queue           chan model.Notification
 	wg              sync.WaitGroup
 	telegramBaseURL string
+
+	retryDelays      []time.Duration
+	retrySchedule    func(completed int) time.Duration
+	retryMaxAge      time.Duration
+	retryMaxAttempts int
+	retryInterval    time.Duration
+	retryBatchSize   int
 }
 
 func New(st *store.Store, cipher *secret.Cipher, catalogs *i18n.Catalogs, logger *slog.Logger) *Service {
@@ -45,20 +53,33 @@ func New(st *store.Store, cipher *secret.Cipher, catalogs *i18n.Catalogs, logger
 		logger = slog.Default()
 	}
 	return &Service{
-		store:           st,
-		cipher:          cipher,
-		catalogs:        catalogs,
-		log:             logger,
-		queue:           make(chan model.Notification, maxQueueSize),
-		telegramBaseURL: "https://api.telegram.org",
+		store:            st,
+		cipher:           cipher,
+		catalogs:         catalogs,
+		log:              logger,
+		queue:            make(chan model.Notification, maxQueueSize),
+		telegramBaseURL:  "https://api.telegram.org",
+		retryDelays:      []time.Duration{time.Second, 5 * time.Second},
+		retrySchedule:    defaultRetryDelay,
+		retryMaxAge:      time.Hour,
+		retryMaxAttempts: 24,
+		retryInterval:    15 * time.Second,
+		retryBatchSize:   20,
 	}
 }
 
 func (s *Service) Start(ctx context.Context) {
+	// Capture the pending list before the dispatch goroutine starts. Notifications
+	// claimed afterwards are handled only by dispatch/retry, never by recovery.
+	pending, err := s.store.PendingNotifications(ctx, pendingRecoveryCap)
+	if err != nil {
+		s.log.Error("load pending notifications", "error", err)
+	}
 	s.wg.Add(2)
 	go func() {
 		defer s.wg.Done()
-		s.recoverPending(ctx)
+		s.recoverPendingEntries(ctx, pending)
+		s.retryLoop(ctx)
 	}()
 	go func() {
 		defer s.wg.Done()
@@ -194,46 +215,62 @@ func (s *Service) sendTelegramText(ctx context.Context, channel model.Notificati
 	if len(chatIDs) == 0 {
 		return errors.New("telegram chat id is not configured")
 	}
-	client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
 	var firstErr error
 	for _, chatID := range chatIDs {
-		if dedupeKey != "" {
-			claimed, err := s.store.ClaimNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, chatID, text, monitorName, time.Now().UTC())
+		if dedupeKey == "" {
+			client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 			if err != nil {
 				return err
 			}
-			if !claimed {
-				s.log.Info("notification skipped as duplicate", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey)
-				continue
+			sendErr := s.retry(ctx, func() error {
+				return s.postTelegram(ctx, client, token, chatID, text)
+			})
+			cleanup()
+			if sendErr != nil && firstErr == nil {
+				firstErr = sendErr
 			}
+			continue
 		}
-		sendErr := s.retry(ctx, func() error {
-			return s.postTelegram(ctx, client, token, chatID, text)
-		})
-		if dedupeKey != "" {
-			status := "sent"
-			errorText := ""
-			if sendErr != nil {
-				status = "failed"
-				errorText = truncateError(sendErr.Error())
-			}
-			if err := s.store.CompleteNotification(ctx, dedupeKey, string(channel.Type), channel.ID, chatID, status, errorText, time.Now().UTC()); err != nil {
-				s.log.Error("record telegram notification", "error", err)
-			}
+
+		now := time.Now().UTC()
+		claimed, id, err := s.store.ClaimNotificationID(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, chatID, text, monitorName, now)
+		if err != nil {
+			return err
 		}
-		if sendErr != nil {
+		if !claimed {
+			s.log.Info("notification skipped as duplicate", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey)
+			continue
+		}
+		entry := model.NotificationLog{
+			ID: id, DedupeKey: dedupeKey, Channel: string(channel.Type), ChannelID: channel.ID,
+			ChannelName: channel.Name, MonitorName: monitorName, Target: chatID, CreatedAt: now,
+		}
+		if s.deferToEarlierState(ctx, entry) {
+			continue
+		}
+		client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
+		if err != nil {
+			sendErr := permanentError{err: fmt.Errorf("notification channel client: %w", err)}
 			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", sendErr)
+			s.recordFailure(ctx, entry, sendErr)
 			if firstErr == nil {
 				firstErr = sendErr
 			}
 			continue
 		}
-		s.log.Info("notification sent", "channel", channel.Type, "channel_id", channel.ID, "channel_name", channel.Name, "target", chatID, "dedupe_key", dedupeKey)
+		sendErr := s.retry(ctx, func() error {
+			return s.postTelegram(ctx, client, token, chatID, text)
+		})
+		cleanup()
+		if sendErr != nil {
+			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", sendErr)
+			s.recordFailure(ctx, entry, sendErr)
+			if firstErr == nil {
+				firstErr = sendErr
+			}
+			continue
+		}
+		s.markSent(ctx, entry)
 	}
 	return firstErr
 }
@@ -256,7 +293,7 @@ func (s *Service) postTelegram(ctx context.Context, client *http.Client, token, 
 	request.Header.Set("Content-Type", "application/json")
 	response, err := client.Do(request)
 	if err != nil {
-		return errors.New("telegram request failed")
+		return transportError("telegram request failed", err)
 	}
 	defer response.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
@@ -297,100 +334,109 @@ func (s *Service) sendWebhook(ctx context.Context, channel model.NotificationCha
 	if strings.TrimSpace(channel.WebhookURL) == "" {
 		return errors.New("webhook URL is not configured")
 	}
-	claimed, err := s.store.ClaimNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, channel.NotificationTarget(), string(body), monitorName, time.Now().UTC())
+	target := channel.NotificationTarget()
+	now := time.Now().UTC()
+	claimed, id, err := s.store.ClaimNotificationID(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, target, string(body), monitorName, now)
 	if err != nil {
 		return err
 	}
 	if !claimed {
-		s.log.Info("notification skipped as duplicate", "channel", channel.Type, "channel_id", channel.ID, "target", channel.NotificationTarget(), "dedupe_key", dedupeKey)
+		s.log.Info("notification skipped as duplicate", "channel", channel.Type, "channel_id", channel.ID, "target", target, "dedupe_key", dedupeKey)
+		return nil
+	}
+	entry := model.NotificationLog{
+		ID: id, DedupeKey: dedupeKey, Channel: string(channel.Type), ChannelID: channel.ID,
+		ChannelName: channel.Name, MonitorName: monitorName, Target: target, CreatedAt: now,
+	}
+	if s.deferToEarlierState(ctx, entry) {
 		return nil
 	}
 	sendErr := s.sendWebhookBody(ctx, channel, body)
-	status := "sent"
-	errorText := ""
 	if sendErr != nil {
-		status = "failed"
-		errorText = truncateError(sendErr.Error())
-	}
-	if err := s.store.CompleteNotification(ctx, dedupeKey, string(channel.Type), channel.ID, channel.NotificationTarget(), status, errorText, time.Now().UTC()); err != nil {
-		s.log.Error("record webhook notification", "error", err)
-	}
-	if sendErr != nil {
-		s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", channel.NotificationTarget(), "dedupe_key", dedupeKey, "error", sendErr)
+		s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", target, "dedupe_key", dedupeKey, "error", sendErr)
+		s.recordFailure(ctx, entry, sendErr)
 		return sendErr
 	}
-	s.log.Info("notification sent", "channel", channel.Type, "channel_id", channel.ID, "channel_name", channel.Name, "target", channel.NotificationTarget(), "dedupe_key", dedupeKey)
+	s.markSent(ctx, entry)
 	return nil
 }
 
 func (s *Service) sendWebhookBody(ctx context.Context, channel model.NotificationChannel, body []byte) error {
+	return s.retry(ctx, func() error {
+		return s.sendWebhookAttempt(ctx, channel, body)
+	})
+}
+
+func (s *Service) sendWebhookAttempt(ctx context.Context, channel model.NotificationChannel, body []byte) error {
 	if strings.TrimSpace(channel.WebhookURL) == "" {
-		return errors.New("webhook URL is not configured")
+		return permanentError{err: errors.New("webhook URL is not configured")}
 	}
 	format := channel.ResolvedWebhookFormat()
 	secretValue := ""
 	if format != model.WebhookFormatWeCom {
 		value, err := s.channelSecret(channel)
 		if err != nil {
-			return err
+			return permanentError{err: fmt.Errorf("notification channel secret: %w", err)}
 		}
 		secretValue = value
 	}
 	client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 	if err != nil {
-		return err
+		return permanentError{err: fmt.Errorf("notification channel client: %w", err)}
 	}
 	defer cleanup()
-	return s.retry(ctx, func() error {
-		endpoint := channel.WebhookURL
-		payload := body
-		if secretValue != "" {
-			switch format {
-			case model.WebhookFormatDingTalk:
-				signed, err := dingTalkSignedURL(endpoint, secretValue, time.Now())
-				if err != nil {
-					return permanentError{err: errors.New("invalid webhook request")}
-				}
-				endpoint = signed
-			case model.WebhookFormatFeishu:
-				signed, err := feishuSignedBody(payload, secretValue, time.Now())
-				if err != nil {
-					return permanentError{err: errors.New("invalid webhook request")}
-				}
-				payload = signed
+	return s.sendWebhookOnce(ctx, channel, client, format, secretValue, body)
+}
+
+func (s *Service) sendWebhookOnce(ctx context.Context, channel model.NotificationChannel, client *http.Client, format model.WebhookFormat, secretValue string, body []byte) error {
+	endpoint := channel.WebhookURL
+	payload := body
+	if secretValue != "" {
+		switch format {
+		case model.WebhookFormatDingTalk:
+			signed, err := dingTalkSignedURL(endpoint, secretValue, time.Now())
+			if err != nil {
+				return permanentError{err: errors.New("invalid webhook request")}
 			}
-		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-		if err != nil {
-			return permanentError{err: errors.New("invalid webhook request")}
-		}
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("User-Agent", "WindWatch-Notifier")
-		if format == model.WebhookFormatGeneric && secretValue != "" {
-			mac := hmac.New(sha256.New, []byte(secretValue))
-			mac.Write(payload)
-			request.Header.Set("X-WindWatch-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-		}
-		response, err := client.Do(request)
-		if err != nil {
-			return errors.New("webhook request failed")
-		}
-		defer response.Body.Close()
-		responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-		if response.StatusCode == http.StatusTooManyRequests {
-			if delay := parseRetryAfter(response.Header.Get("Retry-After"), time.Now()); delay > 0 {
-				return retryAfterError{wait: delay}
+			endpoint = signed
+		case model.WebhookFormatFeishu:
+			signed, err := feishuSignedBody(payload, secretValue, time.Now())
+			if err != nil {
+				return permanentError{err: errors.New("invalid webhook request")}
 			}
-			return fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
+			payload = signed
 		}
-		if response.StatusCode >= 500 {
-			return fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return permanentError{err: errors.New("invalid webhook request")}
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", "WindWatch-Notifier")
+	if format == model.WebhookFormatGeneric && secretValue != "" {
+		mac := hmac.New(sha256.New, []byte(secretValue))
+		mac.Write(payload)
+		request.Header.Set("X-WindWatch-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return transportError("webhook request failed", err)
+	}
+	defer response.Body.Close()
+	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	if response.StatusCode == http.StatusTooManyRequests {
+		if delay := parseRetryAfter(response.Header.Get("Retry-After"), time.Now()); delay > 0 {
+			return retryAfterError{wait: delay}
 		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return permanentError{err: fmt.Errorf("webhook returned HTTP %d", response.StatusCode)}
-		}
-		return webhookResponseError(format, responseBody)
-	})
+		return fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
+	}
+	if response.StatusCode >= 500 {
+		return fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return permanentError{err: fmt.Errorf("webhook returned HTTP %d", response.StatusCode)}
+	}
+	return webhookResponseError(format, responseBody)
 }
 
 func webhookResponseError(format model.WebhookFormat, body []byte) error {
@@ -684,6 +730,16 @@ func (e permanentError) Error() string {
 	return e.err.Error()
 }
 
+// transportError keeps the underlying network or TLS cause while omitting the
+// request URL, which can contain Telegram bot tokens or webhook query secrets.
+func transportError(prefix string, err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Err != nil {
+		return fmt.Errorf("%s: %w", prefix, urlErr.Err)
+	}
+	return fmt.Errorf("%s: %w", prefix, err)
+}
+
 type retryAfterError struct {
 	wait time.Duration
 }
@@ -707,10 +763,9 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 }
 
 func (s *Service) retry(ctx context.Context, operation func() error) error {
+	delays := s.retryDelays
 	var last error
-	delays := []time.Duration{time.Second, 5 * time.Second}
-	const maxRetryAfter = 30 * time.Second
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt <= len(delays); attempt++ {
 		if err := operation(); err == nil {
 			return nil
 		} else {
@@ -720,7 +775,7 @@ func (s *Service) retry(ctx context.Context, operation func() error) error {
 				return err
 			}
 		}
-		if attempt >= 2 {
+		if attempt >= len(delays) {
 			break
 		}
 		delay := delays[attempt]

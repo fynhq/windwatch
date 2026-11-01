@@ -126,6 +126,7 @@ type Notification struct {
 }
 
 type NotificationLog struct {
+	ID          int64
 	DedupeKey   string
 	Channel     string
 	ChannelID   int64
@@ -137,6 +138,10 @@ type NotificationLog struct {
 	Payload     string
 	CreatedAt   time.Time
 	SentAt      time.Time
+	// Attempts counts completed delivery cycles; the initial send counts as one.
+	Attempts int
+	// NextAttemptAt is when a pending retry becomes due.
+	NextAttemptAt time.Time
 }
 
 type NotificationReminder struct {

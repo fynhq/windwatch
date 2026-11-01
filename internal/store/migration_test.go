@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -29,8 +30,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if versions != 1 {
-		t.Fatalf("schema versions = %d, want 1", versions)
+	if versions != 2 {
+		t.Fatalf("schema versions = %d, want 2", versions)
 	}
 
 	expectedTables := []string{
@@ -82,6 +83,16 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}
 	if monitorNameColumns != 1 {
 		t.Fatalf("notify_log monitor_name columns = %d, want 1", monitorNameColumns)
+	}
+
+	var retryColumns int
+	if err := st.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM pragma_table_info('notify_log') WHERE name IN ('attempts', 'next_attempt_at_ms')
+	`).Scan(&retryColumns); err != nil {
+		t.Fatalf("check notify log retry columns: %v", err)
+	}
+	if retryColumns != 2 {
+		t.Fatalf("notify_log retry columns = %d, want 2", retryColumns)
 	}
 
 	now := time.Now().UTC()
@@ -183,5 +194,61 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}
 	if foreignKeys != 1 {
 		t.Fatal("foreign keys are not enabled")
+	}
+}
+
+func TestMigrateAddsNotificationRetryColumns(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open v1 database: %v", err)
+	}
+	script, err := migrationFS.ReadFile("migrations/0001_init.sql")
+	if err != nil {
+		db.Close()
+		t.Fatalf("read 0001 migration: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, string(script)); err != nil {
+		db.Close()
+		t.Fatalf("apply 0001 migration: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at_ms INTEGER NOT NULL)"); err != nil {
+		db.Close()
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (1, ?)", time.Now().UTC().UnixMilli()); err != nil {
+		db.Close()
+		t.Fatalf("record v1 migration: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v1 database: %v", err)
+	}
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open upgraded database: %v", err)
+	}
+	defer st.Close()
+	if err := st.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate v1 database: %v", err)
+	}
+
+	var retryColumns int
+	if err := st.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM pragma_table_info('notify_log') WHERE name IN ('attempts', 'next_attempt_at_ms')
+	`).Scan(&retryColumns); err != nil {
+		t.Fatalf("check upgraded notify_log columns: %v", err)
+	}
+	if retryColumns != 2 {
+		t.Fatalf("upgraded notify_log retry columns = %d, want 2", retryColumns)
+	}
+	var versions int
+	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
+		t.Fatalf("count upgraded migrations: %v", err)
+	}
+	if versions != 2 {
+		t.Fatalf("upgraded schema versions = %d, want 2", versions)
 	}
 }
