@@ -61,6 +61,13 @@ jobs:
           echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      - name: Check public surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/check_public_surface.py --tree
+          python3 .github/scripts/check_public_surface.py --tag "$GITHUB_REF_NAME"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -103,6 +110,20 @@ jobs:
 
       - name: Build release binaries
         run: make dist
+
+      - name: Check public surface of release assets
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          for arch in amd64 arm64; do
+            mkdir -p "$tmp/$arch"
+            tar -xzf "dist/windwatch-linux-$arch-v${VERSION}.tar.gz" -C "$tmp/$arch"
+          done
+          python3 .github/scripts/check_public_surface.py --assets "$tmp"
+          rm -rf "$tmp"
 
       - name: Smoke test binary
         env:
