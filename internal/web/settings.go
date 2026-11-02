@@ -53,7 +53,7 @@ type notificationLogRow struct {
 	Channel string
 	Method  string
 	Monitor string
-	Target  string
+	Reason  string
 	Status  string
 	Time    string
 	Error   string
@@ -64,6 +64,24 @@ var notificationStatusKeys = map[string]string{
 	"pending": "notification.status.pending",
 	"sent":    "notification.status.sent",
 	"failed":  "notification.status.failed",
+}
+
+// notificationReasonKey derives the delivery reason from the notification
+// dedupe key, whose prefix is the only persisted record of the triggering
+// event kind. Reminder entries keep the reason of the state they repeat.
+func notificationReasonKey(dedupeKey string) string {
+	switch {
+	case strings.HasPrefix(dedupeKey, "up:"):
+		return "notification.reason.recovery"
+	case strings.HasPrefix(dedupeKey, "down:"), strings.HasPrefix(dedupeKey, "remind_down:"):
+		return "notification.reason.down"
+	case strings.HasPrefix(dedupeKey, "warn_cert:"),
+		strings.HasPrefix(dedupeKey, "warn_domain:"),
+		strings.HasPrefix(dedupeKey, "remind_warning:"):
+		return "notification.reason.warning"
+	default:
+		return ""
+	}
 }
 
 type settingsPage struct {
@@ -243,6 +261,10 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 		if key, ok := notificationStatusKeys[entry.Status]; ok {
 			status = data.I18n.T(key)
 		}
+		reason := ""
+		if key := notificationReasonKey(entry.DedupeKey); key != "" {
+			reason = data.I18n.T(key)
+		}
 		payload := entry.Payload
 		if entry.Channel == string(model.NotificationChannelWebhook) {
 			payload = prettyNotificationPayload(payload)
@@ -251,7 +273,7 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 			Channel: entry.ChannelName,
 			Method:  notificationChannelTypeLabel(data.I18n, model.NotificationChannelType(entry.Channel)),
 			Monitor: entry.MonitorName,
-			Target:  entry.Target,
+			Reason:  reason,
 			Status:  status,
 			Time:    formatTime(data.I18n, entry.CreatedAt, data.Location),
 			Error:   entry.Error,

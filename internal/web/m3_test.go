@@ -455,11 +455,11 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNotificationChannel: %v", err)
 	}
-	claimed, err := st.ClaimNotification(t.Context(), "delivery-test", string(channel.Type), channelID, channel.Name, "https://example.com/hook", `{"version":1,"event":"down","text":"delivery-body"}`, "Example site", now)
+	claimed, err := st.ClaimNotification(t.Context(), "down:1:1000", string(channel.Type), channelID, channel.Name, "https://example.com/hook", `{"version":1,"event":"down","text":"delivery-body"}`, "Example site", now)
 	if err != nil || !claimed {
 		t.Fatalf("ClaimNotification claimed=%v err=%v", claimed, err)
 	}
-	if err := st.CompleteNotification(t.Context(), "delivery-test", string(channel.Type), channelID, "https://example.com/hook", "sent", "", now); err != nil {
+	if err := st.CompleteNotification(t.Context(), "down:1:1000", string(channel.Type), channelID, "https://example.com/hook", "sent", "", now); err != nil {
 		t.Fatalf("CompleteNotification: %v", err)
 	}
 
@@ -470,12 +470,16 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	body := readResponseBody(t, response)
 	for _, want := range []string{
 		"Primary hook", "Webhook", "Monitor", "Example site", ">Sent</td>",
+		"Reason", "Down alert",
 		`data-notification-content`, `data-notification-content-dialog`,
 		`data-notification-content-field="payload"`, "delivery-body",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("delivery log missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, ">Target</th>") {
+		t.Fatal("delivery log still renders the target column")
 	}
 	if strings.Contains(body, `class="inline-details notification-content"`) {
 		t.Fatal("delivery log still renders the inline details fallback")
@@ -491,10 +495,13 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 		t.Fatalf("GET settings logs in Chinese: %v", err)
 	}
 	body = readResponseBody(t, response)
-	for _, want := range []string{"Primary hook", "Webhook", "监控项", "Example site", ">已发送</td>", "查看内容"} {
+	for _, want := range []string{"Primary hook", "Webhook", "监控项", "Example site", ">已发送</td>", "查看内容", "原因", "异常通知"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Chinese delivery log missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, ">目标</th>") {
+		t.Fatal("Chinese delivery log still renders the target column")
 	}
 }
 

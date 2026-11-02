@@ -284,14 +284,14 @@
   {{if .NotificationLogs}}
   <div class="table-scroll">
     <table class="responsive-table">
-      <thead><tr><th>{{.I18n.T "notification.channelName"}}</th><th>{{.I18n.T "notification.channelType"}}</th><th>{{.I18n.T "notification.monitor"}}</th><th>{{.I18n.T "notification.target"}}</th><th>{{.I18n.T "notification.status"}}</th><th>{{.I18n.T "notification.time"}}</th><th>{{.I18n.T "notification.error"}}</th><th>{{.I18n.T "notification.content"}}</th></tr></thead>
+      <thead><tr><th>{{.I18n.T "notification.channelName"}}</th><th>{{.I18n.T "notification.channelType"}}</th><th>{{.I18n.T "notification.monitor"}}</th><th>{{.I18n.T "notification.reason"}}</th><th>{{.I18n.T "notification.status"}}</th><th>{{.I18n.T "notification.time"}}</th><th>{{.I18n.T "notification.error"}}</th><th>{{.I18n.T "notification.content"}}</th></tr></thead>
       <tbody>
         {{range .NotificationLogs}}
         <tr>
           <td data-label="{{$.I18n.T "notification.channelName"}}">{{if .Channel}}{{.Channel}}{{else}}—{{end}}</td>
           <td data-label="{{$.I18n.T "notification.channelType"}}">{{.Method}}</td>
           <td data-label="{{$.I18n.T "notification.monitor"}}">{{if .Monitor}}{{.Monitor}}{{else}}—{{end}}</td>
-          <td data-label="{{$.I18n.T "notification.target"}}"><span class="target">{{.Target}}</span></td>
+          <td data-label="{{$.I18n.T "notification.reason"}}">{{if .Reason}}{{.Reason}}{{else}}—{{end}}</td>
           <td class="notification-log-status" data-label="{{$.I18n.T "notification.status"}}">{{.Status}}</td>
           <td class="notification-log-time" data-label="{{$.I18n.T "notification.time"}}">{{.Time}}</td>
           <td class="is-wide" data-label="{{$.I18n.T "notification.error"}}">{{if .Error}}{{.Error}}{{else}}—{{end}}</td>

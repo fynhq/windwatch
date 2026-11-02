@@ -176,3 +176,25 @@ func TestBuildPublicHistoryBars(t *testing.T) {
 		t.Fatal("history bar title is empty")
 	}
 }
+
+func TestNotificationReasonKey(t *testing.T) {
+	cases := []struct {
+		dedupeKey string
+		want      string
+	}{
+		{"down:1:1000", "notification.reason.down"},
+		{"remind_down:1:1000:2", "notification.reason.down"},
+		{"up:1:2000", "notification.reason.recovery"},
+		{"warn_cert:1:fp:14", "notification.reason.warning"},
+		{"warn_domain:example.com:3000:30", "notification.reason.warning"},
+		{"remind_warning:1:cert:fp:14:1000:2", "notification.reason.warning"},
+		{"test:1:2026-11-02T00:00:00Z", ""},
+		{"", ""},
+		{"delivery-test", ""},
+	}
+	for _, item := range cases {
+		if got := notificationReasonKey(item.dedupeKey); got != item.want {
+			t.Fatalf("notificationReasonKey(%q) = %q, want %q", item.dedupeKey, got, item.want)
+		}
+	}
+}
