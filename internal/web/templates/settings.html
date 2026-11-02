@@ -90,18 +90,35 @@
         </label>
       </div>
       <div class="field-group">
-        <h3 class="subheading">{{.I18n.T "public.monitors"}}</h3>
-        <p class="hint">{{.I18n.T "public.monitorsHint"}}</p>
-        <div class="checkbox-grid">
-          {{range .PublicMonitors}}
-          <label class="checkbox-field">
-            <input type="checkbox" name="public_monitors" value="{{.ID}}" {{if .Selected}}checked{{end}}>
-            <span>{{.Name}} <small class="muted">{{.TypeLabel}}</small></span>
-          </label>
-          {{else}}
-          <p class="muted">{{.I18n.T "public.noMonitors"}}</p>
+        <div class="public-monitors-head">
+          <h3 class="subheading">{{.I18n.T "public.monitors"}}</h3>
+          {{if .PublicMonitorGroups}}
+          <div class="public-monitors-actions">
+            <button class="button button-secondary button-small" type="button" data-public-select="all" disabled>{{.I18n.T "public.selectAll"}}</button>
+            <button class="button button-secondary button-small" type="button" data-public-select="none" disabled>{{.I18n.T "public.deselectAll"}}</button>
+          </div>
           {{end}}
         </div>
+        <p class="hint">{{.I18n.T "public.monitorsHint"}}</p>
+        {{if .PublicMonitorGroups}}
+        <div class="checkbox-groups" data-public-monitor-groups>
+          {{range .PublicMonitorGroups}}
+          <div class="checkbox-group">
+            <p class="checkbox-group-label">{{.TypeLabel}}</p>
+            <div class="checkbox-grid">
+              {{range .Options}}
+              <label class="checkbox-field">
+                <input type="checkbox" name="public_monitors" value="{{.ID}}" {{if .Selected}}checked{{end}}>
+                <span>{{.Name}}</span>
+              </label>
+              {{end}}
+            </div>
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="muted">{{.I18n.T "public.noMonitors"}}</p>
+        {{end}}
       </div>
     </fieldset>
     {{if .PublicStatus.Enabled}}

@@ -106,11 +106,11 @@ type settingsPage struct {
 
 	NotificationLogs []notificationLogRow
 
-	PublicStatus    publicStatusFormValues
-	PublicStatusURL string
-	PublicMonitors  []publicMonitorOption
-	Timezone        string
-	TimezoneOptions []timezoneOption
+	PublicStatus        publicStatusFormValues
+	PublicStatusURL     string
+	PublicMonitorGroups []publicMonitorGroup
+	Timezone            string
+	TimezoneOptions     []timezoneOption
 }
 
 type settingsIndexItem struct {
@@ -249,10 +249,10 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 	for _, monitor := range publicMonitors {
 		_, selected := publicSelected[monitor.ID]
 		publicOptions = append(publicOptions, publicMonitorOption{
-			ID:        monitor.ID,
-			Name:      monitor.Name,
-			TypeLabel: s.typeLabel(data.I18n, monitor.Type),
-			Selected:  selected,
+			ID:       monitor.ID,
+			Name:     monitor.Name,
+			Type:     monitor.Type,
+			Selected: selected,
 		})
 	}
 	logRows := make([]notificationLogRow, 0, len(logs))
@@ -323,13 +323,13 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 			WebhookFormat: model.WebhookFormatGeneric,
 			Enabled:       true,
 		},
-		ChannelFormAction: "/settings/notifications/channels",
-		NotificationLogs:  logRows,
-		PublicStatus:      publicStatus,
-		PublicStatusURL:   s.requestScheme(r) + "://" + s.requestHost(r) + "/status",
-		PublicMonitors:    publicOptions,
-		Timezone:          timezone,
-		TimezoneOptions:   buildTimezoneOptions(timezone, s.now()),
+		ChannelFormAction:   "/settings/notifications/channels",
+		NotificationLogs:    logRows,
+		PublicStatus:        publicStatus,
+		PublicStatusURL:     s.requestScheme(r) + "://" + s.requestHost(r) + "/status",
+		PublicMonitorGroups: groupPublicMonitorOptions(data.I18n, publicOptions),
+		Timezone:            timezone,
+		TimezoneOptions:     buildTimezoneOptions(timezone, s.now()),
 	}, nil
 }
 

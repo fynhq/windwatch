@@ -226,6 +226,10 @@ func (s *Server) monitorTarget(translator *i18n.Translator, monitor model.Monito
 }
 
 func (s *Server) typeLabel(translator *i18n.Translator, monitorType model.MonitorType) string {
+	return monitorTypeLabel(translator, monitorType)
+}
+
+func monitorTypeLabel(translator *i18n.Translator, monitorType model.MonitorType) string {
 	switch monitorType {
 	case model.MonitorTypeHTTP:
 		return translator.T("monitor.type.http")

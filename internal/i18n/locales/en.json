@@ -366,6 +366,8 @@
   "public.pageDescription": "Short description",
   "public.monitors": "Published monitors",
   "public.monitorsHint": "Only monitor names, status, and uptime are shown. Target URLs, configuration, and secrets are never exposed.",
+  "public.selectAll": "Select all",
+  "public.deselectAll": "Clear all",
   "public.address": "Public page address",
   "public.copyHint": "Click the address to copy the full link.",
   "public.save": "Save public page",

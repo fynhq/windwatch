@@ -20,10 +20,37 @@ type publicStatusFormValues struct {
 }
 
 type publicMonitorOption struct {
-	ID        int64
-	Name      string
+	ID       int64
+	Name     string
+	Type     model.MonitorType
+	Selected bool
+}
+
+type publicMonitorGroup struct {
 	TypeLabel string
-	Selected  bool
+	Options   []publicMonitorOption
+}
+
+// groupPublicMonitorOptions buckets options by monitor type in the fixed
+// product order so the public page whitelist renders one section per type.
+func groupPublicMonitorOptions(translator *i18n.Translator, options []publicMonitorOption) []publicMonitorGroup {
+	order := []model.MonitorType{model.MonitorTypeHTTP, model.MonitorTypeTCP, model.MonitorTypeDocker, model.MonitorTypePush}
+	byType := make(map[model.MonitorType][]publicMonitorOption, len(order))
+	for _, option := range options {
+		byType[option.Type] = append(byType[option.Type], option)
+	}
+	groups := make([]publicMonitorGroup, 0, len(order))
+	for _, monitorType := range order {
+		groupOptions := byType[monitorType]
+		if len(groupOptions) == 0 {
+			continue
+		}
+		groups = append(groups, publicMonitorGroup{
+			TypeLabel: monitorTypeLabel(translator, monitorType),
+			Options:   groupOptions,
+		})
+	}
+	return groups
 }
 
 type publicMonitorRow struct {
@@ -288,26 +315,20 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 		values.Description = existing.Description
 		values.MonitorIDs = existing.MonitorIDs
 	}
-	if utf8.RuneCountInString(values.Title) > model.MaxPublicStatusTitleLength {
-		s.renderSettingsPublicError(w, r, auth, http.StatusBadRequest, values, "error.publicTitle")
-		return
-	}
-	if utf8.RuneCountInString(values.Description) > model.MaxPublicStatusDescriptionLength {
-		s.renderSettingsPublicError(w, r, auth, http.StatusBadRequest, values, "error.publicDescription")
-		return
-	}
 
+	// Parse the monitor selection before field validation so a rejected title
+	// or description re-renders with the submitted checkboxes intact.
 	monitors, err := s.store.ListMonitors(r.Context())
 	if err != nil {
 		s.log.Error("load monitors for public status save", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	existing := make(map[int64]struct{}, len(monitors))
-	for _, monitor := range monitors {
-		existing[monitor.ID] = struct{}{}
-	}
 	if values.Enabled {
+		existing := make(map[int64]struct{}, len(monitors))
+		for _, monitor := range monitors {
+			existing[monitor.ID] = struct{}{}
+		}
 		ids := make([]int64, 0, len(monitors))
 		for _, raw := range r.PostForm["public_monitors"] {
 			id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
@@ -323,6 +344,15 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 	}
 	if len(values.MonitorIDs) > model.MaxPublicStatusMonitors {
 		s.renderSettingsPublicError(w, r, auth, http.StatusBadRequest, values, "error.publicMonitors")
+		return
+	}
+
+	if utf8.RuneCountInString(values.Title) > model.MaxPublicStatusTitleLength {
+		s.renderSettingsPublicError(w, r, auth, http.StatusBadRequest, values, "error.publicTitle")
+		return
+	}
+	if utf8.RuneCountInString(values.Description) > model.MaxPublicStatusDescriptionLength {
+		s.renderSettingsPublicError(w, r, auth, http.StatusBadRequest, values, "error.publicDescription")
 		return
 	}
 
@@ -361,8 +391,11 @@ func (s *Server) renderSettingsPublicError(w http.ResponseWriter, r *http.Reques
 	for _, id := range values.MonitorIDs {
 		selected[id] = struct{}{}
 	}
-	for index := range page.PublicMonitors {
-		_, page.PublicMonitors[index].Selected = selected[page.PublicMonitors[index].ID]
+	for groupIndex := range page.PublicMonitorGroups {
+		options := page.PublicMonitorGroups[groupIndex].Options
+		for index := range options {
+			_, options[index].Selected = selected[options[index].ID]
+		}
 	}
 	page.Error = page.I18n.T(key)
 	s.render(w, "settings", status, page)

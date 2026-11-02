@@ -758,6 +758,37 @@
   margin-top: 10px;
 }
 
+.public-monitors-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.public-monitors-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.checkbox-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.checkbox-group-label {
+  margin: 0;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.checkbox-group .checkbox-grid {
+  margin-top: 6px;
+}
+
 .public-hero {
   max-width: 900px;
   margin: 0 auto 24px;

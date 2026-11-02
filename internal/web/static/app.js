@@ -807,6 +807,24 @@
     refresh();
   }
 
+  function initPublicMonitorSelection() {
+    var groups = document.querySelector("[data-public-monitor-groups]");
+    if (!groups) {
+      return;
+    }
+    var buttons = document.querySelectorAll("[data-public-select]");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].disabled = false;
+      buttons[i].addEventListener("click", function () {
+        var checked = this.getAttribute("data-public-select") === "all";
+        var boxes = groups.querySelectorAll('input[name="public_monitors"]');
+        for (var j = 0; j < boxes.length; j++) {
+          boxes[j].checked = checked;
+        }
+      });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     refreshToggles(false);
     var toggles = document.querySelectorAll("[data-toggle-target]");
@@ -819,6 +837,7 @@
     initHistoryTabs();
     initMonitorFilters();
     initEventFilters();
+    initPublicMonitorSelection();
     initAutoRefresh();
     initSecretGenerators();
     initChannelTypeFields();

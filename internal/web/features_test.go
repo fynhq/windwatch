@@ -204,6 +204,88 @@ func TestPublicStatusPage(t *testing.T) {
 	}
 }
 
+func TestPublicStatusMonitorGroupsAndBulkSelect(t *testing.T) {
+	srv, _, testServer := newWebTestServer(t)
+	adminClient, csrf := setupAdminSession(t, testServer)
+
+	createHTTPMonitor(t, srv, "Site A", "https://a.example.com/health")
+	createHTTPMonitor(t, srv, "Site B", "https://b.example.com/health")
+	if _, err := srv.store.CreateMonitor(t.Context(), model.Monitor{
+		Name: "DB port", Type: model.MonitorTypeTCP,
+		TCP:      &model.TCPConfig{Host: "127.0.0.1", Port: 5432},
+		Interval: time.Minute, Timeout: 10 * time.Second,
+		FailThreshold: 1, RecoverThreshold: 1, Enabled: true, NotifyEnabled: true,
+	}, time.Now()); err != nil {
+		t.Fatalf("CreateMonitor tcp: %v", err)
+	}
+	if _, err := srv.store.CreateMonitor(t.Context(), model.Monitor{
+		Name: "App container", Type: model.MonitorTypeDocker,
+		Docker:   &model.DockerConfig{Container: "app"},
+		Interval: time.Minute, Timeout: 10 * time.Second,
+		FailThreshold: 1, RecoverThreshold: 1, Enabled: true, NotifyEnabled: true,
+	}, time.Now()); err != nil {
+		t.Fatalf("CreateMonitor docker: %v", err)
+	}
+	if _, err := srv.store.CreateMonitor(t.Context(), model.Monitor{
+		Name: "Heartbeat", Type: model.MonitorTypePush,
+		Interval: time.Minute, Timeout: 10 * time.Second,
+		FailThreshold: 1, RecoverThreshold: 1, Enabled: true, NotifyEnabled: true,
+	}, time.Now()); err != nil {
+		t.Fatalf("CreateMonitor push: %v", err)
+	}
+
+	response, err := adminClient.Get(testServer.URL + "/settings/public")
+	if err != nil {
+		t.Fatalf("GET settings public: %v", err)
+	}
+	body := readResponseBody(t, response)
+	for _, want := range []string{
+		`data-public-monitor-groups`, `data-public-select="all"`, `data-public-select="none"`,
+		"Select all", "Clear all",
+		"HTTP(S) website", "TCP port", "Docker container", "Push heartbeat",
+		"Site A", "Site B", "DB port", "App container", "Heartbeat",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("public settings missing %q: %s", want, body)
+		}
+	}
+	httpIdx := strings.Index(body, "HTTP(S) website")
+	tcpIdx := strings.Index(body, "TCP port")
+	dockerIdx := strings.Index(body, "Docker container")
+	pushIdx := strings.Index(body, "Push heartbeat")
+	if httpIdx == -1 || tcpIdx < httpIdx || dockerIdx < tcpIdx || pushIdx < dockerIdx {
+		t.Fatalf("public settings group order wrong: http=%d tcp=%d docker=%d push=%d", httpIdx, tcpIdx, dockerIdx, pushIdx)
+	}
+	if strings.Count(body, `class="checkbox-group"`) != 4 {
+		t.Fatalf("public settings groups = %d, want 4", strings.Count(body, `class="checkbox-group"`))
+	}
+
+	// A validation error must keep the grouped layout and the submitted selection.
+	response, err = adminClient.PostForm(testServer.URL+"/settings/public-status", url.Values{
+		"csrf_token":                {csrf},
+		"public_status_enabled":     {"1"},
+		"public_status_title":       {strings.Repeat("长标题", 60)},
+		"public_status_description": {""},
+		"public_monitors":           {"1", "3"},
+	})
+	if err != nil {
+		t.Fatalf("POST invalid public status: %v", err)
+	}
+	body = readResponseBody(t, response)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid public status code=%d, want 400", response.StatusCode)
+	}
+	if !strings.Contains(body, `data-public-monitor-groups`) {
+		t.Fatalf("invalid public status lost grouped layout: %s", body)
+	}
+	if !strings.Contains(body, `value="1" checked`) || !strings.Contains(body, `value="3" checked`) {
+		t.Fatalf("invalid public status lost submitted selection: %s", body)
+	}
+	if strings.Contains(body, `value="2" checked`) {
+		t.Fatalf("invalid public status checked an unselected monitor: %s", body)
+	}
+}
+
 func TestDashboardRecentChecksAndHistoryTabs(t *testing.T) {
 	srv, _, testServer := newWebTestServer(t)
 	adminClient, _ := setupAdminSession(t, testServer)

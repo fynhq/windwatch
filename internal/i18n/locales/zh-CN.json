@@ -366,6 +366,8 @@
   "public.pageDescription": "简短说明",
   "public.monitors": "公开的监控",
   "public.monitorsHint": "只展示监控名称、状态和可用率，不会暴露目标 URL、配置或密钥。",
+  "public.selectAll": "全选",
+  "public.deselectAll": "取消全选",
   "public.address": "公开页地址",
   "public.copyHint": "点击地址即可复制完整链接。",
   "public.save": "保存公开页",

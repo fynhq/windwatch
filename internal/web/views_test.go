@@ -198,3 +198,30 @@ func TestNotificationReasonKey(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupPublicMonitorOptions(t *testing.T) {
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("i18n.Load: %v", err)
+	}
+	translator := catalogs.Translator(i18n.LangEN)
+	options := []publicMonitorOption{
+		{ID: 1, Name: "Site A", Type: model.MonitorTypeHTTP},
+		{ID: 2, Name: "DB port", Type: model.MonitorTypeTCP},
+		{ID: 3, Name: "Site B", Type: model.MonitorTypeHTTP},
+		{ID: 4, Name: "Heartbeat", Type: model.MonitorTypePush},
+	}
+	groups := groupPublicMonitorOptions(translator, options)
+	if len(groups) != 3 {
+		t.Fatalf("groups = %d, want 3 (docker absent)", len(groups))
+	}
+	if groups[0].TypeLabel != "HTTP(S) website" || groups[1].TypeLabel != "TCP port" || groups[2].TypeLabel != "Push heartbeat" {
+		t.Fatalf("group labels = %q, %q, %q", groups[0].TypeLabel, groups[1].TypeLabel, groups[2].TypeLabel)
+	}
+	if len(groups[0].Options) != 2 || groups[0].Options[0].ID != 1 || groups[0].Options[1].ID != 3 {
+		t.Fatalf("http group options = %+v, want IDs 1 then 3", groups[0].Options)
+	}
+	if got := groupPublicMonitorOptions(translator, nil); len(got) != 0 {
+		t.Fatalf("empty options groups = %d, want 0", len(got))
+	}
+}
