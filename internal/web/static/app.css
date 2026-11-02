@@ -1036,7 +1036,7 @@ body:has(dialog[open]) {
 }
 
 .empty-state {
-  margin-top: 20px;
+  margin-top: 16px;
   padding: 38px 22px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
@@ -1063,6 +1063,12 @@ body:has(dialog[open]) {
 .table-scroll {
   overflow-x: auto;
   margin-top: 14px;
+}
+
+/* Panels whose only content is a table keep the panel's own top padding
+   instead of adding a second gap above the header row. */
+.panel > .table-scroll:first-child {
+  margin-top: 0;
 }
 
 table {

@@ -11,7 +11,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 14px 20px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   padding: 15px 18px;
   border: 1px solid var(--border);
   border-radius: 13px;
@@ -138,7 +138,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 14px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .search-field {
@@ -388,7 +388,7 @@
 }
 
 .monitor-filter-empty {
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 /* Status semantics */
@@ -896,7 +896,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px 18px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   padding: 13px 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -932,7 +932,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   padding: 10px 14px;
   border: 1px solid var(--danger-border);
   border-radius: 10px;
@@ -940,6 +940,12 @@
   color: var(--danger);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* The toolbar owns the gap above the list; the panel's global margin-top
+   would double it in the desktop flex layout where margins do not collapse. */
+.events-toolbar + .panel {
+  margin-top: 0;
 }
 
 .events-table thead th {
@@ -998,7 +1004,13 @@
 }
 
 .event-filter-empty {
-  margin-top: 12px;
+  margin-top: 16px;
+}
+
+/* The events page is a flex column on desktop where margins do not collapse;
+   keep the empty state flush with the page head's own bottom margin. */
+.page-head + .empty-state {
+  margin-top: 0;
 }
 
 /* Settings index */
