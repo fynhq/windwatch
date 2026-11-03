@@ -26,7 +26,7 @@ A single instance supports up to 500 monitors; the documented performance target
 
 ## Quick start
 
-Requirements: Go 1.27 or newer.
+Requirements: Go 1.27.3 or newer.
 
 ```bash
 CGO_ENABLED=0 go build -trimpath -o windwatch ./cmd/windwatch
@@ -95,7 +95,7 @@ docker buildx build --platform linux/arm64 --load -t windwatch:arm64 .
 
 ### Single binary (Linux amd64 and arm64)
 
-Standalone binaries are provided only for Linux on x86-64 (`amd64`) and ARM64 (`aarch64`). Other platforms should use the container image. Building requires Go 1.27 or newer and `make`.
+Standalone binaries are provided only for Linux on x86-64 (`amd64`) and ARM64 (`aarch64`). Other platforms should use the container image. Building requires Go 1.27.3 or newer and `make`.
 
 Tagged releases also publish `windwatch-linux-amd64-vX.Y.Z.tar.gz`, `windwatch-linux-arm64-vX.Y.Z.tar.gz`, and a single `SHA256SUMS` on the [GitHub Releases page](https://github.com/fynhq/windwatch/releases). Verify them with `sha256sum -c --strict SHA256SUMS`, extract the archive for your architecture, and check the running version with `windwatch version`.
 
@@ -343,7 +343,7 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 
 ## 快速开始
 
-需要 Go 1.27 或更高版本。
+需要 Go 1.27.3 或更高版本。
 
 ```bash
 CGO_ENABLED=0 go build -trimpath -o windwatch ./cmd/windwatch
@@ -412,7 +412,7 @@ docker buildx build --platform linux/arm64 --load -t windwatch:arm64 .
 
 ### 单文件二进制（Linux amd64 和 arm64）
 
-单文件只提供 Linux x86-64（`amd64`）和 ARM64（`aarch64`）版本。其他平台请使用容器镜像。构建需要 Go 1.27 或更高版本以及 `make`。
+单文件只提供 Linux x86-64（`amd64`）和 ARM64（`aarch64`）版本。其他平台请使用容器镜像。构建需要 Go 1.27.3 或更高版本以及 `make`。
 
 正式发布同时提供 `windwatch-linux-amd64-vX.Y.Z.tar.gz`、`windwatch-linux-arm64-vX.Y.Z.tar.gz` 和单一 `SHA256SUMS`，可从 [GitHub Releases 页面](https://github.com/fynhq/windwatch/releases)下载。可执行 `sha256sum -c --strict SHA256SUMS` 校验，解压对应架构的压缩包，并用 `windwatch version` 查看当前版本。
 
