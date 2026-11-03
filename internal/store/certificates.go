@@ -54,7 +54,7 @@ func (s *Store) LatestCertificate(ctx context.Context, monitorID int64) (model.C
 		notBefore sql.NullInt64
 		notAfter  sql.NullInt64
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT ci.fingerprint, ci.subject, ci.issuer, ci.sans_json, ci.not_before_ms, ci.not_after_ms
 		FROM checks c
 		JOIN cert_info ci ON ci.fingerprint = c.cert_fingerprint

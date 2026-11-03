@@ -30,8 +30,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if versions != 2 {
-		t.Fatalf("schema versions = %d, want 2", versions)
+	if versions != 3 {
+		t.Fatalf("schema versions = %d, want 3", versions)
 	}
 
 	expectedTables := []string{
@@ -49,6 +49,16 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("missing table %s", table)
 		}
+	}
+	var cleanupIndexes int
+	if err := st.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'index' AND name IN ('events_ended_at', 'checks_cert_fingerprint')
+	`).Scan(&cleanupIndexes); err != nil {
+		t.Fatalf("check cleanup indexes: %v", err)
+	}
+	if cleanupIndexes != 2 {
+		t.Fatalf("cleanup indexes = %d, want 2", cleanupIndexes)
 	}
 
 	var reminderColumns int
@@ -248,7 +258,7 @@ func TestMigrateAddsNotificationRetryColumns(t *testing.T) {
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatalf("count upgraded migrations: %v", err)
 	}
-	if versions != 2 {
-		t.Fatalf("upgraded schema versions = %d, want 2", versions)
+	if versions != 3 {
+		t.Fatalf("upgraded schema versions = %d, want 3", versions)
 	}
 }

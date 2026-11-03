@@ -17,7 +17,7 @@ func (s *Store) ReminderState(ctx context.Context, monitorID int64, kind string)
 		nextAt      int64
 		updatedAt   int64
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT monitor_id, kind, status_since_ms, context_key, sent_count, next_at_ms, updated_at_ms
 		FROM notification_reminders WHERE monitor_id = ? AND kind = ?
 	`, monitorID, kind).Scan(

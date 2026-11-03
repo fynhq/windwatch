@@ -52,7 +52,7 @@ func (s *Store) AggregateHalfHourlyRollups(ctx context.Context, since, before, n
 
 func (s *Store) LastRollupStart(ctx context.Context) (time.Time, bool, error) {
 	var bucket sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `
+	if err := s.reader().QueryRowContext(ctx, `
 		SELECT MAX(bucket_start_ms) FROM rollups WHERE resolution_seconds = ?
 	`, HalfHourlyResolutionSeconds).Scan(&bucket); err != nil {
 		return time.Time{}, false, fmt.Errorf("last rollup: %w", err)
@@ -68,7 +68,7 @@ func (s *Store) RollupStats(ctx context.Context, monitorID int64, since, before 
 		stats      model.UptimeStats
 		latencySum int64
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(total), 0),
 		       COALESCE(SUM(up), 0),
 		       COALESCE(SUM(warning), 0),
@@ -99,7 +99,7 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		args = append(args, id)
 	}
 	args = append(args, HalfHourlyResolutionSeconds, since.UTC().UnixMilli(), before.UTC().UnixMilli())
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id,
 		       COALESCE(SUM(total), 0),
 		       COALESCE(SUM(up), 0),
@@ -137,7 +137,7 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 }
 
 func (s *Store) HalfHourlyBuckets(ctx context.Context, monitorID int64, since, before time.Time) ([]model.HourBucket, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT bucket_start_ms, total, up, warning, down, latency_sum_ms
 		FROM rollups
 		WHERE monitor_id = ? AND resolution_seconds = ?
@@ -229,7 +229,7 @@ func (s *Store) DailyBucketsForMonitors(ctx context.Context, monitorIDs []int64,
 		args = append(args, id)
 	}
 	args = append(args, HalfHourlyResolutionSeconds, since.UTC().UnixMilli(), before.UTC().UnixMilli())
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id, bucket_start_ms, total, up, warning, down, latency_sum_ms
 		FROM rollups
 		WHERE monitor_id IN (`+idPlaceholders(len(monitorIDs))+`) AND resolution_seconds = ?

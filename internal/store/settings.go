@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Store) Settings(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT key, value FROM settings")
+	rows, err := s.reader().QueryContext(ctx, "SELECT key, value FROM settings")
 	if err != nil {
 		return nil, fmt.Errorf("list settings: %w", err)
 	}
@@ -135,7 +135,7 @@ func (s *Store) DuePendingNotifications(ctx context.Context, now time.Time, limi
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT id, dedupe_key, channel, channel_id, channel_name, monitor_name, target, status, error, payload,
 			created_at_ms, sent_at_ms, attempts, next_attempt_at_ms
 		FROM notify_log
@@ -157,7 +157,7 @@ func (s *Store) PendingNotifications(ctx context.Context, limit int) ([]model.No
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT id, dedupe_key, channel, channel_id, channel_name, monitor_name, target, status, error, payload,
 			created_at_ms, sent_at_ms, attempts, next_attempt_at_ms
 		FROM notify_log WHERE status = 'pending' ORDER BY created_at_ms ASC, id ASC LIMIT ?
@@ -177,7 +177,7 @@ func (s *Store) HasEarlierPendingStateNotification(ctx context.Context, id, moni
 		return false, nil
 	}
 	var count int
-	if err := s.db.QueryRowContext(ctx, `
+	if err := s.reader().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM notify_log
 		WHERE status = 'pending' AND channel_id = ? AND target = ? AND id < ?
 			AND (dedupe_key LIKE ? OR dedupe_key LIKE ? OR dedupe_key LIKE ?)
@@ -204,7 +204,7 @@ func (s *Store) RecentNotifications(ctx context.Context, limit int) ([]model.Not
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT id, dedupe_key, channel, channel_id, channel_name, monitor_name, target, status, error, payload,
 			created_at_ms, sent_at_ms, attempts, next_attempt_at_ms
 		FROM notify_log ORDER BY created_at_ms DESC, id DESC LIMIT ?

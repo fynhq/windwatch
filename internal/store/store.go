@@ -29,15 +29,16 @@ var (
 )
 
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 var (
 	sqlitePragmas = []string{
-		"PRAGMA journal_mode = WAL",
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA busy_timeout = 5000",
 		"PRAGMA foreign_keys = ON",
+		"PRAGMA cache_size = -4096",
 	}
 	sqliteHookOnce sync.Once
 )
@@ -70,26 +71,73 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
-	// Monitoring writes are serialized through a small number of goroutines;
-	// one connection also makes per-connection pragmas predictable.
+	// Writes stay serialized on one connection. Read queries use a separate
+	// pool so the public status page and dashboard cannot block the collector.
 	db.SetMaxOpenConns(1)
 
+	// journal_mode is persistent in the database file, so set it once on the
+	// writer connection instead of trying to switch modes from read connections.
+	if _, err := db.ExecContext(context.Background(), "PRAGMA journal_mode = WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("enable sqlite wal: %w", err)
+	}
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("ping sqlite database: %w", err)
 	}
+	var readDB *sql.DB
+	if path != ":memory:" {
+		readDB, err = sql.Open("sqlite", path)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("open sqlite read pool: %w", err)
+		}
+		readDB.SetMaxOpenConns(2)
+		readDB.SetMaxIdleConns(2)
+		if err := readDB.Ping(); err != nil {
+			readDB.Close()
+			db.Close()
+			return nil, fmt.Errorf("ping sqlite read pool: %w", err)
+		}
+	}
 	if path != ":memory:" {
 		_ = os.Chmod(path, 0o600)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, readDB: readDB}, nil
+}
+
+func (s *Store) reader() *sql.DB {
+	if s.readDB != nil {
+		return s.readDB
+	}
+	return s.db
 }
 
 func (s *Store) Close() error {
+	if s.readDB != nil {
+		readErr := s.readDB.Close()
+		writeErr := s.db.Close()
+		if readErr != nil {
+			return readErr
+		}
+		return writeErr
+	}
 	return s.db.Close()
 }
 
 func (s *Store) Ping(ctx context.Context) error {
-	return s.db.PingContext(ctx)
+	return s.reader().PingContext(ctx)
+}
+
+// CheckpointWAL runs a passive checkpoint on the writer connection. SQLite
+// checkpoints automatically, but an explicit low-frequency call keeps the WAL
+// bounded after large maintenance deletions.
+func (s *Store) CheckpointWAL(ctx context.Context) error {
+	var busy, logFrames, checkpointed int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(PASSIVE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
+		return fmt.Errorf("checkpoint wal: %w", err)
+	}
+	return nil
 }
 
 const disableForeignKeysDirective = "-- migrate:disable-foreign-keys"
@@ -201,7 +249,7 @@ func checkForeignKeys(ctx context.Context, tx *sql.Tx) error {
 
 func (s *Store) HasAdmin(ctx context.Context) (bool, error) {
 	var count int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM admin").Scan(&count); err != nil {
+	if err := s.reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM admin").Scan(&count); err != nil {
 		return false, fmt.Errorf("count administrators: %w", err)
 	}
 	return count > 0, nil
@@ -256,7 +304,7 @@ func (s *Store) AdminByUsername(ctx context.Context, username string) (model.Adm
 		disabled               int
 		createdAtMS, updatedMS int64
 	)
-	err := s.db.QueryRowContext(ctx,
+	err := s.reader().QueryRowContext(ctx,
 		"SELECT id, username, password_hash, role, disabled, created_at_ms, updated_at_ms FROM admin WHERE username = ?",
 		username,
 	).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &disabled, &createdAtMS, &updatedMS)
@@ -298,7 +346,7 @@ func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash string, now ti
 		adminDisabled                int
 		adminCreatedAtMS, adminUpdMS int64
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT s.token_hash, s.admin_id, s.csrf_token, s.created_at_ms, s.expires_at_ms,
 		       a.id, a.username, a.password_hash, a.role, a.disabled, a.created_at_ms, a.updated_at_ms
 		FROM sessions s

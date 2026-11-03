@@ -39,7 +39,7 @@ func scanProxy(row scanner) (model.Proxy, error) {
 }
 
 func (s *Store) ListProxies(ctx context.Context) ([]model.Proxy, error) {
-	rows, err := s.db.QueryContext(ctx, proxySelect+" ORDER BY id ASC")
+	rows, err := s.reader().QueryContext(ctx, proxySelect+" ORDER BY id ASC")
 	if err != nil {
 		return nil, fmt.Errorf("list proxies: %w", err)
 	}
@@ -60,7 +60,7 @@ func (s *Store) ListProxies(ctx context.Context) ([]model.Proxy, error) {
 }
 
 func (s *Store) ProxyByID(ctx context.Context, id int64) (model.Proxy, error) {
-	return scanProxy(s.db.QueryRowContext(ctx, proxySelect+" WHERE id = ?", id))
+	return scanProxy(s.reader().QueryRowContext(ctx, proxySelect+" WHERE id = ?", id))
 }
 
 func (s *Store) CreateProxy(ctx context.Context, proxy model.Proxy, now time.Time) (int64, error) {

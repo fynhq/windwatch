@@ -43,7 +43,7 @@ func validRole(role string) bool {
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]model.Admin, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT id, username, password_hash, role, disabled, created_at_ms, updated_at_ms
 		FROM admin ORDER BY id ASC
 	`)

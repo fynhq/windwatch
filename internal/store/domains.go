@@ -49,7 +49,7 @@ func (s *Store) DomainInfo(ctx context.Context, domain string) (model.DomainInfo
 		expiresAt  sql.NullInt64
 		fetchedAt  int64
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT domain, registrar, status_json, expires_at_ms, fetched_at_ms, error
 		FROM domain_info WHERE domain = ?
 	`, domain).Scan(

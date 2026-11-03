@@ -47,11 +47,28 @@ func (s *Store) CreatePushToken(ctx context.Context, monitorID int64, tokenHash,
 }
 
 func (s *Store) PushTokenByHash(ctx context.Context, tokenHash string) (model.PushToken, error) {
-	return scanPushToken(s.db.QueryRowContext(ctx, pushTokenSelect+" WHERE token_hash = ?", tokenHash))
+	return scanPushToken(s.reader().QueryRowContext(ctx, pushTokenSelect+" WHERE token_hash = ?", tokenHash))
 }
 
 func (s *Store) PushTokenByMonitorID(ctx context.Context, monitorID int64) (model.PushToken, error) {
-	return scanPushToken(s.db.QueryRowContext(ctx, pushTokenSelect+" WHERE monitor_id = ?", monitorID))
+	return scanPushToken(s.reader().QueryRowContext(ctx, pushTokenSelect+" WHERE monitor_id = ?", monitorID))
+}
+
+func (s *Store) ReplacePushToken(ctx context.Context, monitorID int64, tokenHash, tokenEnc string, now time.Time) error {
+	if tokenHash == "" || tokenEnc == "" {
+		return errors.New("push token must not be empty")
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO push_tokens (monitor_id, token_hash, token_enc, created_at_ms)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(monitor_id) DO UPDATE SET
+			token_hash = excluded.token_hash,
+			token_enc = excluded.token_enc
+	`, monitorID, tokenHash, tokenEnc, now.UTC().UnixMilli())
+	if err != nil {
+		return fmt.Errorf("replace push token: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) RecordHeartbeat(ctx context.Context, monitorID int64, now time.Time) error {

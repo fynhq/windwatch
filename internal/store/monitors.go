@@ -115,8 +115,16 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 	return monitor, nil
 }
 
+func (s *Store) CountMonitors(ctx context.Context) (int, error) {
+	var count int
+	if err := s.reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM monitors").Scan(&count); err != nil {
+		return 0, fmt.Errorf("count monitors: %w", err)
+	}
+	return count, nil
+}
+
 func (s *Store) ListMonitors(ctx context.Context) ([]model.Monitor, error) {
-	rows, err := s.db.QueryContext(ctx, monitorSelect+" ORDER BY m.id ASC")
+	rows, err := s.reader().QueryContext(ctx, monitorSelect+" ORDER BY m.id ASC")
 	if err != nil {
 		return nil, fmt.Errorf("list monitors: %w", err)
 	}
@@ -144,7 +152,7 @@ func (s *Store) ListMonitors(ctx context.Context) ([]model.Monitor, error) {
 }
 
 func (s *Store) MonitorByID(ctx context.Context, id int64) (model.Monitor, error) {
-	row := s.db.QueryRowContext(ctx, monitorSelect+" WHERE m.id = ?", id)
+	row := s.reader().QueryRowContext(ctx, monitorSelect+" WHERE m.id = ?", id)
 	monitor, err := scanMonitor(row)
 	if err != nil {
 		return model.Monitor{}, err
@@ -164,7 +172,7 @@ func (s *Store) MonitorsByIDs(ctx context.Context, ids []int64) ([]model.Monitor
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, err := s.db.QueryContext(ctx, monitorSelect+" WHERE m.id IN ("+idPlaceholders(len(ids))+") ORDER BY m.id ASC", args...)
+	rows, err := s.reader().QueryContext(ctx, monitorSelect+" WHERE m.id IN ("+idPlaceholders(len(ids))+") ORDER BY m.id ASC", args...)
 	if err != nil {
 		return nil, fmt.Errorf("list monitors by ids: %w", err)
 	}
@@ -201,7 +209,7 @@ func (s *Store) attachNotificationChannels(ctx context.Context, monitors []model
 		ids = append(ids, monitors[index].ID)
 		byID[monitors[index].ID] = index
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT mn.monitor_id, mn.channel_id, c.enabled
 		FROM monitor_notifications mn
 		JOIN notification_channels c ON c.id = mn.channel_id
@@ -243,6 +251,19 @@ func int64Args(ids []int64) []any {
 }
 
 func (s *Store) CreateMonitor(ctx context.Context, monitor model.Monitor, now time.Time) (int64, error) {
+	return s.createMonitor(ctx, monitor, now, "", "")
+}
+
+// CreateMonitorWithPushToken creates a Push monitor and its token in one
+// transaction. A crash can no longer leave a Push monitor without a token.
+func (s *Store) CreateMonitorWithPushToken(ctx context.Context, monitor model.Monitor, now time.Time, tokenHash, tokenEnc string) (int64, error) {
+	if monitor.Type != model.MonitorTypePush || tokenHash == "" || tokenEnc == "" {
+		return 0, errors.New("push token is required for a Push monitor")
+	}
+	return s.createMonitor(ctx, monitor, now, tokenHash, tokenEnc)
+}
+
+func (s *Store) createMonitor(ctx context.Context, monitor model.Monitor, now time.Time, tokenHash, tokenEnc string) (int64, error) {
 	if err := monitor.Validate(); err != nil {
 		return 0, err
 	}
@@ -300,6 +321,14 @@ func (s *Store) CreateMonitor(ctx context.Context, monitor model.Monitor, now ti
 		) VALUES (?, ?, ?, '', 0, 0, ?)
 	`, id, model.StatusPending, now.UnixMilli(), now.UnixMilli()); err != nil {
 		return 0, fmt.Errorf("insert monitor state: %w", err)
+	}
+	if tokenHash != "" {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO push_tokens (monitor_id, token_hash, token_enc, created_at_ms)
+			VALUES (?, ?, ?, ?)
+		`, id, tokenHash, tokenEnc, now.UnixMilli()); err != nil {
+			return 0, fmt.Errorf("insert push token: %w", err)
+		}
 	}
 	if err := insertMonitorNotificationChannels(ctx, tx, id, monitor.NotificationChannelIDs); err != nil {
 		return 0, err
@@ -536,7 +565,7 @@ func (s *Store) RecentChecks(ctx context.Context, monitorID int64, limit int) ([
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id, checked_at_ms, status, latency_ms, http_status,
 		       error_kind, error_message, meta_json, cert_fingerprint
 		FROM checks
@@ -599,6 +628,24 @@ func (s *Store) ResetDownStatusSince(ctx context.Context, monitorID int64, at ti
 	return nil
 }
 
+// ResetMonitorCounters clears consecutive failure/success counters and starts
+// warning/down duration from at. A pause must not let a pre-pause failure
+// satisfy the threshold after resume, nor count paused time as outage time.
+func (s *Store) ResetMonitorCounters(ctx context.Context, monitorID int64, at time.Time) error {
+	now := at.UTC().UnixMilli()
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE monitor_state
+		SET consecutive_failures = 0,
+		    consecutive_successes = 0,
+		    status_since_ms = CASE WHEN status IN (?, ?) THEN ? ELSE status_since_ms END,
+		    updated_at_ms = ?
+		WHERE monitor_id = ?
+	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
+		return fmt.Errorf("reset monitor counters: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) EnsureOpenDownEvent(ctx context.Context, monitorID int64, at time.Time, message string) error {
 	var open int
 	if err := s.db.QueryRowContext(ctx, `
@@ -624,7 +671,7 @@ func (s *Store) EnsureOpenDownEvent(ctx context.Context, monitorID int64, at tim
 // the later threshold confirmation.
 func (s *Store) OpenDownEventStart(ctx context.Context, monitorID int64) (time.Time, bool, error) {
 	var startedAt int64
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT started_at_ms FROM events
 		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
 		ORDER BY started_at_ms DESC
@@ -656,7 +703,7 @@ func (s *Store) RecentEvents(ctx context.Context, monitorID int64, limit int) ([
 	query += " ORDER BY e.started_at_ms DESC LIMIT ?"
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.reader().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
@@ -693,7 +740,7 @@ func (s *Store) UptimeStats(ctx context.Context, monitorID int64, since time.Tim
 		stats      model.UptimeStats
 		avgLatency float64
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err := s.reader().QueryRowContext(ctx, `
 		SELECT COUNT(*),
 		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END), 0),
@@ -721,7 +768,7 @@ func (s *Store) UptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		args = append(args, id)
 	}
 	args = append(args, since.UTC().UnixMilli())
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id, COUNT(*),
 		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END), 0),
@@ -755,7 +802,7 @@ func (s *Store) UptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 }
 
 func (s *Store) HourlyBuckets(ctx context.Context, since time.Time) (map[int64][]model.HourBucket, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id,
 		       (checked_at_ms / 3600000) * 3600000 AS bucket_start_ms,
 		       COUNT(*),
@@ -797,7 +844,7 @@ func (s *Store) HourlyBuckets(ctx context.Context, since time.Time) (map[int64][
 }
 
 func (s *Store) HourlyBucketsForMonitor(ctx context.Context, monitorID int64, since time.Time) ([]model.HourBucket, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT (checked_at_ms / 3600000) * 3600000 AS bucket_start_ms,
 		       COUNT(*),
 		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),

@@ -49,7 +49,7 @@ func scanNotificationChannel(row scanner) (model.NotificationChannel, error) {
 }
 
 func (s *Store) ListNotificationChannels(ctx context.Context) ([]model.NotificationChannel, error) {
-	rows, err := s.db.QueryContext(ctx, notificationChannelSelect+" ORDER BY id ASC")
+	rows, err := s.reader().QueryContext(ctx, notificationChannelSelect+" ORDER BY id ASC")
 	if err != nil {
 		return nil, fmt.Errorf("list notification channels: %w", err)
 	}
@@ -70,12 +70,12 @@ func (s *Store) ListNotificationChannels(ctx context.Context) ([]model.Notificat
 }
 
 func (s *Store) NotificationChannelByID(ctx context.Context, id int64) (model.NotificationChannel, error) {
-	return scanNotificationChannel(s.db.QueryRowContext(ctx, notificationChannelSelect+" WHERE id = ?", id))
+	return scanNotificationChannel(s.reader().QueryRowContext(ctx, notificationChannelSelect+" WHERE id = ?", id))
 }
 
 func (s *Store) EnabledNotificationChannelCount(ctx context.Context) (int, error) {
 	var count int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notification_channels WHERE enabled = 1").Scan(&count); err != nil {
+	if err := s.reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM notification_channels WHERE enabled = 1").Scan(&count); err != nil {
 		return 0, fmt.Errorf("count notification channels: %w", err)
 	}
 	return count, nil
@@ -203,7 +203,7 @@ func (s *Store) LinkNotificationChannelToUnlinkedMonitors(ctx context.Context, c
 }
 
 func (s *Store) MonitorIDsForNotificationChannel(ctx context.Context, channelID int64) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id FROM monitor_notifications WHERE channel_id = ? ORDER BY monitor_id ASC
 	`, channelID)
 	if err != nil {
@@ -226,7 +226,7 @@ func (s *Store) MonitorIDsForNotificationChannel(ctx context.Context, channelID 
 }
 
 func (s *Store) NotificationChannelIDsForMonitor(ctx context.Context, monitorID int64) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.reader().QueryContext(ctx, `
 		SELECT mn.channel_id
 		FROM monitor_notifications mn
 		JOIN notification_channels c ON c.id = mn.channel_id

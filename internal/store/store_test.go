@@ -154,3 +154,21 @@ func TestDeleteExpiredSessions(t *testing.T) {
 		t.Fatalf("active session was removed: %v", err)
 	}
 }
+
+func TestCheckpointWAL(t *testing.T) {
+	st := newStoreTest(t)
+	if err := st.CheckpointWAL(t.Context()); err != nil {
+		t.Fatalf("CheckpointWAL: %v", err)
+	}
+}
+
+func TestWALModeIsPersistent(t *testing.T) {
+	st := newStoreTest(t)
+	var mode string
+	if err := st.db.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatalf("journal_mode: %v", err)
+	}
+	if mode != "wal" {
+		t.Fatalf("journal_mode = %q, want wal", mode)
+	}
+}
