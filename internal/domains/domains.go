@@ -116,7 +116,7 @@ func DomainForURL(rawURL string) (string, error) {
 // retry reports that at least one lookup failed for a transient reason and
 // should be tried again before the regular refresh interval.
 func Refresh(ctx context.Context, st *store.Store, monitors []model.Monitor, resolver func(*int64) (*proxy.Config, error), now time.Time) (retry bool, err error) {
-	unique := make(map[string]model.Monitor)
+	unique := make(map[string][]model.Monitor)
 	for _, monitor := range monitors {
 		if !monitor.Enabled || monitor.Type != model.MonitorTypeHTTP || monitor.HTTP == nil || !monitor.HTTP.DomainCheck {
 			continue
@@ -125,23 +125,38 @@ func Refresh(ctx context.Context, st *store.Store, monitors []model.Monitor, res
 		if err != nil {
 			continue
 		}
-		if _, exists := unique[domain]; !exists {
-			unique[domain] = monitor
-		}
+		unique[domain] = append(unique[domain], monitor)
 	}
 
 	failures := make([]error, 0, len(unique))
-	for domain, monitor := range unique {
-		info, fetchErr := lookupRDAP(ctx, domain, func() (*proxy.Config, error) {
-			if resolver == nil {
-				return nil, nil
+	for domain, candidates := range unique {
+		var (
+			info          model.DomainInfo
+			fetchErr      error
+			candidateErrs []error
+			anyTransient  bool
+		)
+		for _, monitor := range candidates {
+			info, fetchErr = lookupRDAP(ctx, domain, func() (*proxy.Config, error) {
+				if resolver == nil {
+					return nil, nil
+				}
+				return resolver(monitor.ProxyID)
+			}, now)
+			if fetchErr == nil {
+				break
 			}
-			return resolver(monitor.ProxyID)
-		}, now)
+			candidateErrs = append(candidateErrs, fmt.Errorf("monitor %d: %w", monitor.ID, fetchErr))
+			anyTransient = anyTransient || isTransientError(fetchErr)
+			if ctx.Err() != nil {
+				break
+			}
+		}
 		if fetchErr != nil {
-			if isTransientError(fetchErr) {
+			if anyTransient {
 				retry = true
 			}
+			fetchErr = errors.Join(candidateErrs...)
 			failures = append(failures, fmt.Errorf("%s: %w", domain, fetchErr))
 			previous, previousErr := st.DomainInfo(ctx, domain)
 			if previousErr == nil {
@@ -191,7 +206,19 @@ func newRDAPClient(resolve func() (*proxy.Config, error)) (*http.Client, func(),
 	if err := proxy.ApplyHTTPTransport(egress, transport); err != nil {
 		return nil, nil, err
 	}
-	return &http.Client{Transport: transport, Timeout: 15 * time.Second}, transport.CloseIdleConnections, nil
+	return &http.Client{
+		Transport: transport,
+		Timeout:   15 * time.Second,
+		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("too many RDAP redirects")
+			}
+			if request.URL.Scheme != "https" {
+				return errors.New("RDAP redirect must use https")
+			}
+			return nil
+		},
+	}, transport.CloseIdleConnections, nil
 }
 
 func fetchRDAPFrom(ctx context.Context, client *http.Client, endpoints []string, domain string, now time.Time) (model.DomainInfo, error) {
@@ -202,9 +229,12 @@ func fetchRDAPFrom(ctx context.Context, client *http.Client, endpoints []string,
 			return info, nil
 		}
 		failures = append(failures, fmt.Errorf("%s: %w", rdapEndpointHost(endpoint), err))
-		if !isTransientError(err) {
-			return model.DomainInfo{}, failures[len(failures)-1]
+		if ctx.Err() != nil {
+			break
 		}
+		// A permanent error from one authoritative endpoint must not suppress
+		// the fallback: TLD registries have uneven RDAP coverage and rdap.org
+		// often has the record even when the registry answers 404.
 	}
 	if len(failures) == 0 {
 		return model.DomainInfo{}, errors.New("no RDAP endpoint available")

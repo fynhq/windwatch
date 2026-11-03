@@ -205,6 +205,36 @@ func TestFetchRDAPDoesNotRetryPermanentStatus(t *testing.T) {
 	}
 }
 
+func TestRefreshFallsBackAfterAuthoritativePermanentError(t *testing.T) {
+	fastRetries(t)
+	authoritative := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer authoritative.Close()
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeRDAP(w)
+	}))
+	defer fallback.Close()
+	useBootstrapServices(t, map[string][]string{"com": {authoritative.URL}})
+	useFallbackEndpoint(t, fallback.URL+"/domain/")
+
+	st := newDomainStore(t)
+	monitors := []model.Monitor{{
+		Enabled: true,
+		Type:    model.MonitorTypeHTTP,
+		HTTP:    &model.HTTPConfig{URL: "https://example.com", DomainCheck: true},
+	}}
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	retry, err := Refresh(context.Background(), st, monitors, nil, now)
+	if err != nil || retry {
+		t.Fatalf("Refresh retry=%v err=%v", retry, err)
+	}
+	info, err := st.DomainInfo(context.Background(), "example.com")
+	if err != nil || info.Registrar != "Example Registrar" {
+		t.Fatalf("fallback domain info = %+v err=%v", info, err)
+	}
+}
+
 func TestRefreshKeepsPreviousInfoOnTransientFailure(t *testing.T) {
 	fastRetries(t)
 	var authoritativeCalls, fallbackCalls atomic.Int32
