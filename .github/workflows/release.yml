@@ -80,6 +80,9 @@ jobs:
       - name: Run race tests
         run: make race
 
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   release:
     name: Publish release
     needs: check

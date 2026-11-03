@@ -30,6 +30,9 @@ jobs:
       - name: Run race tests
         run: make race
 
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       - name: Build
         run: make build
 
