@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/i18n"
@@ -48,7 +49,20 @@ type Server struct {
 	staticFS       fs.FS
 	limiter        *loginLimiter
 	pushLimiter    *pushLimiter
+	statusLimiter  *windowLimiter
 	now            func() time.Time
+
+	settingsMu      sync.Mutex
+	settingsValues  map[string]string
+	settingsExpires time.Time
+	settingsVersion uint64
+
+	adminMu      sync.Mutex
+	adminValue   bool
+	adminExpires time.Time
+
+	publicMu       sync.Mutex
+	publicSnapshot *publicStatusSnapshot
 }
 
 func New(st *store.Store, catalogs *i18n.Catalogs, scheduler MonitorScheduler, notifier NotificationTester, cipher *secret.Cipher, trustedProxies []netip.Prefix, logger *slog.Logger, version string) (*Server, error) {
@@ -109,6 +123,7 @@ func New(st *store.Store, catalogs *i18n.Catalogs, scheduler MonitorScheduler, n
 		staticFS:       staticFS,
 		limiter:        newLoginLimiter(),
 		pushLimiter:    newPushLimiter(),
+		statusLimiter:  newWindowLimiter(120, time.Minute),
 		now:            time.Now,
 	}, nil
 }
@@ -156,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /monitors/{id}", s.requireAdmin(s.handleMonitorUpdate))
 	mux.HandleFunc("POST /monitors/{id}/check", s.requireAdmin(s.handleMonitorCheck))
 	mux.HandleFunc("POST /monitors/{id}/toggle", s.requireAdmin(s.handleMonitorToggle))
+	mux.HandleFunc("POST /monitors/{id}/push-token", s.requireAdmin(s.handleMonitorPushToken))
 	mux.HandleFunc("POST /monitors/{id}/delete", s.requireAdmin(s.handleMonitorDelete))
 	mux.HandleFunc("GET /api/push/{token}", s.handlePush)
 	mux.HandleFunc("POST /api/push/{token}", s.handlePush)

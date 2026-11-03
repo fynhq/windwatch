@@ -38,6 +38,8 @@ func formErrorKey(err error) string {
 		return "error.monitorName"
 	case errors.Is(err, model.ErrMonitorType):
 		return "error.invalidRequest"
+	case errors.Is(err, model.ErrMonitorLimit):
+		return "error.monitorLimit"
 	case errors.Is(err, model.ErrInterval):
 		return "error.interval"
 	case errors.Is(err, model.ErrTimeout):
@@ -305,6 +307,13 @@ func (s *Server) handleMonitorCreate(w http.ResponseWriter, r *http.Request, aut
 		return
 	}
 	values := parseFormValues(r)
+	count, countErr := s.store.CountMonitors(r.Context())
+	if countErr != nil {
+		s.log.Error("count monitors", "error", countErr)
+	} else if count >= model.MaxMonitors {
+		s.renderMonitorFormError(w, r, auth, 0, monitorType, values, "error.monitorLimit")
+		return
+	}
 	base := model.Monitor{Enabled: true, NotifyEnabled: true}
 	monitor, err := buildMonitorFromValues(monitorType, values, base)
 	if err != nil {
@@ -319,19 +328,23 @@ func (s *Server) handleMonitorCreate(w http.ResponseWriter, r *http.Request, aut
 		s.renderMonitorFormError(w, r, auth, 0, monitorType, values, formErrorKey(err))
 		return
 	}
-	id, err := s.store.CreateMonitor(r.Context(), monitor, s.now().UTC())
+	var id int64
+	var tokenHash, tokenEnc string
+	if monitor.Type == model.MonitorTypePush {
+		tokenHash, tokenEnc, err = s.generatePushToken()
+		if err != nil {
+			s.log.Error("create push token", "error", err)
+			s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+			return
+		}
+		id, err = s.store.CreateMonitorWithPushToken(r.Context(), monitor, s.now().UTC(), tokenHash, tokenEnc)
+	} else {
+		id, err = s.store.CreateMonitor(r.Context(), monitor, s.now().UTC())
+	}
 	if err != nil {
 		s.log.Error("create monitor", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
-	}
-	if monitor.Type == model.MonitorTypePush {
-		if err := s.createPushToken(r, id); err != nil {
-			s.log.Error("create push token", "monitor_id", id, "error", err)
-			_ = s.store.DeleteMonitor(r.Context(), id)
-			s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-			return
-		}
 	}
 	if err := s.scheduler.Reload(id); err != nil {
 		s.log.Warn("reload scheduler after create", "monitor_id", id, "error", err)
@@ -339,16 +352,52 @@ func (s *Server) handleMonitorCreate(w http.ResponseWriter, r *http.Request, aut
 	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=monitor_created", id), http.StatusSeeOther)
 }
 
-func (s *Server) createPushToken(r *http.Request, monitorID int64) error {
+func (s *Server) generatePushToken() (string, string, error) {
 	token, err := secret.RandomToken(32)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	encrypted, err := s.cipher.Encrypt(token)
 	if err != nil {
-		return err
+		return "", "", err
 	}
-	return s.store.CreatePushToken(r.Context(), monitorID, secret.HashToken(token), encrypted, s.now().UTC())
+	return secret.HashToken(token), encrypted, nil
+}
+
+func (s *Server) handleMonitorPushToken(w http.ResponseWriter, r *http.Request, auth model.AuthInfo) {
+	id, ok := pathID(r)
+	if !ok {
+		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
+		return
+	}
+	if !s.authorizedPost(w, r, auth) {
+		return
+	}
+	monitor, err := s.store.MonitorByID(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
+		return
+	}
+	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
+	if monitor.Type != model.MonitorTypePush {
+		s.renderError(w, r, http.StatusBadRequest, "error.invalidRequest")
+		return
+	}
+	tokenHash, tokenEnc, err := s.generatePushToken()
+	if err != nil {
+		s.log.Error("regenerate push token", "monitor_id", id, "error", err)
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
+	if err := s.store.ReplacePushToken(r.Context(), id, tokenHash, tokenEnc, s.now().UTC()); err != nil {
+		s.log.Error("replace push token", "monitor_id", id, "error", err)
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=push_token_regenerated", id), http.StatusSeeOther)
 }
 
 func (s *Server) validateProxySelection(r *http.Request, monitor model.Monitor) error {
@@ -524,20 +573,19 @@ func (s *Server) handleMonitorToggle(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	now := s.now().UTC()
 	if !enabled {
 		if err := s.store.DeleteReminderStates(r.Context(), id); err != nil {
 			s.log.Warn("clear reminder states after pause", "monitor_id", id, "error", err)
 		}
-		if err := s.store.CloseOpenDownEvents(r.Context(), id, s.now().UTC()); err != nil {
-			s.log.Warn("close open down events after pause", "monitor_id", id, "error", err)
-		}
-	} else {
-		if err := s.store.CloseOpenDownEvents(r.Context(), id, s.now().UTC()); err != nil {
-			s.log.Warn("close stale down events after resume", "monitor_id", id, "error", err)
-		}
-		if err := s.store.ResetDownStatusSince(r.Context(), id, s.now().UTC()); err != nil {
-			s.log.Warn("reset down status after resume", "monitor_id", id, "error", err)
-		}
+	}
+	if err := s.store.CloseOpenDownEvents(r.Context(), id, now); err != nil {
+		s.log.Warn("close open down events after toggle", "monitor_id", id, "error", err)
+	}
+	// Pausing must not let a pre-pause failure count toward the next DOWN
+	// threshold, and must not count paused time in warning/down durations.
+	if err := s.store.ResetMonitorCounters(r.Context(), id, now); err != nil {
+		s.log.Warn("reset monitor counters after toggle", "monitor_id", id, "error", err)
 	}
 	if err := s.scheduler.Reload(id); err != nil {
 		s.log.Warn("reload scheduler after toggle", "monitor_id", id, "error", err)
@@ -570,6 +618,8 @@ func (s *Server) handleMonitorDelete(w http.ResponseWriter, r *http.Request, aut
 	defer cancelCleanup()
 	if err := s.store.PrunePublicStatusMonitorIDs(cleanupCtx, s.now().UTC()); err != nil {
 		s.log.Warn("prune public status monitor ids after delete", "monitor_id", id, "error", err)
+	} else {
+		s.invalidateSettings()
 	}
 	s.scheduler.Remove(id)
 	http.Redirect(w, r, "/?notice=monitor_deleted", http.StatusSeeOther)
@@ -836,6 +886,7 @@ func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, mo
 		StatusSinceAgo:    formatRelativeTime(translator, now, monitor.State.StatusSince),
 		LastCheckAgo:      formatRelativeTime(translator, now, monitor.State.LastCheck),
 		LastCheckTitle:    formatTime(translator, monitor.State.LastCheck, data.Location),
+		LastError:         monitor.State.LastError,
 		Interval:          secondsLabel(monitor.Interval),
 		Timeout:           secondsLabel(monitor.Timeout),
 		FailThreshold:     monitor.FailThreshold,

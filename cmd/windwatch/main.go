@@ -178,9 +178,12 @@ func selectResetUser(users []model.Admin, username string) (model.Admin, error) 
 
 func readResetPassword(fromStdin bool) (string, error) {
 	if fromStdin {
-		data, err := io.ReadAll(io.LimitReader(os.Stdin, 4096))
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 4097))
 		if err != nil {
 			return "", fmt.Errorf("read password from stdin: %w", err)
+		}
+		if len(data) > 4096 {
+			return "", errors.New("password from stdin is too long")
 		}
 		password := strings.TrimRight(string(data), "\r\n")
 		if strings.ContainsAny(password, "\r\n") {
@@ -221,7 +224,9 @@ func runHealthcheck(args []string) error {
 		return err
 	}
 
-	client := &http.Client{Timeout: 3 * time.Second}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
 	response, err := client.Get(*url)
 	if err != nil {
 		return fmt.Errorf("healthcheck request: %w", err)

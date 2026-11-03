@@ -20,13 +20,6 @@
   height: 16px;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
-  margin-bottom: 22px;
-}
-
 .stat {
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -178,13 +171,6 @@
   height: 40px;
   gap: 3px;
   margin-top: 14px;
-}
-
-.status-series {
-  display: grid;
-  gap: 5px;
-  align-self: end;
-  min-width: 0;
 }
 
 .series-label {
@@ -543,13 +529,6 @@
   margin-top: 0;
 }
 
-.history-block + .history-block {
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-}
-
-.history-block .latency-chart,
 .history-panel .long-range-chart {
   margin-top: 0;
 }
@@ -686,10 +665,6 @@
     margin-bottom: 4px;
   }
 
-  .monitor-body .status-series {
-    grid-column: 1 / -1;
-  }
-
   .type-grid,
   .form-grid {
     grid-template-columns: 1fr;
@@ -725,16 +700,8 @@
     gap: 12px;
   }
 
-  .monitor-body .status-series {
-    grid-column: auto;
-  }
-
   .panel {
     padding: 16px;
-  }
-
-  .stats-grid {
-    gap: 8px;
   }
 
   .stat {
@@ -1001,10 +968,6 @@
   font-size: 12px;
 }
 
-.reset-password-form {
-  min-width: 280px;
-}
-
 @media (max-width: 720px) {
   .user-actions {
     flex-direction: column;
@@ -1017,9 +980,5 @@
 
   .user-actions > .inline-form > .button {
     flex: 1;
-  }
-
-  .reset-password-form {
-    min-width: 0;
   }
 }

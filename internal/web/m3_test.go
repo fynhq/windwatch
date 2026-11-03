@@ -421,8 +421,8 @@ func TestNotificationWebhookFormats(t *testing.T) {
 	}
 	_ = readResponseBody(t, response)
 	updated, err := st.NotificationChannelByID(t.Context(), dingTalk.ID)
-	if err != nil || updated.WebhookFormat != model.WebhookFormatFeishu || updated.SecretEnc == "" {
-		t.Fatalf("format change lost the secret: %+v err=%v", updated, err)
+	if err != nil || updated.WebhookFormat != model.WebhookFormatFeishu || updated.SecretEnc != "" {
+		t.Fatalf("format change kept a secret from another signing scheme: %+v err=%v", updated, err)
 	}
 
 	response, err = client.PostForm(testServer.URL+"/settings/notifications/channels", url.Values{
@@ -661,5 +661,29 @@ func TestMonitorSelectsNotificationChannels(t *testing.T) {
 	body = readResponseBody(t, response)
 	if !strings.Contains(body, "The notification method no longer exists.") {
 		t.Fatalf("invalid channel error missing: %s", body)
+	}
+}
+
+func TestWebhookURLIsNotEchoedInEditForm(t *testing.T) {
+	_, st, testServer := newWebTestServer(t)
+	client, _ := setupAdminSession(t, testServer)
+	const secret = "do-not-echo-this-token"
+	id, err := st.CreateNotificationChannel(t.Context(), model.NotificationChannel{
+		Name: "Secret hook", Type: model.NotificationChannelWebhook, Enabled: true,
+		WebhookURL: "https://example.com/hooks/" + secret + "?token=" + secret,
+	}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("CreateNotificationChannel: %v", err)
+	}
+	response, err := client.Get(testServer.URL + "/settings/notifications?channel=" + strconv.FormatInt(id, 10))
+	if err != nil {
+		t.Fatalf("GET notification edit: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if strings.Contains(body, secret) {
+		t.Fatalf("edit form echoed webhook secret: %s", body)
+	}
+	if !strings.Contains(body, "A URL is configured") && !strings.Contains(body, "已配置地址") {
+		t.Fatalf("edit form missing configured placeholder: %s", body)
 	}
 }

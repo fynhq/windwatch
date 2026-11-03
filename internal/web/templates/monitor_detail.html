@@ -13,6 +13,7 @@
       <span class="hint" aria-hidden="true">·</span>
       <span class="hint" title="{{.Monitor.LastCheckTitle}}">{{.I18n.T "monitor.lastCheck"}} {{.Monitor.LastCheckAgo}}</span>
     </p>
+    {{if .Monitor.LastError}}<p class="alert alert-error">{{.I18n.T "monitor.lastError"}}<br>{{.Monitor.LastError}}</p>{{end}}
   </div>
   <div class="page-actions">
     {{if .IsAdmin}}
@@ -155,6 +156,13 @@
       <p class="muted">{{.I18n.T "monitor.pushAdminOnly"}}</p>
       {{else}}
       <p class="muted">{{.I18n.T "monitor.pushUnavailable"}}</p>
+      {{end}}
+      {{if .IsAdmin}}
+      <form method="post" action="/monitors/{{.Monitor.ID}}/push-token" class="inline-form"
+        data-confirm="{{.I18n.T "monitor.pushTokenRegenerateConfirm"}}">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="button button-danger-outline button-small" type="submit">{{.I18n.T "monitor.pushTokenRegenerate"}}</button>
+      </form>
       {{end}}
     </section>
     {{end}}

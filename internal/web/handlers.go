@@ -16,8 +16,13 @@ import (
 	"github.com/fynhq/windwatch/internal/store"
 )
 
+const (
+	maxLoginUsernameLength = 64
+	maxLoginPasswordLength = 256
+)
+
 func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
-	hasAdmin, err := s.store.HasAdmin(r.Context())
+	hasAdmin, err := s.hasAdmin(r.Context())
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -35,7 +40,7 @@ func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
-	hasAdmin, err := s.store.HasAdmin(r.Context())
+	hasAdmin, err := s.hasAdmin(r.Context())
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -96,6 +101,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("administrator created", "username", admin.Username)
+	s.setAdminCache(true)
 
 	if err := s.createSession(w, r, admin.ID); err != nil {
 		s.log.Error("create session after setup", "error", err)
@@ -106,7 +112,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	hasAdmin, err := s.store.HasAdmin(r.Context())
+	hasAdmin, err := s.hasAdmin(r.Context())
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -128,7 +134,7 @@ func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
-	hasAdmin, err := s.store.HasAdmin(r.Context())
+	hasAdmin, err := s.hasAdmin(r.Context())
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -158,10 +164,21 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	password := r.PostFormValue("password")
+	if utf8.RuneCountInString(username) > maxLoginUsernameLength ||
+		utf8.RuneCountInString(password) > maxLoginPasswordLength {
+		s.limiter.failure(key, now)
+		s.log.Warn("login failed", "reason", "input too long", "client", key)
+		s.renderLoginPage(w, r, http.StatusUnauthorized, csrf, "", "error.invalidCredentials")
+		return
+	}
+
 	admin, err := s.store.AdminByUsername(r.Context(), username)
 	if errors.Is(err, store.ErrNotFound) {
 		s.limiter.failure(key, now)
-		s.log.Warn("login failed", "username", username, "reason", "unknown user", "client", key)
+		// Keep unknown-user timing close to a real password verification.
+		secret.VerifyDummyPassword(password)
+		s.log.Warn("login failed", "username", truncateLoginValue(username), "reason", "unknown user", "client", key)
 		s.renderLoginPage(w, r, http.StatusUnauthorized, csrf, username, "error.invalidCredentials")
 		return
 	}
@@ -171,7 +188,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	verified, err := secret.VerifyPassword(admin.PasswordHash, r.PostFormValue("password"))
+	verified, err := secret.VerifyPassword(admin.PasswordHash, password)
 	if err != nil {
 		s.log.Error("verify administrator password", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
@@ -183,7 +200,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		if verified {
 			reason = "disabled account"
 		}
-		s.log.Warn("login failed", "username", username, "reason", reason, "client", key)
+		s.log.Warn("login failed", "username", truncateLoginValue(username), "reason", reason, "client", key)
 		s.renderLoginPage(w, r, http.StatusUnauthorized, csrf, username, "error.invalidCredentials")
 		return
 	}
@@ -333,6 +350,14 @@ func (s *Server) handleLanguage(w http.ResponseWriter, r *http.Request) {
 		next = "/"
 	}
 	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func truncateLoginValue(value string) string {
+	const limit = 64
+	if utf8.RuneCountInString(value) <= limit {
+		return value
+	}
+	return string([]rune(value)[:limit]) + "…"
 }
 
 func safeRedirectPath(value string) bool {

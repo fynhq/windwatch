@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  function refreshToggles(selectDefaultProxy) {
+  function refreshToggles() {
     var toggles = document.querySelectorAll("[data-toggle-target]");
     for (var i = 0; i < toggles.length; i++) {
       var toggle = toggles[i];
@@ -9,23 +9,16 @@
       if (!target) {
         continue;
       }
-      if (selectDefaultProxy && toggle.checked && target.tagName === "SELECT" &&
-          target.value === "" && target.options.length > 1) {
-        target.selectedIndex = 1;
-      }
       target.disabled = !toggle.checked;
     }
   }
 
   function randomHex(byteCount) {
-    var bytes = new Uint8Array(byteCount);
-    if (window.crypto && window.crypto.getRandomValues) {
-      window.crypto.getRandomValues(bytes);
-    } else {
-      for (var i = 0; i < bytes.length; i++) {
-        bytes[i] = Math.floor(Math.random() * 256);
-      }
+    if (!window.crypto || !window.crypto.getRandomValues) {
+      return "";
     }
+    var bytes = new Uint8Array(byteCount);
+    window.crypto.getRandomValues(bytes);
     var value = "";
     for (var j = 0; j < bytes.length; j++) {
       value += ("0" + bytes[j].toString(16)).slice(-2);
@@ -681,12 +674,21 @@
 
   function initSecretGenerators() {
     var buttons = document.querySelectorAll("[data-generate-secret]");
+    var secureRandom = !!(window.crypto && window.crypto.getRandomValues);
     for (var i = 0; i < buttons.length; i++) {
+      if (!secureRandom) {
+        buttons[i].disabled = true;
+        continue;
+      }
       buttons[i].addEventListener("click", function () {
         var group = this.closest("[data-secret-group]");
         var input = group ? group.querySelector("input") : null;
         if (input) {
-          input.value = randomHex(32);
+          var generated = randomHex(32);
+          if (!generated) {
+            return;
+          }
+          input.value = generated;
           input.setAttribute("data-secret-configured", "false");
         }
       });
@@ -801,7 +803,7 @@
         }
         checkbox.disabled = plainHTTP;
       });
-      refreshToggles(false);
+      refreshToggles();
     }
     urlInput.addEventListener("input", refresh);
     refresh();
@@ -826,11 +828,11 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    refreshToggles(false);
+    refreshToggles();
     var toggles = document.querySelectorAll("[data-toggle-target]");
     for (var i = 0; i < toggles.length; i++) {
       toggles[i].addEventListener("change", function () {
-        refreshToggles(true);
+        refreshToggles();
       });
     }
 

@@ -550,3 +550,42 @@ func TestRequestLogPathRedactsPushToken(t *testing.T) {
 		t.Fatalf("requestLogPath = %q", got)
 	}
 }
+
+func TestLoginRejectsOversizedInput(t *testing.T) {
+	_, _, testServer := newWebTestServer(t)
+	setupAdminSession(t, testServer)
+
+	client := newTestClient(t)
+	response, err := client.Get(testServer.URL + "/login")
+	if err != nil {
+		t.Fatalf("GET /login: %v", err)
+	}
+	_ = readResponseBody(t, response)
+	csrf := cookieValue(t, client, testServer.URL+"/login", csrfCookieName)
+
+	response, err = client.PostForm(testServer.URL+"/login", url.Values{
+		"csrf_token": {csrf},
+		"username":   {strings.Repeat("a", maxLoginUsernameLength+1)},
+		"password":   {"valid-password"},
+	})
+	if err != nil {
+		t.Fatalf("POST oversized username: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.StatusCode != http.StatusUnauthorized || strings.Contains(body, strings.Repeat("a", maxLoginUsernameLength+1)) {
+		t.Fatalf("oversized username status=%d body=%s", response.StatusCode, body)
+	}
+
+	response, err = client.PostForm(testServer.URL+"/login", url.Values{
+		"csrf_token": {csrf},
+		"username":   {"admin"},
+		"password":   {strings.Repeat("p", maxLoginPasswordLength+1)},
+	})
+	if err != nil {
+		t.Fatalf("POST oversized password: %v", err)
+	}
+	body = readResponseBody(t, response)
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("oversized password status=%d body=%s", response.StatusCode, body)
+	}
+}

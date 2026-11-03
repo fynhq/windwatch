@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -79,6 +80,77 @@ type publicStatusPage struct {
 	DownCount    int
 	PendingCount int
 	PausedCount  int
+}
+
+type publicStatusSnapshot struct {
+	version  uint64
+	expires  time.Time
+	today    time.Time
+	monitors []model.Monitor
+	history  map[int64][]model.HourBucket
+	stats24  map[int64]model.UptimeStats
+	stats7   map[int64]model.UptimeStats
+	stats30  map[int64]model.UptimeStats
+	stats90  map[int64]model.UptimeStats
+}
+
+// loadPublicSnapshot caches the expensive public statistics for 30 seconds. A
+// settings revision change invalidates it immediately; monitor status changes
+// are intentionally allowed to lag one refresh interval.
+func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version uint64, now time.Time, location *time.Location) (*publicStatusSnapshot, error) {
+	s.publicMu.Lock()
+	defer s.publicMu.Unlock()
+	if snapshot := s.publicSnapshot; snapshot != nil &&
+		snapshot.version == version && now.Before(snapshot.expires) {
+		return snapshot, nil
+	}
+
+	if location == nil {
+		location = time.UTC
+	}
+	localNow := now.In(location)
+	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	monitors, err := s.store.MonitorsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	monitorIDs := make([]int64, 0, len(monitors))
+	for _, monitor := range monitors {
+		monitorIDs = append(monitorIDs, monitor.ID)
+	}
+	history, err := s.store.DailyBucketsForMonitors(ctx, monitorIDs, today.AddDate(0, 0, -90), today, location)
+	if err != nil {
+		return nil, err
+	}
+	stats24, err := s.store.UptimeStatsForMonitors(ctx, monitorIDs, now.Add(-24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	stats7, err := s.store.UptimeStatsForMonitors(ctx, monitorIDs, now.Add(-7*24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	stats30, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-30*24*time.Hour), now.Add(-7*24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	stats90, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-90*24*time.Hour), now.Add(-7*24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &publicStatusSnapshot{
+		version:  version,
+		expires:  now.Add(30 * time.Second),
+		today:    today,
+		monitors: monitors,
+		history:  history,
+		stats24:  stats24,
+		stats7:   stats7,
+		stats30:  stats30,
+		stats90:  stats90,
+	}
+	s.publicSnapshot = snapshot
+	return snapshot, nil
 }
 
 func publicStatusFromSettings(values map[string]string) publicStatusFormValues {
@@ -167,7 +239,12 @@ func uniquePositiveIDs(ids []int64) []int64 {
 }
 
 func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
-	values, err := s.store.Settings(r.Context())
+	if !s.statusLimiter.allow(s.clientKey(r), s.now()) {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+	values, err := s.settings(r.Context())
 	if err != nil {
 		s.log.Error("load public status settings", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
@@ -191,50 +268,20 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	data.Title = title
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 
-	publicMonitors, err := s.store.MonitorsByIDs(r.Context(), status.MonitorIDs)
+	snapshot, err := s.loadPublicSnapshot(r.Context(), status.MonitorIDs, s.settingsRevision(), now, data.Location)
 	if err != nil {
-		s.log.Error("load public monitors", "error", err)
+		s.log.Error("load public status snapshot", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	monitorIDs := make([]int64, 0, len(publicMonitors))
-	for _, monitor := range publicMonitors {
-		monitorIDs = append(monitorIDs, monitor.ID)
-	}
+	publicMonitors := snapshot.monitors
 	location := data.Location
-	localNow := now.In(location)
-	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
-	history, err := s.store.DailyBucketsForMonitors(r.Context(), monitorIDs, today.AddDate(0, 0, -90), today, location)
-	if err != nil {
-		s.log.Error("load public daily history", "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
-
-	stats24ByMonitor, err := s.store.UptimeStatsForMonitors(r.Context(), monitorIDs, now.Add(-24*time.Hour))
-	if err != nil {
-		s.log.Error("load public 24h stats", "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
-	stats7dByMonitor, err := s.store.UptimeStatsForMonitors(r.Context(), monitorIDs, now.Add(-7*24*time.Hour))
-	if err != nil {
-		s.log.Error("load public 7d stats", "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
-	stats30OlderByMonitor, err := s.store.RollupStatsForMonitors(r.Context(), monitorIDs, now.Add(-30*24*time.Hour), now.Add(-7*24*time.Hour))
-	if err != nil {
-		s.log.Error("load public 30d stats", "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
-	stats90OlderByMonitor, err := s.store.RollupStatsForMonitors(r.Context(), monitorIDs, now.Add(-90*24*time.Hour), now.Add(-7*24*time.Hour))
-	if err != nil {
-		s.log.Error("load public 90d stats", "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
+	today := snapshot.today
+	stats24ByMonitor := snapshot.stats24
+	stats7dByMonitor := snapshot.stats7
+	stats30OlderByMonitor := snapshot.stats30
+	stats90OlderByMonitor := snapshot.stats90
+	history := snapshot.history
 
 	rows := make([]publicMonitorRow, 0, len(publicMonitors))
 	var upCount, warningCount, downCount, pendingCount, pausedCount int
@@ -376,6 +423,7 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	s.invalidateSettings()
 	http.Redirect(w, r, "/settings/public?notice=public_status_saved", http.StatusSeeOther)
 }
 

@@ -584,21 +584,10 @@
   background: var(--surface-2);
 }
 
-.chart-grid-line {
-  stroke: var(--border);
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
-}
-
 .chart-axis-label {
   fill: var(--faint);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-}
-
-.latency-area {
-  fill: var(--accent);
-  opacity: 0.1;
 }
 
 .latency-chart .latency-line {

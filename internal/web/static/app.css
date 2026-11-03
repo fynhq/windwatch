@@ -839,12 +839,6 @@ fieldset:disabled {
   color: var(--danger);
 }
 
-.alert-success {
-  border-color: var(--success-border);
-  background: var(--success-bg);
-  color: var(--success);
-}
-
 /* Toasts */
 .toast-region {
   position: fixed;
@@ -1182,15 +1176,6 @@ tbody tr:last-child td {
   cursor: copy;
 }
 
-.channel-card {
-  display: grid;
-  gap: 15px;
-  padding: 17px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-2);
-}
-
 .channel-head {
   display: flex;
   align-items: flex-start;
@@ -1213,21 +1198,6 @@ tbody tr:last-child td {
 
 .channel-head .hint {
   max-width: 56ch;
-}
-
-.channel-fields {
-  gap: 16px;
-}
-
-.proxy-row {
-  display: grid;
-  grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 1fr);
-  align-items: end;
-  gap: 14px;
-}
-
-.proxy-row .switch-field {
-  min-height: 42px;
 }
 
 .input-action {
@@ -1497,16 +1467,6 @@ tbody tr:last-child td {
 
   .app-footer {
     padding: 14px 18px;
-  }
-}
-
-@media (max-width: 760px) {
-  .proxy-row {
-    grid-template-columns: 1fr;
-  }
-
-  .proxy-row .switch-field {
-    min-height: 0;
   }
 }
 

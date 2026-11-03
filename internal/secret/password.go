@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -58,7 +59,16 @@ func VerifyPassword(encoded, password string) (bool, error) {
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil {
 		return false, ErrInvalidHash
 	}
+	const (
+		maxArgonMemory      = 128 * 1024 // KiB
+		maxArgonIterations  = 10
+		maxArgonParallelism = 16
+	)
+
 	if memory == 0 || iterations == 0 || parallelism == 0 {
+		return false, ErrInvalidHash
+	}
+	if memory > maxArgonMemory || iterations > maxArgonIterations || parallelism > maxArgonParallelism {
 		return false, ErrInvalidHash
 	}
 
@@ -74,6 +84,22 @@ func VerifyPassword(encoded, password string) (bool, error) {
 	actual := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expected)))
 	return subtle.ConstantTimeCompare(expected, actual) == 1, nil
 }
+
+// VerifyDummyPassword burns the same Argon2id cost as a real credential check
+// so an unknown username does not reveal itself through a fast response.
+func VerifyDummyPassword(password string) {
+	dummyHashOnce.Do(func() {
+		dummyHash, _ = HashPassword("windwatch-dummy-password")
+	})
+	if dummyHash != "" {
+		_, _ = VerifyPassword(dummyHash, password)
+	}
+}
+
+var (
+	dummyHashOnce sync.Once
+	dummyHash     string
+)
 
 func RandomToken(byteLength int) (string, error) {
 	if byteLength <= 0 {

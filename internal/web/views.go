@@ -37,13 +37,13 @@ var noticeKeys = map[string]string{
 	"monitor_deleted":                  "notice.monitorDeleted",
 	"monitor_paused":                   "notice.monitorPaused",
 	"monitor_resumed":                  "notice.monitorResumed",
+	"push_token_regenerated":           "notice.pushTokenRegenerated",
 	"check_started":                    "notice.checkStarted",
 	"check_running":                    "notice.checkRunning",
 	"check_paused":                     "notice.checkPaused",
 	"proxy_created":                    "notice.proxyCreated",
 	"proxy_updated":                    "notice.proxyUpdated",
 	"proxy_deleted":                    "notice.proxyDeleted",
-	"proxy_test_ok":                    "notice.proxyTestOK",
 	"notification_channel_created":     "notice.notificationChannelCreated",
 	"notification_channel_updated":     "notice.notificationChannelUpdated",
 	"notification_channel_deleted":     "notice.notificationChannelDeleted",
@@ -91,7 +91,7 @@ func (s *Server) newPage(r *http.Request, titleKey string) pageData {
 }
 
 func (s *Server) timezone(ctx context.Context) *time.Location {
-	values, err := s.store.Settings(ctx)
+	values, err := s.settings(ctx)
 	if err != nil {
 		return time.UTC
 	}

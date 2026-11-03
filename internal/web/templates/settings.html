@@ -248,7 +248,8 @@
       <div class="form-grid" data-channel-fields="webhook" {{if ne .ChannelForm.Type "webhook"}}hidden{{end}}>
         <label class="field is-wide">
           <span>{{.I18n.T "notification.webhookURL"}}</span>
-          <input type="url" name="webhook_url" value="{{.ChannelForm.WebhookURL}}" placeholder="https://example.com/hooks/windwatch">
+          <input type="url" name="webhook_url" value="{{.ChannelForm.WebhookURL}}"
+            placeholder="{{if and .ChannelFormEdit .ChannelWebhookConfigured}}{{.I18n.T "notification.webhookConfigured"}}{{else}}https://example.com/hooks/windwatch{{end}}">
           <small class="hint">{{.I18n.T "notification.webhookHint"}}</small>
         </label>
         <div class="field is-wide" data-secret-group data-webhook-secret {{if eq .ChannelForm.WebhookFormat "wecom"}}hidden{{end}}>

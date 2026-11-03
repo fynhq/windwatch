@@ -103,6 +103,7 @@ type monitorDetailView struct {
 	LastCheckAgo      string
 	LastCheckTitle    string
 	LastLatency       string
+	LastError         string
 	Interval          string
 	Timeout           string
 	FailThreshold     int

@@ -112,7 +112,7 @@ func (s *Server) authFromRequest(r *http.Request) (model.AuthInfo, bool) {
 
 func (s *Server) requireAuth(next func(http.ResponseWriter, *http.Request, model.AuthInfo)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		hasAdmin, err := s.store.HasAdmin(r.Context())
+		hasAdmin, err := s.hasAdmin(r.Context())
 		if err != nil {
 			s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 			return

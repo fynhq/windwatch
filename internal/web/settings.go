@@ -97,12 +97,13 @@ type settingsPage struct {
 	ProxyTestDetail  string
 	ProxyTypeOptions []model.ProxyType
 
-	Channels                []notificationChannelRow
-	ChannelForm             notificationChannelFormValues
-	ChannelFormOpen         bool
-	ChannelFormEdit         bool
-	ChannelFormAction       string
-	ChannelSecretConfigured bool
+	Channels                 []notificationChannelRow
+	ChannelForm              notificationChannelFormValues
+	ChannelFormOpen          bool
+	ChannelFormEdit          bool
+	ChannelFormAction        string
+	ChannelSecretConfigured  bool
+	ChannelWebhookConfigured bool
 
 	NotificationLogs []notificationLogRow
 
@@ -206,6 +207,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, auth mod
 		page.ChannelFormEdit = true
 		page.ChannelFormAction = "/settings/notifications/channels/" + strconv.FormatInt(channel.ID, 10)
 		page.ChannelSecretConfigured = channel.SecretEnc != ""
+		page.ChannelWebhookConfigured = channel.WebhookURL != ""
 		page.ChannelForm = channelFormValues(channel)
 	}
 
@@ -225,7 +227,7 @@ func (s *Server) loadSettingsPage(r *http.Request, auth model.AuthInfo) (setting
 	if err != nil {
 		return settingsPage{}, err
 	}
-	allSettings, err := s.store.Settings(r.Context())
+	allSettings, err := s.settings(r.Context())
 	if err != nil {
 		return settingsPage{}, err
 	}
@@ -375,6 +377,7 @@ func (s *Server) handleTimezoneSave(w http.ResponseWriter, r *http.Request, auth
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	s.invalidateSettings()
 	http.Redirect(w, r, "/settings/general?notice=timezone_saved", http.StatusSeeOther)
 }
 
@@ -388,7 +391,9 @@ func (s *Server) handleNotificationTest(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	notice := "notification_channel_test_failed"
-	if err := s.notifier.Test(r.Context(), id); err == nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	if err := s.notifier.Test(ctx, id); err == nil {
 		notice = "notification_channel_test_sent"
 	} else {
 		s.log.Warn("notification test failed", "channel_id", id, "error", err)
@@ -426,10 +431,12 @@ func channelFormValues(channel model.NotificationChannel) notificationChannelFor
 		Type:            channel.Type,
 		Language:        channel.ResolvedLanguage(),
 		TelegramChatIDs: channel.TelegramChatIDs,
-		WebhookURL:      channel.WebhookURL,
-		WebhookFormat:   channel.ResolvedWebhookFormat(),
-		Enabled:         channel.Enabled,
-		ProxyID:         channel.ProxyIDString(),
+		// Webhook paths and query strings can carry bearer tokens. Never echo
+		// the full URL; an empty value keeps the stored URL on update.
+		WebhookURL:    "",
+		WebhookFormat: channel.ResolvedWebhookFormat(),
+		Enabled:       channel.Enabled,
+		ProxyID:       channel.ProxyIDString(),
 	}
 }
 
@@ -555,7 +562,15 @@ func (s *Server) notificationChannelFromValues(r *http.Request, values notificat
 		channel.ID = existing.ID
 		channel.CreatedAt = existing.CreatedAt
 		if existing.Type == values.Type {
-			channel.SecretEnc = existing.SecretEnc
+			if channel.Type == model.NotificationChannelTelegram ||
+				existing.ResolvedWebhookFormat() == channel.ResolvedWebhookFormat() {
+				channel.SecretEnc = existing.SecretEnc
+			}
+			if channel.Type == model.NotificationChannelWebhook && strings.TrimSpace(channel.WebhookURL) == "" {
+				// The edit form intentionally does not echo the URL because its
+				// path/query may contain a bearer token.
+				channel.WebhookURL = existing.WebhookURL
+			}
 		}
 	}
 	if channel.Type == model.NotificationChannelTelegram {
@@ -623,12 +638,16 @@ func (s *Server) renderChannelSettingsError(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	page.ChannelFormOpen = true
+	// Never put a webhook URL back into HTML after a validation error; its
+	// path or query may contain a bearer token.
+	values.WebhookURL = ""
 	page.ChannelForm = values
 	page.ChannelFormEdit = editingID > 0
 	if editingID > 0 {
 		page.ChannelFormAction = "/settings/notifications/channels/" + strconv.FormatInt(editingID, 10)
 		if existing, err := s.store.NotificationChannelByID(r.Context(), editingID); err == nil {
 			page.ChannelSecretConfigured = existing.SecretEnc != ""
+			page.ChannelWebhookConfigured = existing.WebhookURL != ""
 		}
 	}
 	page.Error = page.I18n.T(errorKey)

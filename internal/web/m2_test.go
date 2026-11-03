@@ -7,6 +7,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/fynhq/windwatch/internal/model"
+	"github.com/fynhq/windwatch/internal/secret"
 )
 
 func setupAdminSession(t *testing.T, testServer *httptest.Server) (*http.Client, string) {
@@ -240,5 +244,44 @@ func TestTimezoneSettings(t *testing.T) {
 	values, err = st.Settings(t.Context())
 	if err != nil || values["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("timezone changed after invalid save: %q err=%v", values["timezone"], err)
+	}
+}
+
+func TestPushTokenRegeneration(t *testing.T) {
+	srv, st, testServer := newWebTestServer(t)
+	client, csrf := setupAdminSession(t, testServer)
+	enc, err := srv.cipher.Encrypt("old-push-token")
+	if err != nil {
+		t.Fatalf("Encrypt: %v", err)
+	}
+	id, err := st.CreateMonitorWithPushToken(t.Context(), model.Monitor{
+		Name: "Push", Type: model.MonitorTypePush,
+		Interval: time.Minute, Timeout: 10 * time.Second,
+		FailThreshold: 1, RecoverThreshold: 1, Enabled: true, NotifyEnabled: true,
+	}, time.Now().UTC(), secret.HashToken("old-push-token"), enc)
+	if err != nil {
+		t.Fatalf("CreateMonitorWithPushToken: %v", err)
+	}
+	before, err := st.PushTokenByMonitorID(t.Context(), id)
+	if err != nil {
+		t.Fatalf("PushTokenByMonitorID: %v", err)
+	}
+
+	response, err := client.PostForm(testServer.URL+"/monitors/"+strconv.FormatInt(id, 10)+"/push-token", url.Values{
+		"csrf_token": {csrf},
+	})
+	if err != nil {
+		t.Fatalf("POST push-token: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.StatusCode != http.StatusOK || !strings.Contains(body, "Push token regenerated") {
+		t.Fatalf("regenerate status=%d body=%s", response.StatusCode, body)
+	}
+	after, err := st.PushTokenByMonitorID(t.Context(), id)
+	if err != nil {
+		t.Fatalf("PushTokenByMonitorID after: %v", err)
+	}
+	if before.TokenHash == after.TokenHash {
+		t.Fatal("push token hash did not change")
 	}
 }
