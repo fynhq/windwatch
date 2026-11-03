@@ -14,6 +14,7 @@ import (
 
 type fakeDockerContainer struct {
 	running  bool
+	paused   bool
 	health   string
 	restarts int
 }
@@ -37,6 +38,7 @@ func fakeDockerServer(t *testing.T, containers map[string]fakeDockerContainer) *
 				"RestartCount": container.restarts,
 				"State": map[string]any{
 					"Running": container.running,
+					"Paused":  container.paused,
 					"Status":  "running",
 				},
 				"Config": map[string]any{"Image": "example/image:latest"},
@@ -70,6 +72,7 @@ func TestDockerChecker(t *testing.T) {
 		"starting":  {running: true, health: "starting"},
 		"unhealthy": {running: true, health: "unhealthy"},
 		"stopped":   {running: false},
+		"paused":    {running: true, paused: true},
 		"plain":     {running: true},
 	})
 	defer server.Close()
@@ -96,6 +99,11 @@ func TestDockerChecker(t *testing.T) {
 	result, err = registry.CheckWithProxy(ctx, dockerMonitor("stopped", true), nil)
 	if err != nil || result.Success || result.ErrorKind != model.ErrorKindContainerStopped {
 		t.Fatalf("stopped result=%+v err=%v", result, err)
+	}
+
+	result, err = registry.CheckWithProxy(ctx, dockerMonitor("paused", true), nil)
+	if err != nil || result.Success || result.ErrorKind != model.ErrorKindContainerStopped {
+		t.Fatalf("paused result=%+v err=%v", result, err)
 	}
 
 	result, err = registry.CheckWithProxy(ctx, dockerMonitor("plain", true), nil)

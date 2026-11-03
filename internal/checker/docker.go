@@ -29,6 +29,7 @@ type dockerInspect struct {
 	RestartCount int    `json:"RestartCount"`
 	State        struct {
 		Running    bool   `json:"Running"`
+		Paused     bool   `json:"Paused"`
 		Status     string `json:"Status"`
 		Restarting bool   `json:"Restarting"`
 		StartedAt  string `json:"StartedAt"`
@@ -133,6 +134,7 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 		}, nil
 	}
 	meta := dockerMeta{
+		APIVersion:   version,
 		ContainerID:  inspect.ID,
 		Container:    strings.TrimPrefix(inspect.Name, "/"),
 		Image:        inspect.Config.Image,
@@ -159,12 +161,16 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 			MetaJSON:     metaJSON,
 		}, nil
 	}
-	if !inspect.State.Running || inspect.State.Restarting {
+	if !inspect.State.Running || inspect.State.Restarting || inspect.State.Paused {
+		message := "container is not running"
+		if inspect.State.Paused {
+			message = "container is paused"
+		}
 		return model.CheckResult{
 			Success:      false,
 			Latency:      time.Since(start),
 			ErrorKind:    model.ErrorKindContainerStopped,
-			ErrorMessage: "container is not running",
+			ErrorMessage: message,
 			MetaJSON:     metaJSON,
 		}, nil
 	}
@@ -194,6 +200,7 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 }
 
 type dockerMeta struct {
+	APIVersion   string `json:"api_version,omitempty"`
 	ContainerID  string `json:"container_id,omitempty"`
 	Container    string `json:"container,omitempty"`
 	Image        string `json:"image,omitempty"`

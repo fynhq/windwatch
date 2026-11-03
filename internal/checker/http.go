@@ -72,6 +72,9 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 	req.Header.Set("User-Agent", "WindWatch-Monitor")
 
 	transport := c.transport.Clone()
+	// Bound headers by the monitor's own timeout; a fixed transport timeout
+	// would make monitors configured with a longer timeout fail early.
+	transport.ResponseHeaderTimeout = monitor.Timeout
 	if cfg.TLSSkipVerify {
 		if transport.TLSClientConfig == nil {
 			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}

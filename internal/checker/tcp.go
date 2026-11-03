@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
@@ -22,7 +21,7 @@ func (tcpChecker) Check(ctx context.Context, request Request) (model.CheckResult
 	if monitor.TCP == nil {
 		return failure(model.ErrorKindInvalidConfig, "missing TCP configuration"), nil
 	}
-	host := strings.Trim(strings.TrimSpace(monitor.TCP.Host), "[]")
+	host := monitor.TCP.NormalizedHost()
 	address := net.JoinHostPort(host, strconv.Itoa(monitor.TCP.Port))
 
 	dialContext, err := outboundproxy.DialContext(request.Proxy)
