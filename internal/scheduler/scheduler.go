@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -53,6 +54,10 @@ type outcome struct {
 	// failureStartedAt is the first failed probe of a recheck cycle. The DOWN
 	// event must start there even though the failure is confirmed later.
 	failureStartedAt time.Time
+	// manual results may be applied even for a paused monitor: the web layer
+	// rejects such requests, but the scheduler API keeps its historical
+	// behavior for tests and internal callers.
+	manual bool
 }
 
 type runnerHandle struct {
@@ -146,14 +151,17 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	s.wg.Add(3)
 	go func() {
 		defer s.wg.Done()
+		defer s.recoverTask("collector")
 		s.collect(ctx)
 	}()
 	go func() {
 		defer s.wg.Done()
+		defer s.recoverTask("maintenance")
 		s.maintain(ctx)
 	}()
 	go func() {
 		defer s.wg.Done()
+		defer s.recoverTask("domain-refresh")
 		s.refreshDomains(ctx)
 	}()
 
@@ -167,6 +175,25 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 func (s *Scheduler) Wait() {
 	s.wg.Wait()
+}
+
+// recoverTask keeps a panic in one monitor or maintenance cycle from taking
+// down the whole process. Long-lived loops wrap each iteration, not just the
+// goroutine, so the task can continue after one bad cycle.
+func (s *Scheduler) recoverTask(task string) {
+	if recovered := recover(); recovered != nil {
+		s.log.Error("background task panic", "task", task, "panic", recovered, "stack", string(debug.Stack()))
+	}
+}
+
+func (s *Scheduler) executeSafely(ctx context.Context, monitorID int64, manual bool) {
+	defer s.recoverTask("check")
+	s.execute(ctx, monitorID, manual)
+}
+
+func (s *Scheduler) applySafely(ctx context.Context, job outcome) {
+	defer s.recoverTask("collector-apply")
+	s.apply(ctx, job)
 }
 
 func (s *Scheduler) Reload(monitorID int64) error {
@@ -213,7 +240,7 @@ func (s *Scheduler) CheckNow(monitorID int64) error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.execute(runCtx, monitorID, true)
+		s.executeSafely(runCtx, monitorID, true)
 	}()
 	return nil
 }
@@ -253,6 +280,7 @@ func (s *Scheduler) startRunner(monitor model.Monitor) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer s.recoverTask("runner")
 		if monitor.Type == model.MonitorTypePush {
 			s.runPushMonitor(runCtx, monitor)
 			return
@@ -280,7 +308,7 @@ func (s *Scheduler) runMonitor(ctx context.Context, monitor model.Monitor) {
 			return
 		case <-timer.C:
 		}
-		s.execute(ctx, monitor.ID, false)
+		s.executeSafely(ctx, monitor.ID, false)
 		timer.Reset(s.nextDelay(monitor.Interval))
 	}
 }
@@ -314,7 +342,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		return
 	}
 	if monitor.Type == model.MonitorTypePush {
-		s.enqueuePushOutcome(ctx, monitor)
+		s.enqueuePushOutcome(ctx, monitor, manual)
 		return
 	}
 
@@ -326,7 +354,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 				ErrorKind:    model.ErrorKindProxy,
 				ErrorMessage: truncateErrorText(err.Error()),
 				MetaJSON:     "{}",
-			}, s.now().UTC(), time.Time{})
+			}, s.now().UTC(), time.Time{}, manual)
 			return
 		}
 	}
@@ -368,7 +396,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		}
 	}
 
-	s.sendOutcome(ctx, monitorID, result, s.now().UTC(), failureStartedAt)
+	s.sendOutcome(ctx, monitorID, result, s.now().UTC(), failureStartedAt, manual)
 }
 
 // probe runs one check attempt under the global concurrency limit. Each
@@ -461,23 +489,12 @@ func (s *Scheduler) runPushMonitor(ctx context.Context, monitor model.Monitor) {
 			return
 		case <-timer.C:
 		}
-		s.evaluatePushMonitor(ctx, monitor.ID)
+		s.executeSafely(ctx, monitor.ID, false)
 		timer.Reset(tick)
 	}
 }
 
-func (s *Scheduler) evaluatePushMonitor(ctx context.Context, monitorID int64) {
-	monitor, err := s.store.MonitorByID(ctx, monitorID)
-	if errors.Is(err, store.ErrNotFound) {
-		return
-	}
-	if err != nil || !monitor.Enabled || monitor.Type != model.MonitorTypePush {
-		return
-	}
-	s.enqueuePushOutcome(ctx, monitor)
-}
-
-func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monitor) {
+func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monitor, manual bool) {
 	token, err := s.store.PushTokenByMonitorID(ctx, monitor.ID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && token.LastHeartbeat.IsZero()) {
 		return
@@ -498,18 +515,27 @@ func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monito
 		result.ErrorKind = model.ErrorKindHeartbeatTimeout
 		result.ErrorMessage = fmt.Sprintf("no heartbeat since %s", token.LastHeartbeat.Format(time.RFC3339))
 	}
-	s.sendOutcome(ctx, monitor.ID, result, now, time.Time{})
+	s.sendOutcome(ctx, monitor.ID, result, now, time.Time{}, manual)
 }
 
-func (s *Scheduler) sendOutcome(ctx context.Context, monitorID int64, result model.CheckResult, checkedAt time.Time, failureStartedAt time.Time) {
-	select {
-	case s.results <- outcome{
+func (s *Scheduler) sendOutcome(ctx context.Context, monitorID int64, result model.CheckResult, checkedAt time.Time, failureStartedAt time.Time, manual bool) {
+	job := outcome{
 		monitorID:        monitorID,
 		result:           result,
 		checkedAt:        checkedAt,
 		failureStartedAt: failureStartedAt,
-	}:
+		manual:           manual,
+	}
+	select {
+	case s.results <- job:
+		return
 	case <-ctx.Done():
+		// The probe may have completed just before cancellation. Try once more
+		// so the collector drain can still persist it.
+		select {
+		case s.results <- job:
+		default:
+		}
 	}
 }
 
@@ -544,9 +570,19 @@ func (s *Scheduler) collect(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			// Drain results already queued before cancellation. Probes that
+			// are still in flight observe the canceled context and are not
+			// recorded; this only guarantees completed work is not lost.
+			for {
+				select {
+				case job := <-s.results:
+					s.applySafely(context.Background(), job)
+				default:
+					return
+				}
+			}
 		case job := <-s.results:
-			s.apply(ctx, job)
+			s.applySafely(ctx, job)
 		}
 	}
 }
@@ -560,9 +596,18 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		s.log.Error("load monitor for result", "monitor_id", job.monitorID, "error", err)
 		return
 	}
+	if !monitor.Enabled && !job.manual {
+		// A scheduled result can finish after the user pauses a monitor. Do not
+		// let that late result reopen a DOWN event or advance state while paused.
+		// Manual/internal results are still applied for compatibility; the web
+		// layer rejects manual checks on paused monitors.
+		s.log.Debug("discarding result for paused monitor", "monitor_id", monitor.ID)
+		return
+	}
 
 	previousStatus := monitor.State.Status
 	previousSince := monitor.State.StatusSince
+	previousWarningKey := s.warningContext(monitor.ID)
 	downStartedAt := time.Time{}
 	if !job.result.Success && previousStatus != model.StatusDown &&
 		monitor.State.ConsecutiveFailures+1 >= failedThreshold(monitor) {
@@ -585,7 +630,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	if nextState.Status != model.StatusDown && job.result.Success {
 		switch {
 		case warning && nextState.Status != model.StatusWarning:
-			if previousStatus == model.StatusWarning {
+			if previousStatus == model.StatusWarning && previousWarningKey == warningKey {
 				nextState.StatusSince = previousSince
 			} else {
 				nextState.StatusSince = job.checkedAt
@@ -600,7 +645,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	checkStatus := model.CheckDown
 	if job.result.Success {
 		checkStatus = model.CheckUp
-		if warning {
+		if warning && nextState.Status != model.StatusDown {
 			checkStatus = model.CheckWarning
 		}
 	}
@@ -664,14 +709,14 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 			s.notifier.Enqueue(notification)
 		}
 	}
-	previousWarningKey := s.warningContext(monitor.ID)
-	warningChanged := warning && (previousStatus != model.StatusWarning || previousWarningKey != warningKey)
+	warningChanged := warning && nextState.Status == model.StatusWarning &&
+		(previousStatus != model.StatusWarning || previousWarningKey != warningKey)
 	if warningChanged && monitor.Enabled && monitorNotificationsEnabled(monitor) && s.notifier != nil && s.notificationsAvailable(ctx) {
 		notification := s.warningNotification(monitor, job.result, aux, nextState, job.checkedAt)
 		if s.notifier.Enqueue(notification) {
 			s.setWarningContext(monitor.ID, warningKey)
 		}
-	} else if !warning {
+	} else if nextState.Status != model.StatusWarning {
 		s.setWarningContext(monitor.ID, "")
 	}
 	s.processReminders(ctx, monitor, job.result, aux, warning, nextState, previousStatus, job.checkedAt)
@@ -843,14 +888,16 @@ func (s *Scheduler) warningNotification(monitor model.Monitor, result model.Chec
 		if result.Certificate != nil {
 			fingerprint = result.Certificate.Fingerprint
 		}
-		notification.Key = fmt.Sprintf("warn_cert:%d:%s:%d", monitor.ID, fingerprint, monitor.HTTP.CertWarnDays)
+		// Include the episode start so a warning that clears and later recurs
+		// with the same certificate/domain context is treated as a new event.
+		notification.Key = fmt.Sprintf("warn_cert:%d:%s:%d:%d", monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince.UnixMilli())
 		return notification
 	}
 	expires := int64(0)
 	if warning.domainInfo != nil && !warning.domainInfo.ExpiresAt.IsZero() {
 		expires = warning.domainInfo.ExpiresAt.UnixMilli()
 	}
-	notification.Key = fmt.Sprintf("warn_domain:%s:%d:%d", warning.domainName, expires, monitor.HTTP.DomainWarnDays)
+	notification.Key = fmt.Sprintf("warn_domain:%s:%d:%d:%d", warning.domainName, expires, monitor.HTTP.DomainWarnDays, nextState.StatusSince.UnixMilli())
 	return notification
 }
 
@@ -865,7 +912,13 @@ func (s *Scheduler) refreshDomains(ctx context.Context) {
 		retryDelay = min(retryDelay*2, domainRefreshInterval)
 		return delay
 	}
-	refresh := func() time.Duration {
+	refresh := func() (delay time.Duration) {
+		delay = domainRefreshInterval
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				s.log.Error("domain refresh panic", "panic", recovered, "stack", string(debug.Stack()))
+			}
+		}()
 		monitors, err := s.store.ListMonitors(ctx)
 		if err != nil {
 			s.log.Warn("list monitors for domain refresh", "error", err)
@@ -952,8 +1005,15 @@ func (s *Scheduler) maintain(ctx context.Context) {
 		if err := s.store.DeleteEventsBefore(ctx, now.Add(-eventRetention)); err != nil {
 			s.log.Warn("delete old events", "error", err)
 		}
+		if err := s.store.CheckpointWAL(ctx); err != nil {
+			s.log.Warn("checkpoint wal", "error", err)
+		}
 	}
-	cleanup()
+	cleanupSafely := func() {
+		defer s.recoverTask("maintenance")
+		cleanup()
+	}
+	cleanupSafely()
 
 	ticker := time.NewTicker(6 * time.Hour)
 	defer ticker.Stop()
@@ -962,7 +1022,7 @@ func (s *Scheduler) maintain(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cleanup()
+			cleanupSafely()
 		}
 	}
 }

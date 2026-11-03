@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,7 +79,9 @@ func (s *Service) Start(ctx context.Context) {
 	s.wg.Add(2)
 	go func() {
 		defer s.wg.Done()
-		s.recoverPendingEntries(ctx, pending)
+		s.runSafely("recovery", func() {
+			s.recoverPendingEntries(ctx, pending)
+		})
 		s.retryLoop(ctx)
 	}()
 	go func() {
@@ -88,10 +91,23 @@ func (s *Service) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case notification := <-s.queue:
-				s.dispatch(ctx, notification)
+				s.runSafely("dispatch", func() {
+					s.dispatch(ctx, notification)
+				})
 			}
 		}
 	}()
+}
+
+func (s *Service) recoverTask(task string) {
+	if recovered := recover(); recovered != nil {
+		s.log.Error("notification task panic", "task", task, "panic", recovered, "stack", string(debug.Stack()))
+	}
+}
+
+func (s *Service) runSafely(task string, fn func()) {
+	defer s.recoverTask(task)
+	fn()
 }
 
 func (s *Service) Wait() {

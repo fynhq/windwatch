@@ -173,7 +173,7 @@ func TestPushOutcomeAndProxyResolution(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := New(st, checker.NewRegistry(), logger)
 	s.now = func() time.Time { return now.Add(5 * time.Second) }
-	s.enqueuePushOutcome(t.Context(), push)
+	s.enqueuePushOutcome(t.Context(), push, false)
 	select {
 	case outcome := <-s.results:
 		if !outcome.result.Success {

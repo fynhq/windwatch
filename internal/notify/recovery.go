@@ -89,7 +89,9 @@ func (s *Service) retryLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.retryDue(ctx)
+			s.runSafely("retry", func() {
+				s.retryDue(ctx)
+			})
 		}
 	}
 }

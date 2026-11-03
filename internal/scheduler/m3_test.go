@@ -239,7 +239,7 @@ func TestApplyEnqueuesWarningNotificationsOnce(t *testing.T) {
 	if warning.Kind != model.EventWarnCert || warning.Status != model.StatusWarning || warning.Cert != cert {
 		t.Fatalf("unexpected certificate warning: %+v", warning)
 	}
-	if warning.Key != "warn_cert:"+strconv.FormatInt(certID, 10)+":abc123:30" {
+	if !strings.HasPrefix(warning.Key, "warn_cert:"+strconv.FormatInt(certID, 10)+":abc123:30:") {
 		t.Fatalf("certificate warning key = %q", warning.Key)
 	}
 	current, err := st.MonitorByID(t.Context(), certID)
