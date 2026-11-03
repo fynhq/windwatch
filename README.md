@@ -13,12 +13,14 @@ English | [中文](#chinese)
 - **HTTP(S) monitors** — method, expected status code or range, response keyword, redirect control, timeout, and an optional per-monitor outbound proxy.
 - **TCP port monitors** — verify that a host and port accept connections. This is also how local proxy ports are watched.
 - **Docker container monitors** — check that a container is running and, optionally, healthy.
-- **Push / heartbeat monitors** — give scripts, cron jobs, or remote devices a secret URL to report to. Silence beyond the heartbeat interval plus grace period marks the monitor down.
+- **Push / heartbeat monitors** — give scripts, cron jobs, or remote devices a secret URL to report to. Silence beyond the heartbeat interval plus grace period marks the monitor down. The detail page can regenerate the token; the old token stops working immediately.
 - **HTTPS extras** — optional TLS certificate and domain expiry checks, with warning thresholds and expiry details on the monitor page.
 - **Dashboard and history** — an overall status band, search, and status filters sit above a monitor card grid that uses two columns on wide screens and one on smaller screens. Each card shows 24-hour and current latency, a relative last-check time, and its latest 24 checks at the configured interval. Monitor details place a full-width status history card above recent events and configuration; the recent, 24-hour, 30-day, and 90-day ranges share one layout and combine uptime bars with a latency line. Display and daily charts use a configurable IANA timezone; storage remains UTC.
-- **Notifications** — any number of named Telegram bot and webhook methods; webhooks support Generic, DingTalk, WeCom, and Feishu formats. Each method has its own credentials, notification language, optional outbound proxy, and test action. Monitors choose which methods receive their alerts and configure their own repeat reminders. Immediate and delayed retries, deduplication, ordering of state alerts, and delivery history are included.
+- **Notifications** — any number of named Telegram bot and webhook methods; webhooks support Generic, DingTalk, WeCom, and Feishu formats. Each method has its own credentials, notification language, optional outbound proxy, and test action. Monitors choose which methods receive their alerts and configure their own repeat reminders. Immediate and delayed retries, deduplication, ordering of state alerts, and delivery history are included. Webhook URLs are never echoed in the edit form because their path/query may contain a token; the target summary and logs retain only the origin.
 - **Multi-user web UI** — administrators manage monitors, proxies, notifications, and accounts; read-only viewers can inspect the dashboard, monitor details, and events. Simplified Chinese and English, a fixed desktop sidebar, a mobile top bar with a bottom dock, and a color theme that follows the operating system. Dashboard and event filters run in the browser. Dashboard and public status pages refresh a server-rendered fragment in place every 30 seconds, pause while the tab is hidden, and keep full-page refresh as the no-JavaScript fallback.
-- **Public status page** — an optional login-free page with a selected monitor list; it shows names, statuses, 24h/7d/30d/90d uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) without targets, configuration, or secrets.
+- **Public status page** — an optional login-free page with a selected monitor list; it shows names, statuses, 24h/7d/30d/90d uptime, and a 90-day daily uptime strip (the latest 30 days on mobile) without targets, configuration, or secrets. Statistics are cached for about 30 seconds and limited to 120 requests per minute per client IP.
+
+A single instance supports up to 500 monitors; the documented performance targets assume about 200.
 - **Password recovery** — the `windwatch reset-password` command resets an account offline and invalidates its sessions.
 - **Small footprint** — about 30 MB resident memory, server-rendered pages, embedded templates and assets, SQLite storage, and no Redis, Node.js, or external database.
 
@@ -328,12 +330,14 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 - **HTTP(S) 监控**：支持请求方法、期望状态码或范围、响应关键字、跳转控制、超时，以及按监控选择的出站代理。
 - **TCP 端口监控**：检查主机和端口是否可连接。本地代理的监听端口也通过这种方式监控。
 - **Docker 容器监控**：检查容器是否运行，并可要求容器处于 healthy 状态。
-- **Push / 心跳监控**：为脚本、定时任务或远程设备生成一个秘密 URL，由对方主动上报心跳。超过“心跳间隔 + 宽限期”没有上报时判定为异常。
+- **Push / 心跳监控**：为脚本、定时任务或远程设备生成一个秘密 URL，由对方主动上报心跳。超过“心跳间隔 + 宽限期”没有上报时判定为异常。详情页可以重新生成 Token，旧 Token 立即失效。
 - **HTTPS 附加检查**：可选检查 TLS 证书和域名到期时间，支持告警提前天数，并在详情页展示到期信息。
 - **仪表盘与历史**：仪表盘以总体状态带、搜索和状态筛选开头，监控卡片在宽屏为两列、窄屏为单列，每张卡片展示 24 小时可用率、当前延迟、相对最近检查时间和按监控间隔计算的最近 24 次检查。详情页的状态历史卡片通栏，下方是最近事件与配置、证书、域名和危险操作；最近、24 小时、30 天和 90 天四个区间使用同一布局，把可用率柱和延迟线画在同一张图中。界面和日图使用可配置的 IANA 时区，存储仍使用 UTC。
-- **通知**：可添加任意数量、名称唯一的 Telegram Bot 和 Webhook 通知方式，Webhook 支持通用、钉钉、企微、飞书四种格式；每种方式独立配置凭据、通知语言、可选代理，并支持测试发送；每个监控选择使用哪些方式，并在监控项中配置重复提醒。支持即时与延迟重试、去重、状态告警顺序和投递记录。
+- **通知**：可添加任意数量、名称唯一的 Telegram Bot 和 Webhook 通知方式，Webhook 支持通用、钉钉、企微、飞书四种格式；每种方式独立配置凭据、通知语言、可选代理，并支持测试发送；每个监控选择使用哪些方式，并在监控项中配置重复提醒。支持即时与延迟重试、去重、状态告警顺序和投递记录。Webhook URL 的 path/query 可能包含 Token，编辑页不回填完整 URL；目标摘要和日志只保留 origin。
 - **多用户 Web 界面**：管理员管理监控、代理、通知和账号；只读观察者可以查看仪表盘、监控详情和事件。简体中文和英文，桌面固定侧边栏，手机顶部工具栏 + 底部 dock 导航，主题强制跟随操作系统。仪表盘和事件筛选在浏览器内完成；仪表盘和公开状态页每 30 秒局部刷新服务端渲染的 fragment，页面隐藏时暂停，并以整页刷新作为无 JavaScript 回退。
-- **公开状态页**：可选的免登录页面，只展示选定监控的名称、状态、24h/7d/30d/90d 可用率和逐日可用率条（桌面最近 90 天，手机默认最近 30 天），不暴露目标 URL、配置或密钥。
+- **公开状态页**：可选的免登录页面，只展示选定监控的名称、状态、24h/7d/30d/90d 可用率和逐日可用率条（桌面最近 90 天，手机默认最近 30 天），不暴露目标 URL、配置或密钥。统计快照缓存约 30 秒，并按客户端 IP 限流 120 次/分钟。
+
+单个实例最多支持 500 个监控；文档中的性能目标以约 200 个监控为基准。
 - **密码恢复**：`windwatch reset-password` 可离线重置账号密码并注销该账号的会话。
 - **资源占用小**：常驻内存约 30 MB；服务端渲染，模板和静态资源内嵌，SQLite 存储，不依赖 Redis、Node.js 或外部数据库。
 

@@ -12,9 +12,12 @@ services:
     container_name: windwatch
     restart: unless-stopped
     # Linux default: host networking lets WindWatch reach services bound to the
-    # host's loopback address, such as a local proxy on 127.0.0.1.
+    # host's loopback address, such as a local proxy on 127.0.0.1. Host
+    # networking also exposes the panel on every host interface; restrict port
+    # 8080 with a firewall or place a reverse proxy in front.
     # Linux 默认：host 网络让 WindWatch 能访问绑定在宿主机回环地址的服务，
-    # 例如 127.0.0.1 上的本地代理。
+    # 例如 127.0.0.1 上的本地代理。host 网络也会把面板暴露在宿主所有网卡上；
+    # 请用防火墙限制 8080，或在前面放反向代理。
     network_mode: host
     # Docker Desktop (and other setups where host networking is unavailable or
     # undesirable): remove `network_mode: host` above and publish the port
