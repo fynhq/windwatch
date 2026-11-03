@@ -136,6 +136,10 @@ func TestMonitorValidateTCP(t *testing.T) {
 	if got := monitor.Target(); got != "127.0.0.1:8080" {
 		t.Fatalf("Target() = %q", got)
 	}
+	bracketed := Monitor{Type: MonitorTypeTCP, TCP: &TCPConfig{Host: "[::1]", Port: 8080}}
+	if got := bracketed.Target(); got != "[::1]:8080" {
+		t.Fatalf("bracketed IPv6 Target() = %q", got)
+	}
 
 	monitor.TCP.Port = 0
 	if err := monitor.Validate(); !errors.Is(err, ErrTCPPort) {

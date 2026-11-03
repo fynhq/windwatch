@@ -104,7 +104,8 @@ func (c NotificationChannel) ResolvedWebhookFormat() WebhookFormat {
 
 func validateChannelWebhookURL(rawURL string) error {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil || parsed.Host == "" || parsed.User != nil ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return ErrChannelWebhookURL
 	}
 	return nil
@@ -123,6 +124,8 @@ func splitChannelChatIDs(value string) []string {
 }
 
 // NotificationTarget returns a short, non-secret summary for lists and logs.
+// Webhook paths and query strings can both carry bearer tokens, so only the
+// origin is retained. Dedupe uniqueness still includes channel_id.
 func (c NotificationChannel) NotificationTarget() string {
 	switch c.Type {
 	case NotificationChannelTelegram:
@@ -130,9 +133,9 @@ func (c NotificationChannel) NotificationTarget() string {
 	case NotificationChannelWebhook:
 		parsed, err := url.Parse(strings.TrimSpace(c.WebhookURL))
 		if err == nil && parsed.Host != "" {
-			return parsed.Scheme + "://" + parsed.Host + parsed.EscapedPath()
+			return parsed.Scheme + "://" + parsed.Host
 		}
-		return strings.TrimSpace(c.WebhookURL)
+		return ""
 	default:
 		return ""
 	}

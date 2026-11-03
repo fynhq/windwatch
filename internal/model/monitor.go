@@ -13,6 +13,12 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	// MaxMonitors is a safety ceiling rather than a product promise. The
+	// documented performance targets assume a much smaller number.
+	MaxMonitors = 500
+)
+
 type MonitorType string
 
 const (
@@ -53,6 +59,13 @@ type HTTPConfig struct {
 type TCPConfig struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
+}
+
+// NormalizedHost accepts both "::1" and "[::1]" input forms. Docker/Go URL
+// conventions often show IPv6 literals in brackets, while net.JoinHostPort
+// adds brackets itself.
+func (c TCPConfig) NormalizedHost() string {
+	return strings.Trim(strings.TrimSpace(c.Host), "[]")
 }
 
 type DockerConfig struct {
@@ -182,6 +195,7 @@ const (
 var (
 	ErrMonitorName     = errors.New("invalid monitor name")
 	ErrMonitorType     = errors.New("invalid monitor type")
+	ErrMonitorLimit    = errors.New("monitor limit reached")
 	ErrInterval        = errors.New("invalid monitor interval")
 	ErrTimeout         = errors.New("invalid monitor timeout")
 	ErrThreshold       = errors.New("invalid monitor threshold")
@@ -230,7 +244,16 @@ func (m Monitor) Validate() error {
 			return err
 		}
 	case MonitorTypeDocker:
-		if m.Docker == nil || strings.TrimSpace(m.Docker.Container) == "" {
+		if m.Docker == nil {
+			return ErrDockerContainer
+		}
+		container := strings.TrimSpace(m.Docker.Container)
+		if container == "" || utf8.RuneCountInString(container) > 255 {
+			return ErrDockerContainer
+		}
+		if strings.IndexFunc(container, func(r rune) bool {
+			return unicode.IsSpace(r) || unicode.IsControl(r)
+		}) >= 0 {
 			return ErrDockerContainer
 		}
 	case MonitorTypePush:
@@ -321,7 +344,7 @@ func (m Monitor) Target() string {
 		}
 	case MonitorTypeTCP:
 		if m.TCP != nil {
-			return net.JoinHostPort(strings.TrimSpace(m.TCP.Host), strconv.Itoa(m.TCP.Port))
+			return net.JoinHostPort(m.TCP.NormalizedHost(), strconv.Itoa(m.TCP.Port))
 		}
 	case MonitorTypeDocker:
 		if m.Docker != nil {
