@@ -447,9 +447,12 @@ func TestLongRangeChartRendering(t *testing.T) {
 	adminClient, _ := setupAdminSession(t, testServer)
 	id := createHTTPMonitor(t, srv, "Daily chart", "https://example.com/health")
 
-	day := time.Now().UTC().Truncate(24 * time.Hour)
-	checkAt := day.Add(-24*time.Hour + 2*time.Hour)
-	recent := time.Now().UTC().Add(-10 * time.Minute)
+	now := time.Now().UTC()
+	day := now.Truncate(24 * time.Hour)
+	// Keep the older check outside the 24h hourly window at any time of day;
+	// anchoring it to midnight would pull it into the window between 00:00 and 02:00.
+	checkAt := now.Add(-24*time.Hour - 5*time.Minute)
+	recent := now.Add(-10 * time.Minute)
 	for _, checkedAt := range []time.Time{checkAt, recent} {
 		if err := srv.store.RecordCheck(t.Context(), model.Check{
 			MonitorID: id, CheckedAt: checkedAt, Status: model.CheckUp,
@@ -460,7 +463,7 @@ func TestLongRangeChartRendering(t *testing.T) {
 			t.Fatalf("RecordCheck: %v", err)
 		}
 	}
-	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), day.Add(-48*time.Hour), time.Now(), time.Now()); err != nil {
+	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), day.Add(-48*time.Hour), now, now); err != nil {
 		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
 	}
 
