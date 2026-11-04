@@ -222,14 +222,6 @@ func TestRecordCheckAndHistory(t *testing.T) {
 	if events[0].Type != model.EventUp || events[1].Type != model.EventDown || events[1].EndedAt == nil {
 		t.Fatalf("unexpected events: %+v", events)
 	}
-
-	buckets, err := st.HourlyBuckets(ctx, now.Add(-time.Hour))
-	if err != nil {
-		t.Fatalf("HourlyBuckets: %v", err)
-	}
-	if len(buckets[id]) == 0 {
-		t.Fatalf("missing buckets: %+v", buckets)
-	}
 }
 
 func TestMonitorDeleteCascadesHistory(t *testing.T) {

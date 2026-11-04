@@ -83,74 +83,93 @@ type publicStatusPage struct {
 }
 
 type publicStatusSnapshot struct {
-	version  uint64
-	expires  time.Time
-	today    time.Time
-	monitors []model.Monitor
-	history  map[int64][]model.HourBucket
-	stats24  map[int64]model.UptimeStats
-	stats7   map[int64]model.UptimeStats
-	stats30  map[int64]model.UptimeStats
-	stats90  map[int64]model.UptimeStats
+	version         uint64
+	monitorsExpires time.Time
+	statsExpires    time.Time
+	today           time.Time
+	monitors        []model.Monitor
+	history         map[int64][]model.HourBucket
+	stats24         map[int64]model.UptimeStats
+	stats7          map[int64]model.UptimeStats
+	stats30         map[int64]model.UptimeStats
+	stats90         map[int64]model.UptimeStats
 }
 
-// loadPublicSnapshot caches the expensive public statistics for 30 seconds. A
-// settings revision change invalidates it immediately; monitor status changes
-// are intentionally allowed to lag one refresh interval.
+const (
+	publicStatusTTL = 30 * time.Second
+	publicStatsTTL  = 5 * time.Minute
+)
+
+// loadPublicSnapshot keeps live monitor status fresh while caching the
+// expensive uptime and history aggregates for longer. A settings revision
+// change invalidates the whole snapshot.
 func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version uint64, now time.Time, location *time.Location) (*publicStatusSnapshot, error) {
 	s.publicMu.Lock()
 	defer s.publicMu.Unlock()
-	if snapshot := s.publicSnapshot; snapshot != nil &&
-		snapshot.version == version && now.Before(snapshot.expires) {
-		return snapshot, nil
-	}
-
 	if location == nil {
 		location = time.UTC
 	}
-	localNow := now.In(location)
-	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
-	monitors, err := s.store.MonitorsByIDs(ctx, ids)
-	if err != nil {
-		return nil, err
+
+	existing := s.publicSnapshot
+	if existing != nil && existing.version == version &&
+		now.Before(existing.monitorsExpires) && now.Before(existing.statsExpires) {
+		return existing, nil
 	}
-	monitorIDs := make([]int64, 0, len(monitors))
-	for _, monitor := range monitors {
-		monitorIDs = append(monitorIDs, monitor.ID)
+
+	snapshot := publicStatusSnapshot{version: version}
+	if existing != nil && existing.version == version {
+		snapshot = *existing
 	}
-	history, err := s.store.DailyBucketsForMonitors(ctx, monitorIDs, today.AddDate(0, 0, -90), today, location)
-	if err != nil {
-		return nil, err
+	monitorsExpired := existing == nil || existing.version != version || !now.Before(existing.monitorsExpires)
+	statsExpired := existing == nil || existing.version != version || !now.Before(existing.statsExpires)
+
+	if monitorsExpired {
+		monitors, err := s.store.MonitorsByIDs(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		snapshot.monitors = monitors
+		snapshot.monitorsExpires = now.Add(publicStatusTTL)
 	}
-	stats24, err := s.store.UptimeStatsForMonitors(ctx, monitorIDs, now.Add(-24*time.Hour))
-	if err != nil {
-		return nil, err
+	if statsExpired {
+		monitorIDs := make([]int64, 0, len(snapshot.monitors))
+		for _, monitor := range snapshot.monitors {
+			monitorIDs = append(monitorIDs, monitor.ID)
+		}
+		localNow := now.In(location)
+		today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+		history, err := s.store.DailyBucketsForMonitors(ctx, monitorIDs, today.AddDate(0, 0, -90), today, location)
+		if err != nil {
+			return nil, err
+		}
+		stats24, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-24*time.Hour), now)
+		if err != nil {
+			return nil, err
+		}
+		stats7, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-7*24*time.Hour), now)
+		if err != nil {
+			return nil, err
+		}
+		stats30, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-30*24*time.Hour), now.Add(-7*24*time.Hour))
+		if err != nil {
+			return nil, err
+		}
+		stats90, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-90*24*time.Hour), now.Add(-7*24*time.Hour))
+		if err != nil {
+			return nil, err
+		}
+		snapshot.today = today
+		snapshot.history = history
+		snapshot.stats24 = stats24
+		snapshot.stats7 = stats7
+		snapshot.stats30 = stats30
+		snapshot.stats90 = stats90
+		snapshot.statsExpires = now.Add(publicStatsTTL)
 	}
-	stats7, err := s.store.UptimeStatsForMonitors(ctx, monitorIDs, now.Add(-7*24*time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	stats30, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-30*24*time.Hour), now.Add(-7*24*time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	stats90, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-90*24*time.Hour), now.Add(-7*24*time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	snapshot := &publicStatusSnapshot{
-		version:  version,
-		expires:  now.Add(30 * time.Second),
-		today:    today,
-		monitors: monitors,
-		history:  history,
-		stats24:  stats24,
-		stats7:   stats7,
-		stats30:  stats30,
-		stats90:  stats90,
-	}
-	s.publicSnapshot = snapshot
-	return snapshot, nil
+
+	snapshot.version = version
+	s.publicSnapshot = &snapshot
+	return &snapshot, nil
 }
 
 func publicStatusFromSettings(values map[string]string) publicStatusFormValues {

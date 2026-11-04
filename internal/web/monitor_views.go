@@ -410,18 +410,6 @@ func buildCheckBars(translator *i18n.Translator, checks []model.Check, limit int
 	return bars
 }
 
-func summarizeLast24Hours(now time.Time, buckets []model.HourBucket) (good, total int) {
-	first := now.UTC().Truncate(time.Hour).Add(-23 * time.Hour).UnixMilli()
-	for _, bucket := range buckets {
-		if bucket.Start.UnixMilli() < first {
-			continue
-		}
-		good += bucket.Up + bucket.Warning
-		total += bucket.Total
-	}
-	return good, total
-}
-
 func summarizeHourBuckets(translator *i18n.Translator, now time.Time, buckets []model.HourBucket) string {
 	byStart := make(map[int64]model.HourBucket, len(buckets))
 	for _, bucket := range buckets {

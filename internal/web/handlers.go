@@ -236,15 +236,15 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	buckets, err := s.store.HourlyBuckets(r.Context(), now.Add(-24*time.Hour))
-	if err != nil {
-		s.log.Error("load dashboard buckets", "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
 	monitorIDs := make([]int64, 0, len(monitors))
 	for _, monitor := range monitors {
 		monitorIDs = append(monitorIDs, monitor.ID)
+	}
+	stats24, err := s.store.UptimeStatsForMonitorsCombined(r.Context(), monitorIDs, now.Add(-24*time.Hour), now)
+	if err != nil {
+		s.log.Error("load dashboard uptime stats", "error", err)
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
 	}
 	recentChecks, err := s.store.RecentChecksByMonitor(r.Context(), monitorIDs, 24)
 	if err != nil {
@@ -257,7 +257,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 	page := dashboardPage{pageData: data, Total: len(monitors), HasMonitors: len(monitors) > 0}
 	translator := data.I18n
 	for _, monitor := range monitors {
-		good, total := summarizeLast24Hours(now, buckets[monitor.ID])
+		stats := stats24[monitor.ID]
 		checks := recentChecks[monitor.ID]
 		lastLatency := "—"
 		if len(checks) > 0 {
@@ -277,7 +277,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 			LastCheckTitle: formatTime(translator, monitor.State.LastCheck, data.Location),
 			LastLatency:    lastLatency,
 			IntervalLabel:  translator.Tf("dashboard.checkEvery", formatInterval(monitor.Interval)),
-			Uptime24:       formatPercent(good, total),
+			Uptime24:       formatPercent(stats.Up+stats.Warning, stats.Total),
 			Bars:           buildCheckBars(translator, checks, 24, data.Location),
 			BarsSummary:    summarizeChecks(translator, checks, 24),
 			BarsStart:      barsStart,

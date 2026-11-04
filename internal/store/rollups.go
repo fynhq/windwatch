@@ -136,6 +136,82 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 	return result, nil
 }
 
+// UptimeStatsForMonitorsCombined reads complete half-hour buckets from rollups
+// and only the raw checks outside that range. Windows are not necessarily
+// bucket-aligned, so the partial bucket at each edge stays on raw checks.
+// Maintenance aggregates every five minutes, so the raw tail stays small even
+// at the 500-monitor limit.
+func (s *Store) UptimeStatsForMonitorsCombined(ctx context.Context, monitorIDs []int64, since, now time.Time) (map[int64]model.UptimeStats, error) {
+	result := make(map[int64]model.UptimeStats, len(monitorIDs))
+	if len(monitorIDs) == 0 {
+		return result, nil
+	}
+	bucket := time.Duration(HalfHourlyResolutionSeconds) * time.Second
+	lastBucket, ok, err := s.LastRollupStart(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rollupEnd := since
+	if ok {
+		if next := lastBucket.Add(bucket); next.After(rollupEnd) {
+			rollupEnd = next
+		}
+	}
+	if completeEnd := now.Truncate(bucket); rollupEnd.After(completeEnd) {
+		rollupEnd = completeEnd
+	}
+	rollupStart := since.Truncate(bucket)
+	if rollupStart.Before(since) {
+		rollupStart = rollupStart.Add(bucket)
+	}
+
+	if !rollupStart.Before(rollupEnd) {
+		// No complete bucket fits in the window; read everything from raw checks.
+		return s.uptimeStatsForMonitors(ctx, monitorIDs, since, now)
+	}
+
+	if since.Before(rollupStart) {
+		leading, err := s.uptimeStatsForMonitors(ctx, monitorIDs, since, rollupStart)
+		if err != nil {
+			return nil, err
+		}
+		for monitorID, stats := range leading {
+			mergeUptimeStats(result, monitorID, stats)
+		}
+	}
+	rollupStats, err := s.RollupStatsForMonitors(ctx, monitorIDs, rollupStart, rollupEnd)
+	if err != nil {
+		return nil, err
+	}
+	for monitorID, stats := range rollupStats {
+		mergeUptimeStats(result, monitorID, stats)
+	}
+	if rollupEnd.Before(now) {
+		trailing, err := s.uptimeStatsForMonitors(ctx, monitorIDs, rollupEnd, now)
+		if err != nil {
+			return nil, err
+		}
+		for monitorID, stats := range trailing {
+			mergeUptimeStats(result, monitorID, stats)
+		}
+	}
+	return result, nil
+}
+
+func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, source model.UptimeStats) {
+	current := target[monitorID]
+	total := current.Total + source.Total
+	if total > 0 {
+		weighted := current.AvgLatency*time.Duration(current.Total) + source.AvgLatency*time.Duration(source.Total)
+		current.AvgLatency = weighted / time.Duration(total)
+	}
+	current.Total = total
+	current.Up += source.Up
+	current.Warning += source.Warning
+	current.Down += source.Down
+	target[monitorID] = current
+}
+
 func (s *Store) HalfHourlyBuckets(ctx context.Context, monitorID int64, since, before time.Time) ([]model.HourBucket, error) {
 	rows, err := s.reader().QueryContext(ctx, `
 		SELECT bucket_start_ms, total, up, warning, down, latency_sum_ms

@@ -758,16 +758,21 @@ func (s *Store) UptimeStats(ctx context.Context, monitorID int64, since time.Tim
 	return stats, nil
 }
 
-func (s *Store) UptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, since time.Time) (map[int64]model.UptimeStats, error) {
+func (s *Store) uptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, since, before time.Time) (map[int64]model.UptimeStats, error) {
 	result := make(map[int64]model.UptimeStats, len(monitorIDs))
 	if len(monitorIDs) == 0 {
 		return result, nil
 	}
-	args := make([]any, 0, len(monitorIDs)+1)
+	args := make([]any, 0, len(monitorIDs)+2)
 	for _, id := range monitorIDs {
 		args = append(args, id)
 	}
 	args = append(args, since.UTC().UnixMilli())
+	window := "checked_at_ms >= ?"
+	if !before.IsZero() {
+		window += " AND checked_at_ms < ?"
+		args = append(args, before.UTC().UnixMilli())
+	}
 	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id, COUNT(*),
 		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),
@@ -775,7 +780,7 @@ func (s *Store) UptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		       COALESCE(SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END), 0),
 		       COALESCE(AVG(latency_ms), 0)
 		FROM checks
-		WHERE monitor_id IN (`+idPlaceholders(len(monitorIDs))+`) AND checked_at_ms >= ?
+		WHERE monitor_id IN (`+idPlaceholders(len(monitorIDs))+`) AND `+window+`
 		GROUP BY monitor_id
 	`, args...)
 	if err != nil {
@@ -799,48 +804,6 @@ func (s *Store) UptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		return nil, fmt.Errorf("iterate uptime stats: %w", err)
 	}
 	return result, nil
-}
-
-func (s *Store) HourlyBuckets(ctx context.Context, since time.Time) (map[int64][]model.HourBucket, error) {
-	rows, err := s.reader().QueryContext(ctx, `
-		SELECT monitor_id,
-		       (checked_at_ms / 3600000) * 3600000 AS bucket_start_ms,
-		       COUNT(*),
-		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),
-		       COALESCE(SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END), 0),
-		       COALESCE(SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END), 0),
-		       COALESCE(AVG(latency_ms), 0)
-		FROM checks
-		WHERE checked_at_ms >= ?
-		GROUP BY monitor_id, bucket_start_ms
-		ORDER BY bucket_start_ms ASC
-	`, since.UTC().UnixMilli())
-	if err != nil {
-		return nil, fmt.Errorf("get hourly buckets: %w", err)
-	}
-	defer rows.Close()
-
-	buckets := make(map[int64][]model.HourBucket)
-	for rows.Next() {
-		var (
-			bucket     model.HourBucket
-			bucketMS   int64
-			avgLatency float64
-		)
-		if err := rows.Scan(
-			&bucket.MonitorID, &bucketMS, &bucket.Total, &bucket.Up,
-			&bucket.Warning, &bucket.Down, &avgLatency,
-		); err != nil {
-			return nil, fmt.Errorf("scan hourly bucket: %w", err)
-		}
-		bucket.Start = time.UnixMilli(bucketMS).UTC()
-		bucket.AvgLatency = time.Duration(avgLatency) * time.Millisecond
-		buckets[bucket.MonitorID] = append(buckets[bucket.MonitorID], bucket)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate hourly buckets: %w", err)
-	}
-	return buckets, nil
 }
 
 func (s *Store) HourlyBucketsForMonitor(ctx context.Context, monitorID int64, since time.Time) ([]model.HourBucket, error) {

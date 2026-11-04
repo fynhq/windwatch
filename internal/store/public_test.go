@@ -206,9 +206,9 @@ func TestUptimeAndRollupStatsForMonitors(t *testing.T) {
 			t.Fatalf("RecordCheck: %v", err)
 		}
 	}
-	stats, err := st.UptimeStatsForMonitors(t.Context(), []int64{first, second}, now.Add(-time.Hour))
+	stats, err := st.UptimeStatsForMonitorsCombined(t.Context(), []int64{first, second}, now.Add(-time.Hour), now.Add(time.Minute))
 	if err != nil {
-		t.Fatalf("UptimeStatsForMonitors: %v", err)
+		t.Fatalf("UptimeStatsForMonitorsCombined: %v", err)
 	}
 	if stats[first].Total != 1 || stats[second].Total != 1 {
 		t.Fatalf("uptime stats = %+v", stats)
@@ -223,6 +223,62 @@ func TestUptimeAndRollupStatsForMonitors(t *testing.T) {
 	if rollup[first].Total != 1 || rollup[second].Total != 1 {
 		t.Fatalf("rollup stats = %+v", rollup)
 	}
+}
+
+func TestUptimeStatsForMonitorsCombined(t *testing.T) {
+	st := newStoreTest(t)
+	now := time.Date(2026, 11, 4, 12, 15, 0, 0, time.UTC)
+	first := createStoreHTTPMonitor(t, st, "First")
+	second := createStoreHTTPMonitor(t, st, "Second")
+
+	checks := []struct {
+		monitorID int64
+		at        time.Time
+		status    string
+		latency   time.Duration
+	}{
+		{first, now.Add(-40 * time.Minute), model.CheckUp, 10 * time.Millisecond},
+		{second, now.Add(-40 * time.Minute), model.CheckDown, 20 * time.Millisecond},
+		{first, now.Add(-10 * time.Minute), model.CheckWarning, 30 * time.Millisecond},
+		{second, now.Add(-10 * time.Minute), model.CheckUp, 40 * time.Millisecond},
+	}
+	for _, check := range checks {
+		if err := st.RecordCheck(t.Context(), model.Check{
+			MonitorID: check.monitorID, CheckedAt: check.at, Status: check.status,
+			Latency: check.latency, MetaJSON: "{}",
+		}, model.MonitorState{
+			Status: model.StatusUp, StatusSince: check.at, LastCheck: check.at, UpdatedAt: check.at,
+		}, nil, false); err != nil {
+			t.Fatalf("RecordCheck: %v", err)
+		}
+	}
+
+	assertStats := func(label string) {
+		t.Helper()
+		stats, err := st.UptimeStatsForMonitorsCombined(t.Context(), []int64{first, second}, now.Add(-time.Hour), now)
+		if err != nil {
+			t.Fatalf("%s: UptimeStatsForMonitorsCombined: %v", label, err)
+		}
+		if stats[first].Total != 2 || stats[first].Up != 1 || stats[first].Warning != 1 || stats[first].Down != 0 {
+			t.Fatalf("%s: first stats = %+v", label, stats[first])
+		}
+		if stats[first].AvgLatency != 20*time.Millisecond {
+			t.Fatalf("%s: first latency = %s", label, stats[first].AvgLatency)
+		}
+		if stats[second].Total != 2 || stats[second].Up != 1 || stats[second].Warning != 0 || stats[second].Down != 1 {
+			t.Fatalf("%s: second stats = %+v", label, stats[second])
+		}
+		if stats[second].AvgLatency != 30*time.Millisecond {
+			t.Fatalf("%s: second latency = %s", label, stats[second].AvgLatency)
+		}
+	}
+
+	assertStats("raw fallback")
+
+	if err := st.AggregateHalfHourlyRollups(t.Context(), now.Add(-time.Hour), now.Truncate(30*time.Minute), now); err != nil {
+		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
+	}
+	assertStats("rollup plus tail")
 }
 
 func TestUnreferencedCertificateAndDomainCleanup(t *testing.T) {

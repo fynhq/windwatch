@@ -35,6 +35,7 @@ const (
 	domainInfoRetention   = 90 * 24 * time.Hour
 	domainRefreshInterval = 24 * time.Hour
 	domainRetryBase       = 30 * time.Minute
+	rollupInterval        = 5 * time.Minute
 	failureRecheckDelay   = 5 * time.Second
 	failureRecheckTimeout = 10 * time.Second
 )
@@ -976,6 +977,10 @@ func (s *Scheduler) maintain(ctx context.Context) {
 				return err
 			}
 		}
+		return nil
+	}
+	pruneRollups := func(now time.Time) error {
+		untilHalfHour := now.Truncate(30 * time.Minute)
 		if err := s.store.DeleteRollupsBefore(ctx, untilHalfHour.Add(-halfHourlyRetention)); err != nil {
 			return fmt.Errorf("delete old half-hourly rollups: %w", err)
 		}
@@ -999,6 +1004,10 @@ func (s *Scheduler) maintain(ctx context.Context) {
 			s.log.Error("aggregate rollups", "error", err)
 			return
 		}
+		if err := pruneRollups(now); err != nil {
+			s.log.Error("prune rollups", "error", err)
+			return
+		}
 		if err := s.store.DeleteChecksBefore(ctx, now.Add(-rawRetention)); err != nil {
 			s.log.Warn("delete old checks", "error", err)
 		}
@@ -1013,15 +1022,25 @@ func (s *Scheduler) maintain(ctx context.Context) {
 		defer s.recoverTask("maintenance")
 		cleanup()
 	}
+	aggregateSafely := func() {
+		defer s.recoverTask("rollup")
+		if err := aggregate(s.now().UTC()); err != nil {
+			s.log.Error("aggregate rollups", "error", err)
+		}
+	}
 	cleanupSafely()
 
-	ticker := time.NewTicker(6 * time.Hour)
-	defer ticker.Stop()
+	rollupTicker := time.NewTicker(rollupInterval)
+	defer rollupTicker.Stop()
+	cleanupTicker := time.NewTicker(6 * time.Hour)
+	defer cleanupTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-rollupTicker.C:
+			aggregateSafely()
+		case <-cleanupTicker.C:
 			cleanupSafely()
 		}
 	}

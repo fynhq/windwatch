@@ -313,7 +313,7 @@ func TestDashboardRecentChecksAndHistoryTabs(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !strings.Contains(body, "Last 24 checks") {
 		t.Fatalf("dashboard recent checks label missing: status=%d body=%s", response.StatusCode, body)
 	}
-	for _, expected := range []string{`data-monitor-filter="down"`, `data-monitor-search`, "Current latency", "Last 24 checks:"} {
+	for _, expected := range []string{`data-monitor-filter="down"`, `data-monitor-search`, "Current latency", "Last 24 checks:", "66.67%"} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("dashboard missing %q: %s", expected, body)
 		}
@@ -341,6 +341,43 @@ func TestDashboardRecentChecksAndHistoryTabs(t *testing.T) {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("detail missing %q: %s", expected, body)
 		}
+	}
+}
+
+func TestPublicSnapshotCacheWindows(t *testing.T) {
+	srv, _, _ := newWebTestServer(t)
+	id := createHTTPMonitor(t, srv, "Cache monitor", "https://example.com")
+	ids := []int64{id}
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+
+	first, err := srv.loadPublicSnapshot(t.Context(), ids, 1, now, time.UTC)
+	if err != nil {
+		t.Fatalf("first snapshot: %v", err)
+	}
+	if got := first.monitorsExpires; !got.Equal(now.Add(publicStatusTTL)) {
+		t.Fatalf("monitor expiry = %s, want %s", got, now.Add(publicStatusTTL))
+	}
+	if got := first.statsExpires; !got.Equal(now.Add(publicStatsTTL)) {
+		t.Fatalf("stats expiry = %s, want %s", got, now.Add(publicStatsTTL))
+	}
+
+	second, err := srv.loadPublicSnapshot(t.Context(), ids, 1, now.Add(31*time.Second), time.UTC)
+	if err != nil {
+		t.Fatalf("second snapshot: %v", err)
+	}
+	if !second.statsExpires.Equal(first.statsExpires) {
+		t.Fatalf("stats cache was refreshed too early: %s -> %s", first.statsExpires, second.statsExpires)
+	}
+	if !second.monitorsExpires.Equal(now.Add(31*time.Second + publicStatusTTL)) {
+		t.Fatalf("monitor expiry after refresh = %s", second.monitorsExpires)
+	}
+
+	third, err := srv.loadPublicSnapshot(t.Context(), ids, 1, now.Add(publicStatsTTL+time.Second), time.UTC)
+	if err != nil {
+		t.Fatalf("third snapshot: %v", err)
+	}
+	if !third.statsExpires.After(first.statsExpires) {
+		t.Fatalf("stats cache did not refresh: %s -> %s", first.statsExpires, third.statsExpires)
 	}
 }
 
