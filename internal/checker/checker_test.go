@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
+	outboundproxy "github.com/fynhq/windwatch/internal/proxy"
 )
 
 func monitorWithHTTP(url string, configure func(*model.HTTPConfig)) model.Monitor {
@@ -182,6 +184,78 @@ func TestHTTPCheckerHead(t *testing.T) {
 	}), nil)
 	if err != nil || !result.Success {
 		t.Fatalf("HEAD result=%+v err=%v", result, err)
+	}
+}
+
+func TestHTTPTransportCacheKey(t *testing.T) {
+	checker := newHTTPChecker()
+	monitor := monitorWithHTTP("https://example.com", nil)
+	first, err := checker.transportFor(monitor, nil)
+	if err != nil {
+		t.Fatalf("transportFor direct: %v", err)
+	}
+	second, err := checker.transportFor(monitor, nil)
+	if err != nil {
+		t.Fatalf("transportFor direct again: %v", err)
+	}
+	if first != second {
+		t.Fatal("same configuration should reuse the cached transport")
+	}
+
+	skip := monitorWithHTTP("https://example.com", func(cfg *model.HTTPConfig) {
+		cfg.TLSSkipVerify = true
+	})
+	third, err := checker.transportFor(skip, nil)
+	if err != nil {
+		t.Fatalf("transportFor skip verify: %v", err)
+	}
+	if third == first {
+		t.Fatal("skip-verify and verified checks must not share a transport")
+	}
+
+	proxied, err := checker.transportFor(monitor, &outboundproxy.Config{
+		Type: model.ProxyHTTP, Address: "127.0.0.1:1",
+	})
+	if err != nil {
+		t.Fatalf("transportFor proxy: %v", err)
+	}
+	if proxied == first {
+		t.Fatal("proxied and direct checks must not share a transport")
+	}
+}
+
+func TestHTTPConnectionReuse(t *testing.T) {
+	var mu sync.Mutex
+	newConnections := 0
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			mu.Lock()
+			newConnections++
+			mu.Unlock()
+		}
+	}
+	server.Start()
+	defer server.Close()
+
+	registry := NewRegistry()
+	monitor := monitorWithHTTP(server.URL, nil)
+	for i := 0; i < 2; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		result, err := registry.CheckWithProxy(ctx, monitor, nil)
+		cancel()
+		if err != nil || !result.Success {
+			t.Fatalf("check %d result=%+v err=%v", i, result, err)
+		}
+	}
+
+	mu.Lock()
+	count := newConnections
+	mu.Unlock()
+	if count > 1 {
+		t.Fatalf("new connections = %d, want at most 1 with transport reuse", count)
 	}
 }
 

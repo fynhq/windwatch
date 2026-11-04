@@ -1,6 +1,7 @@
 package checker
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
@@ -22,12 +24,21 @@ const (
 	maxDiscardBodyBytes = 64 << 10
 	maxKeywordBodyBytes = 1 << 20
 	maxRedirects        = 5
+	maxTransportEntries = 32
 )
 
 var errTooManyRedirects = errors.New("too many redirects")
 
+type transportKey struct {
+	tlsSkipVerify bool
+	proxyHash     string
+}
+
 type httpChecker struct {
-	transport *http.Transport
+	base  *http.Transport
+	mu    sync.Mutex
+	cache map[transportKey]*http.Transport
+	order []transportKey
 }
 
 type httpMeta struct {
@@ -47,11 +58,62 @@ func newHTTPChecker() *httpChecker {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-	return &httpChecker{transport: transport}
+	return &httpChecker{base: transport, cache: make(map[transportKey]*http.Transport)}
 }
 
 func (c *httpChecker) Type() model.MonitorType {
 	return model.MonitorTypeHTTP
+}
+
+// transportFor reuses one transport per TLS/proxy configuration. Cloning and
+// closing a transport for every check forced a new TCP/TLS handshake and
+// discarded the idle connection pool.
+func (c *httpChecker) transportFor(monitor model.Monitor, egress *proxy.Config) (*http.Transport, error) {
+	key := transportKey{
+		tlsSkipVerify: monitor.HTTP != nil && monitor.HTTP.TLSSkipVerify,
+		proxyHash:     proxyTransportKey(egress),
+	}
+	c.mu.Lock()
+	if transport := c.cache[key]; transport != nil {
+		c.mu.Unlock()
+		return transport, nil
+	}
+	c.mu.Unlock()
+
+	transport := c.base.Clone()
+	if key.tlsSkipVerify {
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}
+	}
+	if err := proxy.ApplyHTTPTransport(egress, transport); err != nil {
+		transport.CloseIdleConnections()
+		return nil, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if existing := c.cache[key]; existing != nil {
+		transport.CloseIdleConnections()
+		return existing, nil
+	}
+	if len(c.cache) >= maxTransportEntries {
+		oldest := c.order[0]
+		c.order = c.order[1:]
+		if evicted := c.cache[oldest]; evicted != nil {
+			delete(c.cache, oldest)
+			evicted.CloseIdleConnections()
+		}
+	}
+	c.cache[key] = transport
+	c.order = append(c.order, key)
+	return transport, nil
+}
+
+func proxyTransportKey(cfg *proxy.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(string(cfg.Type) + "\x00" + cfg.Address + "\x00" + cfg.Username + "\x00" + cfg.Password))
+	return hex.EncodeToString(sum[:])
 }
 
 func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckResult, error) {
@@ -71,22 +133,10 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 	}
 	req.Header.Set("User-Agent", "WindWatch-Monitor")
 
-	transport := c.transport.Clone()
-	// Bound headers by the monitor's own timeout; a fixed transport timeout
-	// would make monitors configured with a longer timeout fail early.
-	transport.ResponseHeaderTimeout = monitor.Timeout
-	if cfg.TLSSkipVerify {
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-		} else {
-			transport.TLSClientConfig = transport.TLSClientConfig.Clone()
-		}
-		transport.TLSClientConfig.InsecureSkipVerify = true
-	}
-	if err := proxy.ApplyHTTPTransport(request.Proxy, transport); err != nil {
+	transport, err := c.transportFor(monitor, request.Proxy)
+	if err != nil {
 		return failure(model.ErrorKindInvalidConfig, err.Error()), nil
 	}
-	defer transport.CloseIdleConnections()
 
 	client := &http.Client{
 		Transport:     transport,
@@ -146,7 +196,7 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 					Certificate:  certificate,
 				}, nil
 			}
-			if !strings.Contains(string(body), cfg.Keyword) {
+			if !bytes.Contains(body, []byte(cfg.Keyword)) {
 				message := "expected keyword was not found"
 				if len(body) > maxKeywordBodyBytes {
 					message = "expected keyword was not found within the first 1 MiB of the response"
