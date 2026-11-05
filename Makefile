@@ -14,19 +14,24 @@ VERSION ?= $(shell tr -d '\r' < VERSION 2>/dev/null || echo 0.0.0)
 VERSION_TAG := v$(VERSION)
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+# Local builds carry the commit; release artifacts keep a plain vX.Y.Z.
+VERSION_LABEL := $(VERSION_TAG)$(if $(filter-out unknown,$(COMMIT)),+$(COMMIT))
 
 GO_BUILD_FLAGS := -trimpath -buildvcs=false
-LDFLAGS := -s -w \
-	-X github.com/fynhq/windwatch/internal/version.Version=$(VERSION_TAG) \
+LDFLAGS_COMMON := -s -w \
 	-X github.com/fynhq/windwatch/internal/version.Commit=$(COMMIT) \
 	-X github.com/fynhq/windwatch/internal/version.BuildTime=$(BUILD_TIME)
+LDFLAGS_DEV := $(LDFLAGS_COMMON) \
+	-X github.com/fynhq/windwatch/internal/version.Version=$(VERSION_LABEL)
+LDFLAGS_RELEASE := $(LDFLAGS_COMMON) \
+	-X github.com/fynhq/windwatch/internal/version.Version=$(VERSION_TAG)
 
 .PHONY: all build dist docker-build docker-up docker-down fmt fmt-check vet test race check version clean
 
 all: check build
 
 build:
-	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/windwatch
+	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS_DEV)' -o $(BINARY) ./cmd/windwatch
 
 dist: check
 	rm -rf $(DIST)
@@ -34,7 +39,7 @@ dist: check
 	@set -e; for arch in amd64 arm64; do \
 		echo "building linux/$$arch"; \
 		work="$$(mktemp -d)"; \
-		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS)' -o "$$work/windwatch" ./cmd/windwatch; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS_RELEASE)' -o "$$work/windwatch" ./cmd/windwatch; \
 		tar -C "$$work" -czf "$(DIST)/windwatch-linux-$$arch-$(VERSION_TAG).tar.gz" windwatch; \
 		rm -rf "$$work"; \
 	done
@@ -43,7 +48,7 @@ dist: check
 
 docker-build:
 	docker build \
-		--build-arg VERSION="$(VERSION_TAG)" \
+		--build-arg VERSION="$(VERSION_LABEL)" \
 		--build-arg COMMIT="$(COMMIT)" \
 		--build-arg BUILD_TIME="$(BUILD_TIME)" \
 		--build-arg GOPROXY="$(GOPROXY)" \
