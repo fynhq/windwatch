@@ -29,6 +29,7 @@ type MonitorScheduler interface {
 	Reload(monitorID int64) error
 	Remove(monitorID int64)
 	CheckNow(monitorID int64) error
+	SetMonitorEnabled(ctx context.Context, monitorID int64, enabled bool) error
 }
 
 type NotificationTester interface {

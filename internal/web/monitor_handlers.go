@@ -568,27 +568,10 @@ func (s *Server) handleMonitorToggle(w http.ResponseWriter, r *http.Request, aut
 	}
 
 	enabled := !monitor.Enabled
-	if err := s.store.SetMonitorEnabled(r.Context(), id, enabled); err != nil {
+	if err := s.scheduler.SetMonitorEnabled(r.Context(), id, enabled); err != nil {
 		s.log.Error("toggle monitor", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
-	}
-	now := s.now().UTC()
-	if !enabled {
-		if err := s.store.DeleteReminderStates(r.Context(), id); err != nil {
-			s.log.Warn("clear reminder states after pause", "monitor_id", id, "error", err)
-		}
-	}
-	if err := s.store.CloseOpenDownEvents(r.Context(), id, now); err != nil {
-		s.log.Warn("close open down events after toggle", "monitor_id", id, "error", err)
-	}
-	// Pausing must not let a pre-pause failure count toward the next DOWN
-	// threshold, and must not count paused time in warning/down durations.
-	if err := s.store.ResetMonitorCounters(r.Context(), id, now); err != nil {
-		s.log.Warn("reset monitor counters after toggle", "monitor_id", id, "error", err)
-	}
-	if err := s.scheduler.Reload(id); err != nil {
-		s.log.Warn("reload scheduler after toggle", "monitor_id", id, "error", err)
 	}
 	notice := "monitor_paused"
 	if enabled {

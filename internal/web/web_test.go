@@ -31,6 +31,7 @@ type fakeScheduler struct {
 	removed  []int64
 	checked  []int64
 	checkErr error
+	st       *store.Store
 }
 
 func (f *fakeScheduler) Reload(monitorID int64) error {
@@ -51,6 +52,28 @@ func (f *fakeScheduler) CheckNow(monitorID int64) error {
 	defer f.mu.Unlock()
 	f.checked = append(f.checked, monitorID)
 	return f.checkErr
+}
+
+func (f *fakeScheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enabled bool) error {
+	f.mu.Lock()
+	f.reloaded = append(f.reloaded, monitorID)
+	f.mu.Unlock()
+	if f.st == nil {
+		return nil
+	}
+	if err := f.st.SetMonitorEnabled(ctx, monitorID, enabled); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if !enabled {
+		if err := f.st.DeleteReminderStates(ctx, monitorID); err != nil {
+			return err
+		}
+	}
+	if err := f.st.CloseOpenDownEvents(ctx, monitorID, now); err != nil {
+		return err
+	}
+	return f.st.ResetMonitorCounters(ctx, monitorID, now)
 }
 
 type fakeNotifier struct {
@@ -90,7 +113,7 @@ func newWebTestServer(t *testing.T) (*Server, *store.Store, *httptest.Server) {
 	if err != nil {
 		t.Fatalf("secret.NewCipher: %v", err)
 	}
-	srv, err := New(st, catalogs, &fakeScheduler{}, &fakeNotifier{}, cipher, nil, logger, "test")
+	srv, err := New(st, catalogs, &fakeScheduler{st: st}, &fakeNotifier{}, cipher, nil, logger, "test")
 	if err != nil {
 		t.Fatalf("web.New: %v", err)
 	}

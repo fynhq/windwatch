@@ -224,6 +224,32 @@ func (s *Scheduler) Remove(monitorID int64) {
 	s.stopRunner(monitorID)
 }
 
+// SetMonitorEnabled applies pause/resume semantics in one place so the web layer
+// does not orchestrate state transitions. It stops or starts the runner, clears
+// reminder state on pause, closes any open DOWN event, and resets threshold
+// counters so paused time does not count toward warnings or outages.
+func (s *Scheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enabled bool) error {
+	if err := s.store.SetMonitorEnabled(ctx, monitorID, enabled); err != nil {
+		return fmt.Errorf("set monitor enabled: %w", err)
+	}
+	now := s.now().UTC()
+	if !enabled {
+		if err := s.store.DeleteReminderStates(ctx, monitorID); err != nil {
+			s.log.Warn("clear reminder states after pause", "monitor_id", monitorID, "error", err)
+		}
+	}
+	if err := s.store.CloseOpenDownEvents(ctx, monitorID, now); err != nil {
+		s.log.Warn("close open down events after toggle", "monitor_id", monitorID, "error", err)
+	}
+	if err := s.store.ResetMonitorCounters(ctx, monitorID, now); err != nil {
+		s.log.Warn("reset monitor counters after toggle", "monitor_id", monitorID, "error", err)
+	}
+	if err := s.Reload(monitorID); err != nil {
+		s.log.Warn("reload scheduler after toggle", "monitor_id", monitorID, "error", err)
+	}
+	return nil
+}
+
 func (s *Scheduler) CheckNow(monitorID int64) error {
 	runCtx, err := s.context()
 	if err != nil {
