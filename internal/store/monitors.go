@@ -21,7 +21,8 @@ const monitorSelect = `
 		m.notify_enabled, m.enabled, m.proxy_id,
 		m.created_at_ms, m.updated_at_ms,
 		ms.status, ms.status_since_ms, ms.last_check_ms, ms.last_error,
-		ms.consecutive_failures, ms.consecutive_successes, ms.updated_at_ms
+		ms.consecutive_failures, ms.consecutive_successes, ms.updated_at_ms,
+		ms.warning_context
 	FROM monitors m
 	LEFT JOIN monitor_state ms ON ms.monitor_id = m.id
 `
@@ -52,6 +53,7 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 		consecutiveFailures  sql.NullInt64
 		consecutiveSuccesses sql.NullInt64
 		stateUpdatedAtMS     sql.NullInt64
+		warningContext       sql.NullString
 	)
 	err := row.Scan(
 		&monitor.ID, &monitor.Name, &monitor.Type, &configJSON,
@@ -62,6 +64,7 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 		&createdAtMS, &updatedAtMS,
 		&stateStatus, &statusSinceMS, &lastCheckMS, &lastError,
 		&consecutiveFailures, &consecutiveSuccesses, &stateUpdatedAtMS,
+		&warningContext,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Monitor{}, ErrNotFound
@@ -111,6 +114,7 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 		if stateUpdatedAtMS.Valid {
 			monitor.State.UpdatedAt = time.UnixMilli(stateUpdatedAtMS.Int64).UTC()
 		}
+		monitor.State.WarningContext = warningContext.String
 	}
 	return monitor, nil
 }
@@ -642,6 +646,18 @@ func (s *Store) ResetMonitorCounters(ctx context.Context, monitorID int64, at ti
 		WHERE monitor_id = ?
 	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
 		return fmt.Errorf("reset monitor counters: %w", err)
+	}
+	return nil
+}
+
+// SetWarningContext records the current certificate/domain warning episode.
+// Persisting it keeps a restart from resetting status_since and re-notifying.
+func (s *Store) SetWarningContext(ctx context.Context, monitorID int64, value string) error {
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE monitor_state SET warning_context = ?
+		WHERE monitor_id = ?
+	`, value, monitorID); err != nil {
+		return fmt.Errorf("set warning context: %w", err)
 	}
 	return nil
 }

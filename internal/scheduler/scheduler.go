@@ -83,13 +83,12 @@ type Scheduler struct {
 	results    chan outcome
 	domainWake chan struct{}
 
-	mu              sync.Mutex
-	ctx             context.Context
-	started         bool
-	runners         map[int64]*runnerHandle
-	inflight        map[int64]struct{}
-	warningContexts map[int64]string
-	wg              sync.WaitGroup
+	mu       sync.Mutex
+	ctx      context.Context
+	started  bool
+	runners  map[int64]*runnerHandle
+	inflight map[int64]struct{}
+	wg       sync.WaitGroup
 }
 
 func (s *Scheduler) SetCipher(cipher *secret.Cipher) {
@@ -123,14 +122,13 @@ func New(st *store.Store, registry *checker.Registry, logger *slog.Logger) *Sche
 			}
 			return interval + time.Duration(rand.Int64N(window+1))
 		},
-		recheckDelay:    failureRecheckDelay,
-		recheckTimeout:  failureRecheckTimeout,
-		semaphore:       make(chan struct{}, globalConcurrency),
-		results:         make(chan outcome, resultBuffer),
-		domainWake:      make(chan struct{}, 1),
-		runners:         make(map[int64]*runnerHandle),
-		inflight:        make(map[int64]struct{}),
-		warningContexts: make(map[int64]string),
+		recheckDelay:   failureRecheckDelay,
+		recheckTimeout: failureRecheckTimeout,
+		semaphore:      make(chan struct{}, globalConcurrency),
+		results:        make(chan outcome, resultBuffer),
+		domainWake:     make(chan struct{}, 1),
+		runners:        make(map[int64]*runnerHandle),
+		inflight:       make(map[int64]struct{}),
 	}
 }
 
@@ -224,7 +222,6 @@ func (s *Scheduler) Reload(monitorID int64) error {
 
 func (s *Scheduler) Remove(monitorID int64) {
 	s.stopRunner(monitorID)
-	s.setWarningContext(monitorID, "")
 }
 
 func (s *Scheduler) CheckNow(monitorID int64) error {
@@ -608,7 +605,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 
 	previousStatus := monitor.State.Status
 	previousSince := monitor.State.StatusSince
-	previousWarningKey := s.warningContext(monitor.ID)
+	previousWarningKey := monitor.State.WarningContext
 	downStartedAt := time.Time{}
 	if !job.result.Success && previousStatus != model.StatusDown &&
 		monitor.State.ConsecutiveFailures+1 >= failedThreshold(monitor) {
@@ -715,10 +712,10 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	if warningChanged && monitor.Enabled && monitorNotificationsEnabled(monitor) && s.notifier != nil && s.notificationsAvailable(ctx) {
 		notification := s.warningNotification(monitor, job.result, aux, nextState, job.checkedAt)
 		if s.notifier.Enqueue(notification) {
-			s.setWarningContext(monitor.ID, warningKey)
+			s.persistWarningContext(ctx, monitor.ID, warningKey)
 		}
 	} else if nextState.Status != model.StatusWarning {
-		s.setWarningContext(monitor.ID, "")
+		s.persistWarningContext(ctx, monitor.ID, "")
 	}
 	s.processReminders(ctx, monitor, job.result, aux, warning, nextState, previousStatus, job.checkedAt)
 }
@@ -803,20 +800,10 @@ func (s *Scheduler) notificationsAvailable(ctx context.Context) bool {
 	return enabled
 }
 
-func (s *Scheduler) warningContext(monitorID int64) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.warningContexts[monitorID]
-}
-
-func (s *Scheduler) setWarningContext(monitorID int64, value string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if value == "" {
-		delete(s.warningContexts, monitorID)
-		return
+func (s *Scheduler) persistWarningContext(ctx context.Context, monitorID int64, value string) {
+	if err := s.store.SetWarningContext(ctx, monitorID, value); err != nil {
+		s.log.Warn("persist warning context", "monitor_id", monitorID, "error", err)
 	}
-	s.warningContexts[monitorID] = value
 }
 
 func truncateErrorText(value string) string {

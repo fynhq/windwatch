@@ -103,6 +103,9 @@ type MonitorState struct {
 	ConsecutiveFailures  int
 	ConsecutiveSuccesses int
 	UpdatedAt            time.Time
+	// WarningContext identifies the certificate/domain warning episode. It is
+	// persisted so a restart does not turn an ongoing warning into a new one.
+	WarningContext string
 }
 
 type CertificateInfo struct {

@@ -4,12 +4,31 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
 )
+
+// expectedMigrationCount keeps the migration assertions in step with the
+// embedded migration set instead of a hardcoded version number.
+func expectedMigrationCount(t *testing.T) int {
+	t.Helper()
+	entries, err := fs.ReadDir(migrationFS, "migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			count++
+		}
+	}
+	return count
+}
 
 func TestMigrateFreshDatabase(t *testing.T) {
 	ctx := context.Background()
@@ -30,8 +49,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if versions != 3 {
-		t.Fatalf("schema versions = %d, want 3", versions)
+	if versions != expectedMigrationCount(t) {
+		t.Fatalf("schema versions = %d, want %d", versions, expectedMigrationCount(t))
 	}
 
 	expectedTables := []string{
@@ -103,6 +122,16 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}
 	if retryColumns != 2 {
 		t.Fatalf("notify_log retry columns = %d, want 2", retryColumns)
+	}
+
+	var warningContextColumns int
+	if err := st.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM pragma_table_info('monitor_state') WHERE name = 'warning_context'
+	`).Scan(&warningContextColumns); err != nil {
+		t.Fatalf("check warning context column: %v", err)
+	}
+	if warningContextColumns != 1 {
+		t.Fatalf("monitor_state warning_context columns = %d, want 1", warningContextColumns)
 	}
 
 	now := time.Now().UTC()
@@ -258,7 +287,7 @@ func TestMigrateAddsNotificationRetryColumns(t *testing.T) {
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {
 		t.Fatalf("count upgraded migrations: %v", err)
 	}
-	if versions != 3 {
-		t.Fatalf("upgraded schema versions = %d, want 3", versions)
+	if versions != expectedMigrationCount(t) {
+		t.Fatalf("upgraded schema versions = %d, want %d", versions, expectedMigrationCount(t))
 	}
 }
