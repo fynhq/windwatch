@@ -237,15 +237,24 @@ func runHealthcheck(args []string) error {
 }
 
 func printVersion() {
+	fmt.Println(versionLine())
+}
+
+// versionLine keeps build metadata out of the version label itself; local
+// builds already carry the commit as a "+<hash>" suffix.
+func versionLine() string {
 	line := "windwatch " + version.Version
-	if version.Commit != "" && version.Commit != "unknown" {
-		line += " (commit " + version.Commit
-		if version.BuildTime != "" && version.BuildTime != "unknown" {
-			line += ", built " + version.BuildTime
-		}
-		line += ")"
+	var details []string
+	if version.Commit != "" && version.Commit != "unknown" && !strings.HasSuffix(version.Version, "+"+version.Commit) {
+		details = append(details, "commit "+version.Commit)
 	}
-	fmt.Println(line)
+	if version.BuildTime != "" && version.BuildTime != "unknown" {
+		details = append(details, "built "+version.BuildTime)
+	}
+	if len(details) > 0 {
+		line += " (" + strings.Join(details, ", ") + ")"
+	}
+	return line
 }
 
 func printUsage() {

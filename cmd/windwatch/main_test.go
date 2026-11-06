@@ -10,7 +10,32 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 	"github.com/fynhq/windwatch/internal/secret"
 	"github.com/fynhq/windwatch/internal/store"
+	"github.com/fynhq/windwatch/internal/version"
 )
+
+func TestVersionLine(t *testing.T) {
+	originalVersion, originalCommit, originalBuildTime := version.Version, version.Commit, version.BuildTime
+	t.Cleanup(func() {
+		version.Version, version.Commit, version.BuildTime = originalVersion, originalCommit, originalBuildTime
+	})
+	cases := []struct {
+		version   string
+		commit    string
+		buildTime string
+		want      string
+	}{
+		{"v0.3.1+abc1234", "abc1234", "2026-11-07T00:00:00Z", "windwatch v0.3.1+abc1234 (built 2026-11-07T00:00:00Z)"},
+		{"v0.3.1", "abc1234", "", "windwatch v0.3.1 (commit abc1234)"},
+		{"v0.3.1", "unknown", "unknown", "windwatch v0.3.1"},
+		{"v0.3.1", "", "", "windwatch v0.3.1"},
+	}
+	for _, tc := range cases {
+		version.Version, version.Commit, version.BuildTime = tc.version, tc.commit, tc.buildTime
+		if got := versionLine(); got != tc.want {
+			t.Fatalf("versionLine() = %q, want %q", got, tc.want)
+		}
+	}
+}
 
 func TestResetPasswordFromStdin(t *testing.T) {
 	dir := t.TempDir()
