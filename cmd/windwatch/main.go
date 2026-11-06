@@ -49,7 +49,7 @@ func run(args []string) error {
 	case "reset-password":
 		return runResetPassword(remaining)
 	case "version":
-		fmt.Printf("windwatch %s\n", version.Version)
+		printVersion()
 		return nil
 	case "help":
 		printUsage()
@@ -234,6 +234,18 @@ func runHealthcheck(args []string) error {
 		return fmt.Errorf("healthcheck returned HTTP %d", response.StatusCode)
 	}
 	return nil
+}
+
+func printVersion() {
+	line := "windwatch " + version.Version
+	if version.Commit != "" && version.Commit != "unknown" {
+		line += " (commit " + version.Commit
+		if version.BuildTime != "" && version.BuildTime != "unknown" {
+			line += ", built " + version.BuildTime
+		}
+		line += ")"
+	}
+	fmt.Println(line)
 }
 
 func printUsage() {
