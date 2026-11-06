@@ -36,7 +36,7 @@ func ValidateTimezone(value string) (*time.Location, error) {
 }
 
 func TimezoneFromSettings(values map[string]string) *time.Location {
-	location, err := LoadTimezone(values[SettingTimezone])
+	location, err := ValidateTimezone(values[SettingTimezone])
 	if err != nil {
 		return time.UTC
 	}

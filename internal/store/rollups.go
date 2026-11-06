@@ -249,47 +249,13 @@ func (s *Store) HalfHourlyBuckets(ctx context.Context, monitorID int64, since, b
 }
 
 func (s *Store) DailyBucketsForTimezone(ctx context.Context, monitorID int64, since, before time.Time, location *time.Location) ([]model.HourBucket, error) {
-	if location == nil {
-		location = time.UTC
-	}
-	buckets, err := s.HalfHourlyBuckets(ctx, monitorID, since, before)
+	// Reuse the batch implementation so latency sums are accumulated from
+	// latency_sum_ms instead of being reconstructed from truncated averages.
+	result, err := s.DailyBucketsForMonitors(ctx, []int64{monitorID}, since, before, location)
 	if err != nil {
 		return nil, err
 	}
-	type aggregate struct {
-		bucket     model.HourBucket
-		latencySum int64
-	}
-	byDay := make(map[int64]*aggregate)
-	for _, bucket := range buckets {
-		local := bucket.Start.In(location)
-		dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
-		key := dayStart.UnixMilli()
-		entry := byDay[key]
-		if entry == nil {
-			entry = &aggregate{bucket: model.HourBucket{MonitorID: monitorID, Start: dayStart}}
-			byDay[key] = entry
-		}
-		entry.bucket.Total += bucket.Total
-		entry.bucket.Up += bucket.Up
-		entry.bucket.Warning += bucket.Warning
-		entry.bucket.Down += bucket.Down
-		entry.latencySum += int64(bucket.AvgLatency/time.Millisecond) * int64(bucket.Total)
-	}
-	keys := make([]int64, 0, len(byDay))
-	for key := range byDay {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-	daily := make([]model.HourBucket, 0, len(keys))
-	for _, key := range keys {
-		entry := byDay[key]
-		if entry.bucket.Total > 0 {
-			entry.bucket.AvgLatency = time.Duration(entry.latencySum/int64(entry.bucket.Total)) * time.Millisecond
-		}
-		daily = append(daily, entry.bucket)
-	}
-	return daily, nil
+	return result[monitorID], nil
 }
 
 func (s *Store) DailyBucketsForMonitors(ctx context.Context, monitorIDs []int64, since, before time.Time, location *time.Location) (map[int64][]model.HourBucket, error) {

@@ -40,4 +40,7 @@ func TestTimezoneFromSettings(t *testing.T) {
 	if got := TimezoneFromSettings(map[string]string{SettingTimezone: "bad/zone"}); got != time.UTC {
 		t.Fatalf("invalid location = %s, want UTC", got)
 	}
+	if got := TimezoneFromSettings(map[string]string{SettingTimezone: "Asia/Kathmandu"}); got != time.UTC {
+		t.Fatalf("45-minute offset location = %s, want UTC", got)
+	}
 }

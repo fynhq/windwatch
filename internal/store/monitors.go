@@ -663,8 +663,14 @@ func (s *Store) SetWarningContext(ctx context.Context, monitorID int64, value st
 }
 
 func (s *Store) EnsureOpenDownEvent(ctx context.Context, monitorID int64, at time.Time, message string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin open down event: %w", err)
+	}
+	defer tx.Rollback()
+
 	var open int
-	if err := s.db.QueryRowContext(ctx, `
+	if err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM events
 		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
 	`, monitorID, model.EventDown).Scan(&open); err != nil {
@@ -673,11 +679,14 @@ func (s *Store) EnsureOpenDownEvent(ctx context.Context, monitorID int64, at tim
 	if open > 0 {
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO events (monitor_id, type, message, started_at_ms, meta_json)
 		VALUES (?, ?, ?, ?, '{}')
 	`, monitorID, model.EventDown, message, at.UTC().UnixMilli()); err != nil {
 		return fmt.Errorf("open down event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit open down event: %w", err)
 	}
 	return nil
 }
