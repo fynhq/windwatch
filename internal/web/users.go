@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/fynhq/windwatch/internal/model"
 	"github.com/fynhq/windwatch/internal/secret"
@@ -291,10 +290,11 @@ func (s *Server) roleLabel(translator interface{ T(string) string }, role string
 }
 
 func validateUsername(username string) string {
+	err := model.ValidateUsername(username)
 	switch {
-	case utf8.RuneCountInString(username) < 3:
+	case errors.Is(err, model.ErrUsernameTooShort):
 		return "error.usernameShort"
-	case utf8.RuneCountInString(username) > 64:
+	case errors.Is(err, model.ErrUsernameTooLong):
 		return "error.usernameLong"
 	default:
 		return ""
@@ -302,10 +302,11 @@ func validateUsername(username string) string {
 }
 
 func validateNewPassword(password, confirm string) string {
+	err := model.ValidatePassword(password)
 	switch {
-	case utf8.RuneCountInString(password) < 10:
+	case errors.Is(err, model.ErrPasswordTooShort):
 		return "error.passwordShort"
-	case utf8.RuneCountInString(password) > 256:
+	case errors.Is(err, model.ErrPasswordTooLong):
 		return "error.passwordLong"
 	case password != confirm:
 		return "error.passwordMismatch"

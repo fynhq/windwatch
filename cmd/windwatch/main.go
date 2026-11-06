@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // keep the binary self-contained in shell-less container images
-	"unicode/utf8"
 
 	"golang.org/x/term"
 
@@ -139,11 +138,8 @@ func runResetPassword(args []string) error {
 	if err != nil {
 		return err
 	}
-	switch count := utf8.RuneCountInString(password); {
-	case count < 10:
-		return errors.New("password must be at least 10 characters")
-	case count > 256:
-		return errors.New("password must be at most 256 characters")
+	if err := model.ValidatePassword(password); err != nil {
+		return err
 	}
 
 	hash, err := secret.HashPassword(password)

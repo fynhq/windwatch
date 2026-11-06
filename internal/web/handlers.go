@@ -66,21 +66,12 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	password := r.PostFormValue("password")
 	confirm := r.PostFormValue("password_confirm")
 
-	switch {
-	case utf8.RuneCountInString(username) < 3:
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, "error.usernameShort")
+	if key := validateUsername(username); key != "" {
+		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, key)
 		return
-	case utf8.RuneCountInString(username) > 64:
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, "error.usernameLong")
-		return
-	case utf8.RuneCountInString(password) < 10:
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, "error.passwordShort")
-		return
-	case utf8.RuneCountInString(password) > 256:
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, "error.passwordLong")
-		return
-	case password != confirm:
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, "error.passwordMismatch")
+	}
+	if key := validateNewPassword(password, confirm); key != "" {
+		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, key)
 		return
 	}
 
