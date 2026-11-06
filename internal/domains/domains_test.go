@@ -26,6 +26,17 @@ const rdapPayload = `{
 	]
 }`
 
+// fetchRDAP queries a single endpoint. Tests use it to exercise the response
+// parser without the bootstrap and fallback chain.
+func fetchRDAP(ctx context.Context, endpoint, domain string, resolve func() (*proxy.Config, error), now time.Time) (model.DomainInfo, error) {
+	client, closeIdle, err := newRDAPClient(resolve)
+	if err != nil {
+		return model.DomainInfo{}, err
+	}
+	defer closeIdle()
+	return fetchRDAPFrom(ctx, client, []string{endpoint}, domain, now)
+}
+
 func writeRDAP(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/rdap+json")
 	_, _ = w.Write([]byte(rdapPayload))

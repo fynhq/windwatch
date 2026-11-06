@@ -198,7 +198,6 @@ const (
 var (
 	ErrMonitorName     = errors.New("invalid monitor name")
 	ErrMonitorType     = errors.New("invalid monitor type")
-	ErrMonitorLimit    = errors.New("monitor limit reached")
 	ErrInterval        = errors.New("invalid monitor interval")
 	ErrTimeout         = errors.New("invalid monitor timeout")
 	ErrThreshold       = errors.New("invalid monitor threshold")

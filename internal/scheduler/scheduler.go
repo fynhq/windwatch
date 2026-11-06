@@ -643,17 +643,13 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		event.StartedAt = downStartedAt
 	}
 	if nextState.Status != model.StatusDown && job.result.Success {
-		switch {
-		case warning && nextState.Status != model.StatusWarning:
+		if warning && nextState.Status != model.StatusWarning {
 			if previousStatus == model.StatusWarning && previousWarningKey == warningKey {
 				nextState.StatusSince = previousSince
 			} else {
 				nextState.StatusSince = job.checkedAt
 			}
 			nextState.Status = model.StatusWarning
-		case !warning && nextState.Status == model.StatusWarning:
-			nextState.Status = model.StatusUp
-			nextState.StatusSince = job.checkedAt
 		}
 	}
 

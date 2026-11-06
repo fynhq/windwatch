@@ -185,15 +185,6 @@ func lookupRDAP(ctx context.Context, domain string, resolve func() (*proxy.Confi
 	return fetchRDAPFrom(ctx, client, rdapEndpoints(ctx, client, domain), domain, now)
 }
 
-func fetchRDAP(ctx context.Context, endpoint, domain string, resolve func() (*proxy.Config, error), now time.Time) (model.DomainInfo, error) {
-	client, closeIdle, err := newRDAPClient(resolve)
-	if err != nil {
-		return model.DomainInfo{}, err
-	}
-	defer closeIdle()
-	return fetchRDAPFrom(ctx, client, []string{endpoint}, domain, now)
-}
-
 func newRDAPClient(resolve func() (*proxy.Config, error)) (*http.Client, func(), error) {
 	egress, err := resolve()
 	if err != nil {

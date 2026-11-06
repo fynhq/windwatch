@@ -622,16 +622,6 @@ func (s *Store) CloseOpenDownEvents(ctx context.Context, monitorID int64, at tim
 	return nil
 }
 
-func (s *Store) ResetDownStatusSince(ctx context.Context, monitorID int64, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE monitor_state SET status_since_ms = ?, updated_at_ms = ?
-		WHERE monitor_id = ? AND status = ?
-	`, at.UTC().UnixMilli(), at.UTC().UnixMilli(), monitorID, model.StatusDown); err != nil {
-		return fmt.Errorf("reset down status since: %w", err)
-	}
-	return nil
-}
-
 // ResetMonitorCounters clears consecutive failure/success counters and starts
 // warning/down duration from at. A pause must not let a pre-pause failure
 // satisfy the threshold after resume, nor count paused time as outage time.

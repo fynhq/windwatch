@@ -38,8 +38,6 @@ func formErrorKey(err error) string {
 		return "error.monitorName"
 	case errors.Is(err, model.ErrMonitorType):
 		return "error.invalidRequest"
-	case errors.Is(err, model.ErrMonitorLimit):
-		return "error.monitorLimit"
 	case errors.Is(err, model.ErrInterval):
 		return "error.interval"
 	case errors.Is(err, model.ErrTimeout):

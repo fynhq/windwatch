@@ -183,8 +183,8 @@ func TestCloseAndEnsureOpenDownEvent(t *testing.T) {
 		t.Fatalf("events after ensure = %+v err=%v", events, err)
 	}
 	resetAt := now.Add(4 * time.Minute)
-	if err := st.ResetDownStatusSince(t.Context(), id, resetAt); err != nil {
-		t.Fatalf("ResetDownStatusSince: %v", err)
+	if err := st.ResetMonitorCounters(t.Context(), id, resetAt); err != nil {
+		t.Fatalf("ResetMonitorCounters: %v", err)
 	}
 	monitor, err := st.MonitorByID(t.Context(), id)
 	if err != nil || monitor.State.StatusSince.UnixMilli() != resetAt.UnixMilli() {
