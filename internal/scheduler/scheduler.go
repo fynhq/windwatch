@@ -727,7 +727,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		if s.notifier.Enqueue(notification) {
 			s.persistWarningContext(ctx, monitor.ID, warningKey)
 		}
-	} else if nextState.Status != model.StatusWarning {
+	} else if nextState.Status != model.StatusWarning && previousWarningKey != "" {
 		s.persistWarningContext(ctx, monitor.ID, "")
 	}
 	s.processReminders(ctx, monitor, job.result, aux, warning, nextState, previousStatus, job.checkedAt)
