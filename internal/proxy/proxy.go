@@ -50,6 +50,16 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// NewConfig builds a validated outbound proxy configuration. Callers that load
+// stored proxies share it so validation cannot drift between subsystems.
+func NewConfig(proxyType model.ProxyType, address, username, password string) (*Config, error) {
+	cfg := &Config{Type: proxyType, Address: address, Username: username, Password: password}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func ApplyHTTPTransport(cfg *Config, transport *http.Transport) error {
 	if cfg == nil {
 		return nil

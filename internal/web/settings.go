@@ -688,13 +688,8 @@ func (s *Server) handleProxyTest(w http.ResponseWriter, r *http.Request, auth mo
 		}
 		password = decrypted
 	}
-	config := &outboundproxy.Config{
-		Type:     values.Type,
-		Address:  strings.TrimSpace(values.Address),
-		Username: values.Username,
-		Password: password,
-	}
-	if err := config.Validate(); err != nil {
+	config, err := outboundproxy.NewConfig(values.Type, strings.TrimSpace(values.Address), values.Username, password)
+	if err != nil {
 		key := "error.proxyAddress"
 		if values.Type != model.ProxyHTTP && values.Type != model.ProxySOCKS5 {
 			key = "error.proxyType"

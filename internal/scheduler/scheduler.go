@@ -552,16 +552,7 @@ func (s *Scheduler) resolveProxy(ctx context.Context, proxyID int64) (*outboundp
 			return nil, fmt.Errorf("decrypt proxy password: %w", err)
 		}
 	}
-	config := &outboundproxy.Config{
-		Type:     stored.Type,
-		Address:  stored.Address,
-		Username: stored.Username,
-		Password: password,
-	}
-	if err := config.Validate(); err != nil {
-		return nil, err
-	}
-	return config, nil
+	return outboundproxy.NewConfig(stored.Type, stored.Address, stored.Username, password)
 }
 
 func (s *Scheduler) collect(ctx context.Context) {

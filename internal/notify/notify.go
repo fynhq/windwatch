@@ -733,9 +733,7 @@ func (s *Service) resolveProxy(ctx context.Context, proxyID int64) (*outboundpro
 			return nil, err
 		}
 	}
-	return &outboundproxy.Config{
-		Type: stored.Type, Address: stored.Address, Username: stored.Username, Password: password,
-	}, nil
+	return outboundproxy.NewConfig(stored.Type, stored.Address, stored.Username, password)
 }
 
 type permanentError struct {
