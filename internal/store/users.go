@@ -14,6 +14,7 @@ import (
 var (
 	ErrUsernameTaken = errors.New("username already exists")
 	ErrLastAdmin     = errors.New("at least one active administrator is required")
+	ErrInvalidRole   = errors.New("invalid role")
 )
 
 type userScanner interface {
@@ -72,7 +73,7 @@ func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role str
 		return model.Admin{}, errors.New("username must not be empty")
 	}
 	if !validRole(role) {
-		return model.Admin{}, fmt.Errorf("invalid role %q", role)
+		return model.Admin{}, fmt.Errorf("%w: %q", ErrInvalidRole, role)
 	}
 	createdAt := now.UTC()
 	result, err := s.db.ExecContext(ctx, `
@@ -101,7 +102,7 @@ func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role str
 
 func (s *Store) UpdateUserRole(ctx context.Context, id int64, role string, now time.Time) error {
 	if !validRole(role) {
-		return fmt.Errorf("invalid role %q", role)
+		return fmt.Errorf("%w: %q", ErrInvalidRole, role)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

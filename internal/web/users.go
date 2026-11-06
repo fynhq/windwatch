@@ -144,7 +144,7 @@ func (s *Server) handleUserRole(w http.ResponseWriter, r *http.Request, auth mod
 			s.renderError(w, r, http.StatusNotFound, "error.userNotFound")
 		case errors.Is(err, store.ErrLastAdmin):
 			s.renderUsersError(w, r, auth, http.StatusBadRequest, userFormValues{}, "error.lastAdmin")
-		case strings.Contains(err.Error(), "invalid role"):
+		case errors.Is(err, store.ErrInvalidRole):
 			s.renderUsersError(w, r, auth, http.StatusBadRequest, userFormValues{}, "error.invalidRole")
 		default:
 			s.log.Error("update user role", "error", err)
