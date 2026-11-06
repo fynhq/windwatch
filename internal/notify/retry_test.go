@@ -237,6 +237,46 @@ func TestPermanentNotificationFailureIsNotRetried(t *testing.T) {
 	}
 }
 
+func TestBlockedRetryYieldsBatchToDueRows(t *testing.T) {
+	service, st := testNotifyService(t)
+	service.retryDelays = nil
+	service.retrySchedule = func(int) time.Duration { return 10 * time.Second }
+	service.retryMaxAttempts = 3
+	service.retryMaxAge = time.Hour
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	channel := createTestChannel(t, service, st, "Starvation hook", model.NotificationChannelWebhook, "", server.URL, "", true)
+	monitorID := createTestMonitor(t, st, channel.ID)
+	target := "https://example.com/hook"
+	// Claim with an old timestamp so the two-minute claim lease has already
+	// elapsed and both rows are due for retry.
+	claimedAt := time.Now().UTC().Add(-3 * time.Minute)
+	downKey := fmt.Sprintf("down:%d:100", monitorID)
+	upKey := fmt.Sprintf("up:%d:200", monitorID)
+	for _, key := range []string{downKey, upKey} {
+		if _, _, err := st.ClaimNotificationID(t.Context(), key, string(model.NotificationChannelWebhook), channel.ID, channel.Name, target, `{"event":"down"}`, "Example", claimedAt); err != nil {
+			t.Fatalf("ClaimNotificationID: %v", err)
+		}
+	}
+
+	service.retryDue(t.Context())
+
+	upEntry := notificationByKey(t, st, upKey)
+	if upEntry.Status != "pending" {
+		t.Fatalf("blocked row status = %q, want pending", upEntry.Status)
+	}
+	if upEntry.NextAttemptAt.Before(time.Now().Add(blockedRetryDefer / 2)) {
+		t.Fatalf("blocked row next attempt = %v, want about %v from now", upEntry.NextAttemptAt, blockedRetryDefer)
+	}
+	if upEntry.Attempts != 0 {
+		t.Fatalf("deferring a blocked row must not count as a send attempt: %d", upEntry.Attempts)
+	}
+}
+
 func notificationForMonitor(monitorID int64, now time.Time) model.Notification {
 	return model.Notification{
 		Key: fmt.Sprintf("down:%d:%d", monitorID, now.UnixMilli()), Kind: model.EventDown, MonitorID: monitorID,

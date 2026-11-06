@@ -16,6 +16,10 @@ const (
 	pendingMaxAge         = 24 * time.Hour
 	pendingRecoveryCap    = 200
 	pendingRecoveryBudget = 2 * time.Minute
+	// A blocked row is pushed out of the current retry batch so a chain of
+	// ordered state notifications on one broken target cannot keep refilling
+	// the batch and starve due rows for other monitors and channels.
+	blockedRetryDefer = 30 * time.Second
 )
 
 func defaultRetryDelay(completed int) time.Duration {
@@ -113,6 +117,7 @@ func (s *Service) retryDue(ctx context.Context) {
 			return
 		}
 		if s.blockedByEarlierState(retryCtx, entry) {
+			s.deferBlocked(retryCtx, entry)
 			continue
 		}
 		if s.expired(entry, time.Now().UTC()) {
@@ -154,6 +159,13 @@ func (s *Service) blockedByEarlierState(ctx context.Context, entry model.Notific
 		return false
 	}
 	return older
+}
+
+func (s *Service) deferBlocked(ctx context.Context, entry model.NotificationLog) {
+	next := time.Now().UTC().Add(blockedRetryDefer)
+	if err := s.store.DeferNotification(ctx, entry.DedupeKey, entry.Channel, entry.ChannelID, entry.Target, next); err != nil {
+		s.log.Warn("defer blocked notification", "channel", entry.Channel, "target", entry.Target, "dedupe_key", entry.DedupeKey, "error", err)
+	}
 }
 
 func (s *Service) deferToEarlierState(ctx context.Context, entry model.NotificationLog) bool {
