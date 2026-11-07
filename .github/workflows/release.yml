@@ -138,7 +138,11 @@ jobs:
           tmp="$(mktemp -d)"
           tar -xzf "$archive" -C "$tmp"
           output="$("$tmp/windwatch" version)"
-          test "$output" = "windwatch v${VERSION}"
+          # Release builds also carry commit/build metadata in parentheses.
+          case "$output" in
+            "windwatch v${VERSION}"|"windwatch v${VERSION} ("*) ;;
+            *) echo "::error::unexpected version output: $output"; exit 1 ;;
+          esac
           rm -rf "$tmp"
 
       - name: Create or update draft release
@@ -258,7 +262,10 @@ jobs:
           image="ghcr.io/fynhq/windwatch:v${VERSION}"
           for platform in linux/amd64 linux/arm64; do
             output="$(docker run --rm --platform "$platform" "$image" version)"
-            test "$output" = "windwatch v${VERSION}"
+            case "$output" in
+              "windwatch v${VERSION}"|"windwatch v${VERSION} ("*) ;;
+              *) echo "::error::unexpected version output on $platform: $output"; exit 1 ;;
+            esac
           done
 
       - name: Publish release
