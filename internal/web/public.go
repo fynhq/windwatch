@@ -150,11 +150,14 @@ func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version ui
 		if err != nil {
 			return nil, err
 		}
-		stats30, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-30*24*time.Hour), now.Add(-7*24*time.Hour))
+		// Read the full long range through the same bucket-aligned path. The
+		// earlier "7d raw + older rollups" split counted the bucket crossing
+		// the 7-day boundary twice.
+		stats30, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-30*24*time.Hour), now)
 		if err != nil {
 			return nil, err
 		}
-		stats90, err := s.store.RollupStatsForMonitors(ctx, monitorIDs, now.Add(-90*24*time.Hour), now.Add(-7*24*time.Hour))
+		stats90, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-90*24*time.Hour), now)
 		if err != nil {
 			return nil, err
 		}
@@ -298,8 +301,8 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	today := snapshot.today
 	stats24ByMonitor := snapshot.stats24
 	stats7dByMonitor := snapshot.stats7
-	stats30OlderByMonitor := snapshot.stats30
-	stats90OlderByMonitor := snapshot.stats90
+	stats30ByMonitor := snapshot.stats30
+	stats90ByMonitor := snapshot.stats90
 	history := snapshot.history
 
 	rows := make([]publicMonitorRow, 0, len(publicMonitors))
@@ -307,8 +310,8 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	for _, monitor := range publicMonitors {
 		stats24 := stats24ByMonitor[monitor.ID]
 		stats7d := stats7dByMonitor[monitor.ID]
-		stats30 := combineUptimeStats(stats7d, stats30OlderByMonitor[monitor.ID])
-		stats90 := combineUptimeStats(stats7d, stats90OlderByMonitor[monitor.ID])
+		stats30 := stats30ByMonitor[monitor.ID]
+		stats90 := stats90ByMonitor[monitor.ID]
 
 		label := statusLabel(data.I18n, monitor.Enabled, monitor.State.Status)
 		switch {

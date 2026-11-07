@@ -523,6 +523,102 @@ func TestLongRangeChartRendering(t *testing.T) {
 	}
 }
 
+func TestMonitorDetailLongRangeBoundaryNoDoubleCount(t *testing.T) {
+	srv, _, testServer := newWebTestServer(t)
+	adminClient, _ := setupAdminSession(t, testServer)
+	id := createHTTPMonitor(t, srv, "Boundary stats", "https://example.com/health")
+
+	now := time.Date(2026, 11, 7, 12, 15, 0, 0, time.UTC)
+	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
+	state := model.MonitorState{
+		Status: model.StatusUp, StatusSince: now.Add(-30 * 24 * time.Hour),
+		LastCheck: now, UpdatedAt: now,
+	}
+	record := func(at time.Time, status string) {
+		if err := srv.store.RecordCheck(t.Context(), model.Check{
+			MonitorID: id, CheckedAt: at, Status: status, Latency: 25 * time.Millisecond, MetaJSON: "{}",
+		}, state, nil, false); err != nil {
+			t.Fatalf("RecordCheck: %v", err)
+		}
+	}
+	// The 7d raw window starts at 12:15, so only the down check is inside it.
+	// Both checks belong to the same rollup bucket. The old split summed the
+	// raw down check and the full rollup bucket, showing 33.33% instead of 50%.
+	record(sevenDaysAgo.Add(-10*time.Minute), model.CheckUp)
+	record(sevenDaysAgo.Add(5*time.Minute), model.CheckDown)
+	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), now.Add(-30*24*time.Hour), now, now); err != nil {
+		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
+	}
+	srv.now = func() time.Time { return now }
+
+	response, err := adminClient.Get(testServer.URL + "/monitors/" + strconv.FormatInt(id, 10))
+	if err != nil {
+		t.Fatalf("GET monitor detail: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("detail status=%d body=%s", response.StatusCode, body)
+	}
+	if !strings.Contains(body, "50.00%") {
+		t.Fatalf("30d/90d stats did not include the boundary bucket once: %s", body)
+	}
+	if strings.Contains(body, "33.33%") {
+		t.Fatalf("30d/90d stats counted the boundary bucket twice: %s", body)
+	}
+}
+
+func TestPublicStatusLongRangeBoundaryNoDoubleCount(t *testing.T) {
+	srv, _, testServer := newWebTestServer(t)
+	adminClient, csrf := setupAdminSession(t, testServer)
+	id := createHTTPMonitor(t, srv, "Public boundary", "https://example.com/health")
+
+	response, err := adminClient.PostForm(testServer.URL+"/settings/public-status", url.Values{
+		"csrf_token":            {csrf},
+		"public_status_enabled": {"1"},
+		"public_monitors":       {strconv.FormatInt(id, 10)},
+	})
+	if err != nil {
+		t.Fatalf("save public status: %v", err)
+	}
+	_ = readResponseBody(t, response)
+
+	now := time.Date(2026, 11, 7, 12, 15, 0, 0, time.UTC)
+	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
+	state := model.MonitorState{
+		Status: model.StatusUp, StatusSince: now.Add(-30 * 24 * time.Hour),
+		LastCheck: now, UpdatedAt: now,
+	}
+	record := func(at time.Time, status string) {
+		if err := srv.store.RecordCheck(t.Context(), model.Check{
+			MonitorID: id, CheckedAt: at, Status: status, Latency: 25 * time.Millisecond, MetaJSON: "{}",
+		}, state, nil, false); err != nil {
+			t.Fatalf("RecordCheck: %v", err)
+		}
+	}
+	record(sevenDaysAgo.Add(-10*time.Minute), model.CheckUp)
+	record(sevenDaysAgo.Add(5*time.Minute), model.CheckDown)
+	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), now.Add(-30*24*time.Hour), now, now); err != nil {
+		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
+	}
+	srv.now = func() time.Time { return now }
+
+	anonymous := newTestClient(t)
+	response, err = anonymous.Get(testServer.URL + "/status")
+	if err != nil {
+		t.Fatalf("GET /status: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("/status status=%d body=%s", response.StatusCode, body)
+	}
+	if !strings.Contains(body, "50.00%") {
+		t.Fatalf("public 30d/90d stats did not include the boundary bucket once: %s", body)
+	}
+	if strings.Contains(body, "33.33%") {
+		t.Fatalf("public 30d/90d stats counted the boundary bucket twice: %s", body)
+	}
+}
+
 func TestTrustedProxyPushURL(t *testing.T) {
 	srv, _, testServer := newWebTestServer(t)
 	adminClient, _ := setupAdminSession(t, testServer)

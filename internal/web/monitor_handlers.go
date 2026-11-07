@@ -636,20 +636,18 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	stats30Older, err := s.store.RollupStats(r.Context(), id, now.Add(-30*24*time.Hour), now.Add(-7*24*time.Hour))
+	stats30, err := s.store.UptimeStatsForMonitorCombined(r.Context(), id, now.Add(-30*24*time.Hour), now)
 	if err != nil {
-		s.log.Error("load 30d rollup stats", "monitor_id", id, "error", err)
+		s.log.Error("load 30d stats", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	stats90Older, err := s.store.RollupStats(r.Context(), id, now.Add(-90*24*time.Hour), now.Add(-7*24*time.Hour))
+	stats90, err := s.store.UptimeStatsForMonitorCombined(r.Context(), id, now.Add(-90*24*time.Hour), now)
 	if err != nil {
-		s.log.Error("load 90d rollup stats", "monitor_id", id, "error", err)
+		s.log.Error("load 90d stats", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	stats30 := combineUptimeStats(stats7d, stats30Older)
-	stats90 := combineUptimeStats(stats7d, stats90Older)
 	buckets, err := s.store.HourlyBucketsForMonitor(r.Context(), id, now.Add(-24*time.Hour))
 	if err != nil {
 		s.log.Error("load detail buckets", "monitor_id", id, "error", err)

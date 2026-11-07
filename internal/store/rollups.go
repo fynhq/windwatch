@@ -198,6 +198,17 @@ func (s *Store) UptimeStatsForMonitorsCombined(ctx context.Context, monitorIDs [
 	return result, nil
 }
 
+// UptimeStatsForMonitorCombined is the single-monitor form used by the detail
+// page. Long ranges must use the same bucket-aligned path as the dashboard so
+// a raw/rollup split cannot count a boundary bucket twice.
+func (s *Store) UptimeStatsForMonitorCombined(ctx context.Context, monitorID int64, since, now time.Time) (model.UptimeStats, error) {
+	stats, err := s.UptimeStatsForMonitorsCombined(ctx, []int64{monitorID}, since, now)
+	if err != nil {
+		return model.UptimeStats{}, err
+	}
+	return stats[monitorID], nil
+}
+
 func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, source model.UptimeStats) {
 	current := target[monitorID]
 	total := current.Total + source.Total
