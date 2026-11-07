@@ -462,8 +462,14 @@ func buildRecentChart(translator *i18n.Translator, checks []model.Check, limit i
 		if check.Latency > 0 {
 			title += " · " + formatLatency(check.Latency)
 		}
+		// Failed probes carry a real latency, but a failure must create a gap
+		// rather than connect the latency line through the outage.
+		chartLatency := check.Latency
+		if check.Status == model.CheckDown {
+			chartLatency = 0
+		}
 		data = append(data, chartDatum{
-			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: check.Latency,
+			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: chartLatency,
 		})
 	}
 	chart := buildHistoryChart(data,
@@ -509,8 +515,12 @@ func buildHourlyChart(translator *i18n.Translator, now time.Time, buckets []mode
 		if bucket.AvgLatency > 0 {
 			title += " · " + formatLatency(bucket.AvgLatency)
 		}
+		chartLatency := bucket.AvgLatency
+		if bucket.Down > 0 {
+			chartLatency = 0
+		}
 		data = append(data, chartDatum{
-			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: bucket.AvgLatency,
+			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: chartLatency,
 		})
 	}
 	chart := buildHistoryChart(data,
@@ -561,8 +571,12 @@ func buildDailyChart(translator *i18n.Translator, now time.Time, buckets []model
 		if bucket.AvgLatency > 0 {
 			title += " · " + formatLatency(bucket.AvgLatency)
 		}
+		chartLatency := bucket.AvgLatency
+		if bucket.Down > 0 {
+			chartLatency = 0
+		}
 		data = append(data, chartDatum{
-			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: bucket.AvgLatency,
+			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: chartLatency,
 		})
 	}
 	chart := buildHistoryChart(data,
@@ -780,19 +794,4 @@ func formValuesFromMonitor(monitor model.Monitor) monitorFormValues {
 
 func secondsLabel(duration time.Duration) string {
 	return fmt.Sprintf("%ds", int(duration/time.Second))
-}
-
-func combineUptimeStats(recent, older model.UptimeStats) model.UptimeStats {
-	total := recent.Total + older.Total
-	combined := model.UptimeStats{
-		Total:   total,
-		Up:      recent.Up + older.Up,
-		Warning: recent.Warning + older.Warning,
-		Down:    recent.Down + older.Down,
-	}
-	if total > 0 {
-		weighted := recent.AvgLatency*time.Duration(recent.Total) + older.AvgLatency*time.Duration(older.Total)
-		combined.AvgLatency = weighted / time.Duration(total)
-	}
-	return combined
 }
