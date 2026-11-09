@@ -369,16 +369,24 @@ func eventTypeLabel(translator *i18n.Translator, eventType model.EventType) stri
 		return translator.T("event.up")
 	case model.EventDown:
 		return translator.T("event.down")
+	case model.EventWarnCert:
+		return translator.T("event.warn_cert")
+	case model.EventWarnDomain:
+		return translator.T("event.warn_domain")
 	default:
 		return string(eventType)
 	}
 }
 
 func eventTypeClass(eventType model.EventType) string {
-	if eventType == model.EventUp {
+	switch eventType {
+	case model.EventUp:
 		return "status-up"
+	case model.EventWarnCert, model.EventWarnDomain:
+		return "status-warning"
+	default:
+		return "status-down"
 	}
-	return "status-down"
 }
 
 func buildCheckBars(translator *i18n.Translator, checks []model.Check, limit int, location *time.Location) []statusBar {

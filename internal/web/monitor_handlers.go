@@ -12,6 +12,7 @@ import (
 	"github.com/fynhq/windwatch/internal/domains"
 	"github.com/fynhq/windwatch/internal/i18n"
 	"github.com/fynhq/windwatch/internal/model"
+	"github.com/fynhq/windwatch/internal/scheduler"
 	"github.com/fynhq/windwatch/internal/secret"
 	"github.com/fynhq/windwatch/internal/store"
 )
@@ -113,19 +114,19 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 	}
 
 	interval, err := strconv.Atoi(values.Interval)
-	if err != nil {
+	if err != nil || interval < 20 || interval > 86400 {
 		return base, newFormError("error.interval")
 	}
 	timeout, err := strconv.Atoi(values.Timeout)
-	if err != nil {
+	if err != nil || timeout < 1 || timeout > 300 {
 		return base, newFormError("error.timeout")
 	}
 	failThreshold, err := strconv.Atoi(values.FailThreshold)
-	if err != nil {
+	if err != nil || failThreshold < 1 || failThreshold > 20 {
 		return base, newFormError("error.threshold")
 	}
 	recoverThreshold, err := strconv.Atoi(values.RecoverThreshold)
-	if err != nil {
+	if err != nil || recoverThreshold < 1 || recoverThreshold > 20 {
 		return base, newFormError("error.threshold")
 	}
 	reminders, err := model.ParseNotificationPolicy(
@@ -178,14 +179,14 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		certWarnDays := 14
 		if strings.TrimSpace(values.CertWarnDays) != "" {
 			certWarnDays, err = strconv.Atoi(values.CertWarnDays)
-			if err != nil {
+			if err != nil || certWarnDays < 1 || certWarnDays > 365 {
 				return base, newFormError("error.certCheck")
 			}
 		}
 		domainWarnDays := 30
 		if strings.TrimSpace(values.DomainWarnDays) != "" {
 			domainWarnDays, err = strconv.Atoi(values.DomainWarnDays)
-			if err != nil {
+			if err != nil || domainWarnDays < 1 || domainWarnDays > 365 {
 				return base, newFormError("error.domainCheck")
 			}
 		}
@@ -210,7 +211,7 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		}
 	case model.MonitorTypeTCP:
 		port, err := strconv.Atoi(values.Port)
-		if err != nil {
+		if err != nil || port < 1 || port > 65535 {
 			return base, newFormError("error.port")
 		}
 		base.TCP = &model.TCPConfig{Host: strings.TrimSpace(values.Host), Port: port}
@@ -340,6 +341,10 @@ func (s *Server) handleMonitorCreate(w http.ResponseWriter, r *http.Request, aut
 		id, err = s.store.CreateMonitor(r.Context(), monitor, s.now().UTC())
 	}
 	if err != nil {
+		if errors.Is(err, store.ErrMonitorLimit) {
+			s.renderMonitorFormError(w, r, auth, 0, monitorType, values, "error.monitorLimit")
+			return
+		}
 		s.log.Error("create monitor", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -541,7 +546,12 @@ func (s *Server) handleMonitorCheck(w http.ResponseWriter, r *http.Request, auth
 
 	notice := "check_started"
 	if err := s.scheduler.CheckNow(id); err != nil {
-		notice = "check_running"
+		if errors.Is(err, scheduler.ErrCheckRunning) {
+			notice = "check_running"
+		} else {
+			s.log.Error("start manual check", "monitor_id", id, "error", err)
+			notice = "check_failed"
+		}
 	}
 	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=%s", id, notice), http.StatusSeeOther)
 }
@@ -762,7 +772,11 @@ func (s *Server) monitorNotificationLabel(r *http.Request, translator *i18n.Tran
 		if err != nil {
 			continue
 		}
-		names = append(names, channel.Name)
+		name := channel.Name
+		if !channel.Enabled {
+			name += " (" + translator.T("notification.disabled") + ")"
+		}
+		names = append(names, name)
 	}
 	if len(names) == 0 {
 		return translator.T("monitor.notificationsNone")

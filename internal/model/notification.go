@@ -67,19 +67,19 @@ func ParseNotificationPolicy(warningCount, warningInterval, failureCount, failur
 	defaults := DefaultNotificationPolicy()
 	policy := defaults
 	var err error
-	policy.WarningReminderCount, err = parseReminderInt(warningCount, defaults.WarningReminderCount, ErrReminderCount)
+	policy.WarningReminderCount, err = parseReminderInt(warningCount, defaults.WarningReminderCount, MaxNotificationReminders, ErrReminderCount)
 	if err != nil {
 		return NotificationPolicy{}, err
 	}
-	policy.FailureReminderCount, err = parseReminderInt(failureCount, defaults.FailureReminderCount, ErrReminderCount)
+	policy.FailureReminderCount, err = parseReminderInt(failureCount, defaults.FailureReminderCount, MaxNotificationReminders, ErrReminderCount)
 	if err != nil {
 		return NotificationPolicy{}, err
 	}
-	warningMinutes, err := parseReminderInt(warningInterval, DefaultWarningReminderIntervalMinutes, ErrReminderInterval)
+	warningMinutes, err := parseReminderInt(warningInterval, DefaultWarningReminderIntervalMinutes, MaxReminderIntervalMinutes, ErrReminderInterval)
 	if err != nil {
 		return NotificationPolicy{}, err
 	}
-	failureMinutes, err := parseReminderInt(failureInterval, DefaultFailureReminderIntervalMinutes, ErrReminderInterval)
+	failureMinutes, err := parseReminderInt(failureInterval, DefaultFailureReminderIntervalMinutes, MaxReminderIntervalMinutes, ErrReminderInterval)
 	if err != nil {
 		return NotificationPolicy{}, err
 	}
@@ -91,13 +91,13 @@ func ParseNotificationPolicy(warningCount, warningInterval, failureCount, failur
 	return policy, nil
 }
 
-func parseReminderInt(value string, fallback int, sentinel error) (int, error) {
+func parseReminderInt(value string, fallback, maxValue int, sentinel error) (int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return fallback, nil
 	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil {
+	if err != nil || parsed < 0 || parsed > maxValue {
 		return 0, sentinel
 	}
 	return parsed, nil

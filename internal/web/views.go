@@ -40,6 +40,7 @@ var noticeKeys = map[string]string{
 	"push_token_regenerated":           "notice.pushTokenRegenerated",
 	"check_started":                    "notice.checkStarted",
 	"check_running":                    "notice.checkRunning",
+	"check_failed":                     "notice.checkFailed",
 	"check_paused":                     "notice.checkPaused",
 	"proxy_created":                    "notice.proxyCreated",
 	"proxy_updated":                    "notice.proxyUpdated",
