@@ -9,11 +9,11 @@
   <form method="post" action="/settings/public-status" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <label class="switch-field">
-      <input type="checkbox" name="public_status_enabled" value="1" data-toggle-target="public-status-fields" {{if .PublicStatus.Enabled}}checked{{end}}>
+      <input type="checkbox" name="public_status_enabled" value="1" data-toggle-target="public-monitor-fields" {{if .PublicStatus.Enabled}}checked{{end}}>
       <span class="switch-track" aria-hidden="true"></span>
       <span>{{.I18n.T "public.enabled"}}</span>
     </label>
-    <fieldset class="stack field-group" id="public-status-fields" {{if not .PublicStatus.Enabled}}disabled{{end}}>
+    <fieldset class="stack field-group" id="public-status-fields">
       <div class="form-grid">
         <label class="field">
           <span>{{.I18n.T "public.pageTitle"}}</span>
@@ -24,7 +24,7 @@
           <input type="text" name="public_status_description" value="{{.PublicStatus.Description}}" maxlength="500" placeholder="{{.I18n.T "public.descriptionDefault"}}">
         </label>
       </div>
-      <div class="field-group">
+      <fieldset class="field-group" id="public-monitor-fields" {{if not .PublicStatus.Enabled}}disabled{{end}}>
         <div class="public-monitors-head">
           <h3 class="subheading">{{.I18n.T "public.monitors"}}</h3>
           {{if .PublicMonitorGroups}}
@@ -54,7 +54,7 @@
         {{else}}
         <p class="muted">{{.I18n.T "public.noMonitors"}}</p>
         {{end}}
-      </div>
+      </fieldset>
     </fieldset>
     {{if .PublicStatus.Enabled}}
     <div class="field">

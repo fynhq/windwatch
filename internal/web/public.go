@@ -102,20 +102,50 @@ const (
 
 // loadPublicSnapshot keeps live monitor status fresh while caching the
 // expensive uptime and history aggregates for longer. A settings revision
-// change invalidates the whole snapshot.
+// change invalidates the whole snapshot. Only one request builds a snapshot;
+// other requests wait for it instead of holding the mutex during DB queries.
 func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version uint64, now time.Time, location *time.Location) (*publicStatusSnapshot, error) {
-	s.publicMu.Lock()
-	defer s.publicMu.Unlock()
 	if location == nil {
 		location = time.UTC
 	}
+	for {
+		s.publicMu.Lock()
+		existing := s.publicSnapshot
+		if existing != nil && existing.version == version &&
+			now.Before(existing.monitorsExpires) && now.Before(existing.statsExpires) {
+			s.publicMu.Unlock()
+			return existing, nil
+		}
+		if s.publicBuilding {
+			done := s.publicBuildDone
+			s.publicMu.Unlock()
+			select {
+			case <-done:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		s.publicBuilding = true
+		done := make(chan struct{})
+		s.publicBuildDone = done
+		s.publicMu.Unlock()
 
-	existing := s.publicSnapshot
-	if existing != nil && existing.version == version &&
-		now.Before(existing.monitorsExpires) && now.Before(existing.statsExpires) {
-		return existing, nil
+		snapshot, err := s.buildPublicSnapshot(ctx, ids, version, now, location, existing)
+
+		s.publicMu.Lock()
+		if err == nil {
+			s.publicSnapshot = snapshot
+		}
+		s.publicBuilding = false
+		s.publicBuildDone = nil
+		close(done)
+		s.publicMu.Unlock()
+		return snapshot, err
 	}
+}
 
+func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version uint64, now time.Time, location *time.Location, existing *publicStatusSnapshot) (*publicStatusSnapshot, error) {
 	snapshot := publicStatusSnapshot{version: version}
 	if existing != nil && existing.version == version {
 		snapshot = *existing
@@ -169,9 +199,7 @@ func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version ui
 		snapshot.stats90 = stats90
 		snapshot.statsExpires = now.Add(publicStatsTTL)
 	}
-
 	snapshot.version = version
-	s.publicSnapshot = &snapshot
 	return &snapshot, nil
 }
 
@@ -380,8 +408,8 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		existing := publicStatusFromSettings(settings)
-		values.Title = existing.Title
-		values.Description = existing.Description
+		// The monitor selector is disabled on the settings page while the
+		// public page is off, but title and description stay editable.
 		values.MonitorIDs = existing.MonitorIDs
 	}
 

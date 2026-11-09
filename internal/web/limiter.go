@@ -34,6 +34,10 @@ func (l *windowLimiter) allow(key string, now time.Time) bool {
 	defer l.mu.Unlock()
 	l.pruneLocked(now)
 	if entry := l.windows[key]; entry != nil {
+		if now.Sub(entry.start) >= l.window {
+			entry.start = now
+			entry.count = 0
+		}
 		if entry.count >= l.limit {
 			return false
 		}

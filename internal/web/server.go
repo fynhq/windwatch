@@ -62,8 +62,10 @@ type Server struct {
 	adminValue   bool
 	adminExpires time.Time
 
-	publicMu       sync.Mutex
-	publicSnapshot *publicStatusSnapshot
+	publicMu        sync.Mutex
+	publicSnapshot  *publicStatusSnapshot
+	publicBuilding  bool
+	publicBuildDone chan struct{}
 }
 
 func New(st *store.Store, catalogs *i18n.Catalogs, scheduler MonitorScheduler, notifier NotificationTester, cipher *secret.Cipher, trustedProxies []netip.Prefix, logger *slog.Logger, version string) (*Server, error) {
