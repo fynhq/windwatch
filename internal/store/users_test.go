@@ -64,8 +64,15 @@ func TestUserLifecycleAndLastAdminProtection(t *testing.T) {
 		t.Fatalf("ResetUserPassword: %v", err)
 	}
 	reloaded, err := st.AdminByUsername(ctx, "viewer")
-	if err != nil || reloaded.Disabled || reloaded.PasswordHash != "new-hash" {
-		t.Fatalf("reset viewer = %+v err=%v", reloaded, err)
+	if err != nil || !reloaded.Disabled || reloaded.PasswordHash != "new-hash" {
+		t.Fatalf("UI reset must keep the account disabled: reloaded=%+v err=%v", reloaded, err)
+	}
+	if err := st.RecoverUserPassword(ctx, viewer.ID, "recovered-hash", now); err != nil {
+		t.Fatalf("RecoverUserPassword: %v", err)
+	}
+	reloaded, err = st.AdminByUsername(ctx, "viewer")
+	if err != nil || reloaded.Disabled || reloaded.PasswordHash != "recovered-hash" {
+		t.Fatalf("recovery reset must re-enable the account: reloaded=%+v err=%v", reloaded, err)
 	}
 
 	admin2, err := st.CreateUser(ctx, "admin2", "hash", model.RoleAdmin, now)

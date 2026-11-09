@@ -623,21 +623,18 @@ func TestTrustedProxyPushURL(t *testing.T) {
 	srv, _, testServer := newWebTestServer(t)
 	adminClient, _ := setupAdminSession(t, testServer)
 
-	id, err := srv.store.CreateMonitor(t.Context(), model.Monitor{
-		Name: "Heartbeat", Type: model.MonitorTypePush,
-		Interval: time.Minute, Timeout: 10 * time.Second,
-		FailThreshold: 1, RecoverThreshold: 1, Enabled: true, NotifyEnabled: true,
-	}, time.Now())
-	if err != nil {
-		t.Fatalf("CreateMonitor push: %v", err)
-	}
 	plaintext := "test-push-token"
 	encrypted, err := srv.cipher.Encrypt(plaintext)
 	if err != nil {
 		t.Fatalf("Encrypt: %v", err)
 	}
-	if err := srv.store.CreatePushToken(t.Context(), id, secret.HashToken(plaintext), encrypted, time.Now()); err != nil {
-		t.Fatalf("CreatePushToken: %v", err)
+	id, err := srv.store.CreateMonitorWithPushToken(t.Context(), model.Monitor{
+		Name: "Heartbeat", Type: model.MonitorTypePush,
+		Interval: time.Minute, Timeout: 10 * time.Second,
+		FailThreshold: 1, RecoverThreshold: 1, Enabled: true, NotifyEnabled: true,
+	}, time.Now(), secret.HashToken(plaintext), encrypted)
+	if err != nil {
+		t.Fatalf("CreateMonitorWithPushToken: %v", err)
 	}
 
 	srv.trustedProxies = []netip.Prefix{

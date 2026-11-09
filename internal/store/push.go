@@ -35,17 +35,6 @@ func scanPushToken(row scanner) (model.PushToken, error) {
 	return token, nil
 }
 
-func (s *Store) CreatePushToken(ctx context.Context, monitorID int64, tokenHash, tokenEnc string, now time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO push_tokens (monitor_id, token_hash, token_enc, created_at_ms)
-		VALUES (?, ?, ?, ?)
-	`, monitorID, tokenHash, tokenEnc, now.UTC().UnixMilli())
-	if err != nil {
-		return fmt.Errorf("insert push token: %w", err)
-	}
-	return nil
-}
-
 func (s *Store) PushTokenByHash(ctx context.Context, tokenHash string) (model.PushToken, error) {
 	return scanPushToken(s.reader().QueryRowContext(ctx, pushTokenSelect+" WHERE token_hash = ?", tokenHash))
 }
@@ -58,15 +47,45 @@ func (s *Store) ReplacePushToken(ctx context.Context, monitorID int64, tokenHash
 	if tokenHash == "" || tokenEnc == "" {
 		return errors.New("push token must not be empty")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	now = now.UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace push token: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO push_tokens (monitor_id, token_hash, token_enc, created_at_ms)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(monitor_id) DO UPDATE SET
 			token_hash = excluded.token_hash,
-			token_enc = excluded.token_enc
-	`, monitorID, tokenHash, tokenEnc, now.UTC().UnixMilli())
-	if err != nil {
+			token_enc = excluded.token_enc,
+			created_at_ms = excluded.created_at_ms,
+			last_heartbeat_ms = NULL
+	`, monitorID, tokenHash, tokenEnc, now.UnixMilli()); err != nil {
 		return fmt.Errorf("replace push token: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE monitor_state
+		SET status = ?,
+		    status_since_ms = ?,
+		    last_error = '',
+		    consecutive_failures = 0,
+		    consecutive_successes = 0,
+		    warning_context = '',
+		    updated_at_ms = ?
+		WHERE monitor_id = ?
+	`, model.StatusPending, now.UnixMilli(), now.UnixMilli(), monitorID); err != nil {
+		return fmt.Errorf("reset push monitor state: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE events SET ended_at_ms = ?
+		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
+	`, now.UnixMilli(), monitorID, model.EventDown); err != nil {
+		return fmt.Errorf("close push monitor events: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit replace push token: %w", err)
 	}
 	return nil
 }

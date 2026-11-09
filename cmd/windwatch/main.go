@@ -146,10 +146,10 @@ func runResetPassword(args []string) error {
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
-	if err := st.ResetUserPassword(ctx, target.ID, hash, time.Now()); err != nil {
+	if err := st.RecoverUserPassword(ctx, target.ID, hash, time.Now()); err != nil {
 		return fmt.Errorf("reset password: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "Password reset for %q; all sessions for this account were invalidated.\n", target.Username)
+	fmt.Fprintf(os.Stdout, "Password reset for %q; the account was enabled and all its sessions were invalidated.\n", target.Username)
 	return nil
 }
 

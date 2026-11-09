@@ -159,14 +159,11 @@ func TestPushOutcomeAndProxyResolution(t *testing.T) {
 		RecoverThreshold: 1,
 		Enabled:          true,
 	}
-	id, err := st.CreateMonitor(t.Context(), push, now)
+	id, err := st.CreateMonitorWithPushToken(t.Context(), push, now, "hash", "enc")
 	if err != nil {
-		t.Fatalf("CreateMonitor: %v", err)
+		t.Fatalf("CreateMonitorWithPushToken: %v", err)
 	}
 	push.ID = id
-	if err := st.CreatePushToken(t.Context(), id, "hash", "enc", now); err != nil {
-		t.Fatalf("CreatePushToken: %v", err)
-	}
 	if err := st.RecordHeartbeat(t.Context(), id, now); err != nil {
 		t.Fatalf("RecordHeartbeat: %v", err)
 	}

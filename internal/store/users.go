@@ -211,18 +211,34 @@ func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ResetUserPassword sets a new hash, re-enables the account and invalidates all
-// of its sessions. It is used by the recovery CLI and the user management UI.
+// ResetUserPassword sets a new hash and invalidates all sessions. It does not
+// re-enable a disabled account; use RecoverUserPassword for the offline
+// recovery path, which intentionally re-enables the account.
 func (s *Store) ResetUserPassword(ctx context.Context, id int64, passwordHash string, now time.Time) error {
+	return s.resetUserPassword(ctx, id, passwordHash, now, false)
+}
+
+// RecoverUserPassword is the recovery-CLI form of ResetUserPassword. It also
+// re-enables the account so an operator locked out by a disabled account can
+// sign in again.
+func (s *Store) RecoverUserPassword(ctx context.Context, id int64, passwordHash string, now time.Time) error {
+	return s.resetUserPassword(ctx, id, passwordHash, now, true)
+}
+
+func (s *Store) resetUserPassword(ctx context.Context, id int64, passwordHash string, now time.Time, enable bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin password reset: %w", err)
 	}
 	defer tx.Rollback()
 
+	setDisabled := ""
+	if enable {
+		setDisabled = ", disabled = 0"
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE admin
-		SET password_hash = ?, disabled = 0, updated_at_ms = ?
+		SET password_hash = ?, updated_at_ms = ?`+setDisabled+`
 		WHERE id = ?
 	`, passwordHash, now.UTC().UnixMilli(), id)
 	if err != nil {
