@@ -1,0 +1,60 @@
+{{define "content" -}}
+<section class="page-head">
+  <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+  <h1>{{.SectionTitle}}</h1>
+  <p class="muted">{{.SectionIntro}}</p>
+</section>
+
+<section class="panel settings-section">
+  {{if .NotificationLogs}}
+  <div class="table-scroll">
+    <table class="responsive-table">
+      <thead><tr><th>{{.I18n.T "notification.channelName"}}</th><th>{{.I18n.T "notification.channelType"}}</th><th>{{.I18n.T "notification.monitor"}}</th><th>{{.I18n.T "notification.reason"}}</th><th>{{.I18n.T "notification.status"}}</th><th>{{.I18n.T "notification.time"}}</th><th>{{.I18n.T "notification.error"}}</th><th>{{.I18n.T "notification.content"}}</th></tr></thead>
+      <tbody>
+        {{range .NotificationLogs}}
+        <tr>
+          <td data-label="{{$.I18n.T "notification.channelName"}}">{{if .Channel}}{{.Channel}}{{else}}—{{end}}</td>
+          <td data-label="{{$.I18n.T "notification.channelType"}}">{{.Method}}</td>
+          <td data-label="{{$.I18n.T "notification.monitor"}}">{{if .Monitor}}{{.Monitor}}{{else}}—{{end}}</td>
+          <td data-label="{{$.I18n.T "notification.reason"}}">{{if .Reason}}{{.Reason}}{{else}}—{{end}}</td>
+          <td class="notification-log-status" data-label="{{$.I18n.T "notification.status"}}">{{.Status}}</td>
+          <td class="notification-log-time" data-label="{{$.I18n.T "notification.time"}}">{{.Time}}</td>
+          <td class="is-wide" data-label="{{$.I18n.T "notification.error"}}">{{if .Error}}{{.Error}}{{else}}—{{end}}</td>
+          <td class="is-wide" data-label="{{$.I18n.T "notification.content"}}">
+            {{if .Payload}}
+            <button class="link-button notification-content-open" type="button" data-notification-content
+              aria-haspopup="dialog"
+              data-channel="{{.Channel}}"
+              data-time="{{.Time}}"
+              data-status="{{.Status}}"
+              data-payload="{{.Payload}}">{{$.I18n.T "notification.viewContent"}}</button>
+            {{else}}—{{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">{{.I18n.T "notification.logEmpty"}}</p>
+  {{end}}
+</section>
+
+<dialog class="dialog notification-dialog" id="notification-content-dialog"
+  aria-labelledby="notification-content-dialog-title" data-notification-content-dialog>
+  <div class="dialog-inner">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">{{.I18n.T "notification.content"}}</p>
+        <h2 id="notification-content-dialog-title" data-notification-content-field="channel"></h2>
+        <p class="hint" data-notification-content-field="meta"></p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <pre class="notification-payload" data-notification-content-field="payload"></pre>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.close"}}</button>
+    </div>
+  </div>
+</dialog>
+{{- end}}

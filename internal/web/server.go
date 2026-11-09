@@ -89,7 +89,8 @@ func New(st *store.Store, catalogs *i18n.Catalogs, scheduler MonitorScheduler, n
 	pages := make(map[string]*template.Template, 8)
 	for _, page := range []string{
 		"login", "setup", "dashboard", "error",
-		"monitor_types", "monitor_form", "monitor_detail", "events", "settings", "settings_index", "users", "status",
+		"monitor_types", "monitor_form", "monitor_detail", "events", "settings_index", "users", "status",
+		"settings_general", "settings_public", "settings_notifications", "settings_logs", "settings_proxies",
 	} {
 		parsed, err := template.New("layout").ParseFS(assets,
 			"templates/layout.html",

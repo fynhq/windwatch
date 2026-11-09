@@ -1,0 +1,102 @@
+{{define "content" -}}
+<section class="page-head page-head-row">
+  <div>
+    <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+    <h1>{{.SectionTitle}}</h1>
+    <p class="muted">{{.SectionIntro}}</p>
+  </div>
+  <div class="page-actions">
+    {{if .ProxyFormEdit}}
+    <a class="button button-primary" href="/settings/proxies">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "proxy.add"}}</span>
+    </a>
+    {{else}}
+    <button class="button button-primary" type="button" data-dialog-open="proxy-form">
+      {{template "icon-plus"}}
+      <span>{{.I18n.T "proxy.add"}}</span>
+    </button>
+    {{end}}
+  </div>
+</section>
+
+<section class="panel settings-section">
+  {{if .Proxies}}
+  <div class="table-scroll">
+    <table class="responsive-table">
+      <thead><tr><th>{{.I18n.T "proxy.name"}}</th><th>{{.I18n.T "proxy.type"}}</th><th>{{.I18n.T "proxy.address"}}</th><th>{{.I18n.T "common.actions"}}</th></tr></thead>
+      <tbody>
+        {{range .Proxies}}
+        <tr>
+          <td data-label="{{$.I18n.T "proxy.name"}}"><strong>{{.Name}}</strong></td>
+          <td data-label="{{$.I18n.T "proxy.type"}}">{{.Type}}</td>
+          <td data-label="{{$.I18n.T "proxy.address"}}"><span class="target">{{.Address}}</span></td>
+          <td class="is-wide" data-label="{{$.I18n.T "common.actions"}}">
+            <div class="user-actions">
+              <a class="button button-secondary button-small" href="/settings/proxies?edit={{.ID}}">{{$.I18n.T "common.edit"}}</a>
+              <form class="inline-form" method="post" action="/settings/proxies/{{.ID}}/delete"
+                data-confirm="{{$.I18n.T "proxy.deleteConfirm"}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+                <button class="button button-danger-outline button-small" type="submit">{{$.I18n.T "common.delete"}}</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">{{.I18n.T "proxy.empty"}}</p>
+  {{end}}
+</section>
+
+<dialog class="dialog" id="proxy-form" aria-labelledby="proxy-form-title" {{if .ProxyFormOpen}}data-auto-open="true"{{end}}>
+  <form method="post" action="{{.ProxyFormAction}}" class="dialog-form">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <div class="dialog-head">
+      <div>
+        <h2 id="proxy-form-title">{{if .ProxyFormEdit}}{{.I18n.T "proxy.editTitle"}}{{else}}{{.I18n.T "proxy.addTitle"}}{{end}}</h2>
+        <p class="hint">{{.I18n.T "proxy.formHint"}}</p>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="{{.I18n.T "common.close"}}">&times;</button>
+    </div>
+    <div class="dialog-body">
+      {{if .Error}}<p class="alert alert-error">{{.Error}}</p>{{end}}
+      <div class="form-grid">
+        <label class="field">
+          <span>{{.I18n.T "proxy.name"}}</span>
+          <input type="text" name="name" value="{{.ProxyForm.Name}}" maxlength="100" required autofocus>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.type"}}</span>
+          <select name="type">
+            {{range .ProxyTypeOptions}}
+            <option value="{{.}}" {{if eq . $.ProxyForm.Type}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.address"}}</span>
+          <input type="text" name="address" value="{{.ProxyForm.Address}}" placeholder="127.0.0.1:7890" required>
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.username"}}</span>
+          <input type="text" name="username" value="{{.ProxyForm.Username}}" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>{{.I18n.T "proxy.password"}}</span>
+          <input type="password" name="password" autocomplete="new-password" placeholder="{{if .ProxyFormEdit}}{{.I18n.T "proxy.passwordKeep"}}{{end}}">
+        </label>
+      </div>
+      <p class="hint">{{.I18n.T "proxy.testHint"}}</p>
+      {{if .ProxyTestDetail}}<p class="hint">{{.ProxyTestDetail}}</p>{{end}}
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" type="submit" formaction="{{.ProxyTestAction}}" formnovalidate>{{.I18n.T "proxy.test"}}</button>
+      <button class="button button-secondary" type="button" data-dialog-close>{{.I18n.T "common.cancel"}}</button>
+      <button class="button button-primary" type="submit">{{if .ProxyFormEdit}}{{.I18n.T "proxy.saveChanges"}}{{else}}{{.I18n.T "proxy.save"}}{{end}}</button>
+    </div>
+  </form>
+</dialog>
+{{- end}}

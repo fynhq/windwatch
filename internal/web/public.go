@@ -450,9 +450,9 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 }
 
 func (s *Server) renderSettingsPublicError(w http.ResponseWriter, r *http.Request, auth model.AuthInfo, status int, values publicStatusFormValues, key string) {
-	page, err := s.loadSettingsPage(r, auth)
+	page, err := s.loadPublicSettingsPage(r, auth)
 	if err != nil {
-		s.log.Error("reload settings", "error", err)
+		s.log.Error("reload public settings", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
@@ -468,5 +468,5 @@ func (s *Server) renderSettingsPublicError(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	page.Error = page.I18n.T(key)
-	s.render(w, "settings", status, page)
+	s.render(w, "settings_public", status, page)
 }

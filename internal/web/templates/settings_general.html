@@ -1,0 +1,25 @@
+{{define "content" -}}
+<section class="page-head">
+  <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
+  <h1>{{.SectionTitle}}</h1>
+  <p class="muted">{{.SectionIntro}}</p>
+</section>
+
+<section class="panel settings-section">
+  <form method="post" action="/settings/timezone" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label class="field">
+      <span>{{.I18n.T "settings.timezone"}}</span>
+      <input type="text" name="timezone" value="{{.Timezone}}" list="timezone-options"
+        autocomplete="off" spellcheck="false" required>
+      <small class="hint">{{.I18n.T "settings.timezoneSearchHint"}}</small>
+    </label>
+    <datalist id="timezone-options">
+      {{range .TimezoneOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+    </datalist>
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">{{.I18n.T "settings.timezoneSave"}}</button>
+    </div>
+  </form>
+</section>
+{{- end}}
