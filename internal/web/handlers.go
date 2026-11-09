@@ -57,7 +57,14 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	key := s.clientKey(r)
+	now := s.now()
+	if s.limiter.blocked(key, now) {
+		s.renderSetupPage(w, r, http.StatusTooManyRequests, csrf, "", "error.tooManyAttempts")
+		return
+	}
 	if !s.validatePreAuthCSRF(r) {
+		s.limiter.failure(key, now)
 		s.renderSetupPage(w, r, http.StatusForbidden, csrf, strings.TrimSpace(r.PostFormValue("username")), "error.csrf")
 		return
 	}
@@ -66,12 +73,14 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	password := r.PostFormValue("password")
 	confirm := r.PostFormValue("password_confirm")
 
-	if key := validateUsername(username); key != "" {
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, key)
+	if errorKey := validateUsername(username); errorKey != "" {
+		s.limiter.failure(key, now)
+		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, errorKey)
 		return
 	}
-	if key := validateNewPassword(password, confirm); key != "" {
-		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, key)
+	if errorKey := validateNewPassword(password, confirm); errorKey != "" {
+		s.limiter.failure(key, now)
+		s.renderSetupPage(w, r, http.StatusBadRequest, csrf, username, errorKey)
 		return
 	}
 
@@ -93,6 +102,7 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("administrator created", "username", admin.Username)
 	s.setAdminCache(true)
+	s.limiter.reset(key)
 
 	if err := s.createSession(w, r, admin.ID); err != nil {
 		s.log.Error("create session after setup", "error", err)

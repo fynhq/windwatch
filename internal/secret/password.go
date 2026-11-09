@@ -20,9 +20,18 @@ const (
 	argonParallelism = 1
 	argonSaltLength  = 16
 	argonKeyLength   = 32
+	maxArgonWorkers  = 4
 )
 
-var ErrInvalidHash = errors.New("invalid password hash")
+var (
+	ErrInvalidHash = errors.New("invalid password hash")
+	argonSlots     = make(chan struct{}, maxArgonWorkers)
+)
+
+func acquireArgonSlot() func() {
+	argonSlots <- struct{}{}
+	return func() { <-argonSlots }
+}
 
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, argonSaltLength)
@@ -30,7 +39,9 @@ func HashPassword(password string) (string, error) {
 		return "", fmt.Errorf("generate password salt: %w", err)
 	}
 
+	release := acquireArgonSlot()
 	hash := argon2.IDKey([]byte(password), salt, argonIterations, argonMemory, argonParallelism, argonKeyLength)
+	release()
 	return fmt.Sprintf(
 		"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version,
@@ -81,7 +92,9 @@ func VerifyPassword(encoded, password string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 
+	release := acquireArgonSlot()
 	actual := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expected)))
+	release()
 	return subtle.ConstantTimeCompare(expected, actual) == 1, nil
 }
 
