@@ -178,7 +178,7 @@ func TestStaticAssetsAreVersioned(t *testing.T) {
 	if match == nil {
 		t.Fatalf("stylesheet URL is not versioned: %s", body)
 	}
-	for _, asset := range []string{"app.css", "app.js", "m1.css", "windwatch-icon.svg"} {
+	for _, asset := range []string{"app.css", "pages.css", "app.js", "windwatch-icon.svg"} {
 		response, err := client.Get(testServer.URL + "/static/" + asset + "?v=" + match[1])
 		if err != nil {
 			t.Fatalf("GET %s: %v", asset, err)

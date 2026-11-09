@@ -13,8 +13,7 @@
   <title>{{.Title}} · {{$appName}}</title>
   <script src="/static/app.js?v={{.AssetVersion}}"></script>
   <link rel="stylesheet" href="/static/app.css?v={{.AssetVersion}}">
-  <link rel="stylesheet" href="/static/m1.css?v={{.AssetVersion}}">
-  <link rel="stylesheet" href="/static/m2.css?v={{.AssetVersion}}">
+  <link rel="stylesheet" href="/static/pages.css?v={{.AssetVersion}}">
 </head>
 <body class="{{if .Authenticated}}app-body{{else if .PublicView}}public-body{{else}}auth-body{{end}}{{if eq .ActiveNav "events"}} page-events{{end}}"{{if .AutoRefresh}} data-auto-refresh="30" data-refresh-target="{{if .PublicView}}status{{else}}dashboard{{end}}"{{end}}>
 <a class="skip-link" href="#main">{{.I18n.T "common.skipToContent"}}</a>
