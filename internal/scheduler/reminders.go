@@ -102,6 +102,7 @@ func (s *Scheduler) processReminders(
 	}
 	notification := s.buildReminderNotification(monitor, result, warning, nextState, checkedAt, currentKind, contextKey, sequence, count, downtimeStart)
 	if !s.notifier.Enqueue(notification) {
+		s.log.Error("persist reminder notification", "monitor_id", monitor.ID, "kind", currentKind, "error", "notification outbox is unavailable")
 		return
 	}
 	s.log.Info("reminder notification enqueued", "monitor_id", monitor.ID, "kind", currentKind, "sequence", sequence, "total", count, "next_at", checkedAt.Add(interval).UTC().Format(time.RFC3339))

@@ -284,6 +284,14 @@ func (s *Store) createMonitor(ctx context.Context, monitor model.Monitor, now ti
 	}
 	defer tx.Rollback()
 
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM monitors").Scan(&count); err != nil {
+		return 0, fmt.Errorf("count monitors for creation: %w", err)
+	}
+	if count >= model.MaxMonitors {
+		return 0, ErrMonitorLimit
+	}
+
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO monitors (
 			name, type, config_json, interval_seconds, timeout_seconds,
@@ -636,6 +644,27 @@ func (s *Store) ResetMonitorCounters(ctx context.Context, monitorID int64, at ti
 		WHERE monitor_id = ?
 	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
 		return fmt.Errorf("reset monitor counters: %w", err)
+	}
+	return nil
+}
+
+// SetMonitorPendingAfterResume turns a previously DOWN/WARNING monitor back
+// into PENDING when it is resumed. Paused time must not reappear as a new
+// outage episode before the first post-resume check has confirmed it.
+func (s *Store) SetMonitorPendingAfterResume(ctx context.Context, monitorID int64, at time.Time) error {
+	now := at.UTC().UnixMilli()
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE monitor_state
+		SET status = ?,
+		    status_since_ms = ?,
+		    last_error = '',
+		    consecutive_failures = 0,
+		    consecutive_successes = 0,
+		    warning_context = '',
+		    updated_at_ms = ?
+		WHERE monitor_id = ? AND status IN (?, ?)
+	`, model.StatusPending, now, now, monitorID, model.StatusDown, model.StatusWarning); err != nil {
+		return fmt.Errorf("set monitor pending after resume: %w", err)
 	}
 	return nil
 }

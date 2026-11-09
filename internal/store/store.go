@@ -24,8 +24,9 @@ import (
 var migrationFS embed.FS
 
 var (
-	ErrNotFound    = errors.New("record not found")
-	ErrAdminExists = errors.New("administrator already exists")
+	ErrNotFound     = errors.New("record not found")
+	ErrAdminExists  = errors.New("administrator already exists")
+	ErrMonitorLimit = errors.New("monitor limit reached")
 )
 
 type Store struct {

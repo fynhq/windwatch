@@ -244,6 +244,11 @@ func (s *Scheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enab
 	if err := s.store.ResetMonitorCounters(ctx, monitorID, now); err != nil {
 		s.log.Warn("reset monitor counters after toggle", "monitor_id", monitorID, "error", err)
 	}
+	if enabled {
+		if err := s.store.SetMonitorPendingAfterResume(ctx, monitorID, now); err != nil {
+			s.log.Warn("set monitor pending after resume", "monitor_id", monitorID, "error", err)
+		}
+	}
 	if err := s.Reload(monitorID); err != nil {
 		s.log.Warn("reload scheduler after toggle", "monitor_id", monitorID, "error", err)
 	}
@@ -717,7 +722,9 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 					notification.DowntimeCycles = outageCycles(notification.Downtime, monitor.Interval, monitor.Type)
 				}
 			}
-			s.notifier.Enqueue(notification)
+			if !s.notifier.Enqueue(notification) {
+				s.log.Error("persist state notification", "monitor_id", monitor.ID, "kind", event.Type, "error", "notification outbox is unavailable")
+			}
 		}
 	}
 	warningChanged := warning && nextState.Status == model.StatusWarning &&
@@ -726,6 +733,8 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		notification := s.warningNotification(monitor, job.result, aux, nextState, job.checkedAt)
 		if s.notifier.Enqueue(notification) {
 			s.persistWarningContext(ctx, monitor.ID, warningKey)
+		} else {
+			s.log.Error("persist warning notification", "monitor_id", monitor.ID, "error", "notification outbox is unavailable")
 		}
 	} else if nextState.Status != model.StatusWarning && previousWarningKey != "" {
 		s.persistWarningContext(ctx, monitor.ID, "")
@@ -798,6 +807,13 @@ func outageCycles(downtime, interval time.Duration, monitorType model.MonitorTyp
 		cycles = 1
 	}
 	return cycles
+}
+
+func rollupStart(now, last time.Time, hasLast bool) time.Time {
+	if hasLast {
+		return last.Add(-30 * time.Minute)
+	}
+	return now.Add(-rawRetention).Truncate(30 * time.Minute)
 }
 
 func (s *Scheduler) notificationsAvailable(ctx context.Context) bool {
@@ -962,15 +978,11 @@ func (s *Scheduler) refreshDomains(ctx context.Context) {
 func (s *Scheduler) maintain(ctx context.Context) {
 	aggregate := func(now time.Time) error {
 		untilHalfHour := now.Truncate(30 * time.Minute)
-		sinceHalfHour := now.Add(-rawRetention).Truncate(30 * time.Minute)
+		sinceHalfHour := rollupStart(now, time.Time{}, false)
 		if last, ok, err := s.store.LastRollupStart(ctx); err != nil {
 			return err
 		} else if ok {
-			sinceHalfHour = last.Add(-30 * time.Minute)
-			minSince := now.Add(-rawRetention).Truncate(30 * time.Minute)
-			if sinceHalfHour.Before(minSince) {
-				sinceHalfHour = minSince
-			}
+			sinceHalfHour = rollupStart(now, last, true)
 		}
 		if untilHalfHour.After(sinceHalfHour) {
 			if err := s.store.AggregateHalfHourlyRollups(ctx, sinceHalfHour, untilHalfHour, now); err != nil {

@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -11,6 +12,77 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 	"github.com/fynhq/windwatch/internal/store"
 )
+
+func TestRollupStartDoesNotClampToRawRetention(t *testing.T) {
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	last := now.Add(-10 * 24 * time.Hour)
+	if got := rollupStart(now, last, true); !got.Equal(last.Add(-30 * time.Minute)) {
+		t.Fatalf("rollup start with old last bucket = %s, want %s", got, last.Add(-30*time.Minute))
+	}
+	wantFresh := now.Add(-rawRetention).Truncate(30 * time.Minute)
+	if got := rollupStart(now, time.Time{}, false); !got.Equal(wantFresh) {
+		t.Fatalf("rollup start without history = %s, want %s", got, wantFresh)
+	}
+}
+
+func TestResumeDownMonitorDoesNotReopenOutage(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "resume.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Migrate(t.Context()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	monitor := model.Monitor{
+		Name: "Push", Type: model.MonitorTypePush,
+		Interval: time.Minute, Timeout: 10 * time.Second,
+		FailThreshold: 1, RecoverThreshold: 1, Enabled: true,
+	}
+	id, err := st.CreateMonitor(t.Context(), monitor, now)
+	if err != nil {
+		t.Fatalf("CreateMonitor: %v", err)
+	}
+	if err := st.RecordCheck(t.Context(), model.Check{
+		MonitorID: id, CheckedAt: now, Status: model.CheckDown,
+		ErrorKind: model.ErrorKindNetwork, ErrorMessage: "down", MetaJSON: "{}",
+	}, model.MonitorState{
+		Status: model.StatusDown, StatusSince: now, LastCheck: now,
+		LastError: "down", UpdatedAt: now,
+	}, &model.Event{MonitorID: id, Type: model.EventDown, StartedAt: now, MetaJSON: "{}"}, false); err != nil {
+		t.Fatalf("RecordCheck: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	scheduler := New(st, checker.NewRegistry(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := scheduler.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() {
+		cancel()
+		scheduler.Wait()
+	})
+
+	if err := scheduler.SetMonitorEnabled(ctx, id, false); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	if err := scheduler.SetMonitorEnabled(ctx, id, true); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	resumed, err := st.MonitorByID(ctx, id)
+	if err != nil {
+		t.Fatalf("MonitorByID: %v", err)
+	}
+	if resumed.State.Status != model.StatusPending {
+		t.Fatalf("status after resume = %q, want pending", resumed.State.Status)
+	}
+	if _, open, err := st.OpenDownEventStart(ctx, id); err != nil {
+		t.Fatalf("OpenDownEventStart: %v", err)
+	} else if open {
+		t.Fatal("resume reopened a DOWN event")
+	}
+}
 
 func TestWarningIsSuppressedWhileDown(t *testing.T) {
 	s, st, sink, channelID := newNotificationTestScheduler(t)
