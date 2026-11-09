@@ -130,7 +130,7 @@ func TestHalfHourlyRollupAggregation(t *testing.T) {
 	if err := st.AggregateHalfHourlyRollups(t.Context(), start, start.Add(3*time.Hour), now); err != nil {
 		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
 	}
-	stats, err := st.RollupStats(t.Context(), id, start, start.Add(3*time.Hour))
+	stats, err := rollupStatsForTest(t, st, id, start, start.Add(3*time.Hour))
 	if err != nil {
 		t.Fatalf("RollupStats: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestHalfHourlyRollupAggregation(t *testing.T) {
 	if err := st.AggregateHalfHourlyRollups(t.Context(), start, start.Add(3*time.Hour), now); err != nil {
 		t.Fatalf("re-aggregate: %v", err)
 	}
-	stats, err = st.RollupStats(t.Context(), id, start, start.Add(3*time.Hour))
+	stats, err = rollupStatsForTest(t, st, id, start, start.Add(3*time.Hour))
 	if err != nil || stats.Total != 5 || stats.Down != 2 {
 		t.Fatalf("re-aggregated stats = %+v err=%v", stats, err)
 	}
@@ -166,10 +166,16 @@ func TestHalfHourlyRollupAggregation(t *testing.T) {
 	if err := st.DeleteRollupsBefore(t.Context(), start.Add(2*time.Hour)); err != nil {
 		t.Fatalf("DeleteRollupsBefore: %v", err)
 	}
-	stats, err = st.RollupStats(t.Context(), id, start, start.Add(3*time.Hour))
+	stats, err = rollupStatsForTest(t, st, id, start, start.Add(3*time.Hour))
 	if err != nil || stats.Total != 0 {
 		t.Fatalf("stats after rollup cleanup = %+v err=%v", stats, err)
 	}
+}
+
+func rollupStatsForTest(t *testing.T, st *Store, monitorID int64, since, before time.Time) (model.UptimeStats, error) {
+	t.Helper()
+	stats, err := st.RollupStatsForMonitors(t.Context(), []int64{monitorID}, since, before)
+	return stats[monitorID], err
 }
 
 func TestDailyBucketsForMonitors(t *testing.T) {

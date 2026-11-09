@@ -63,32 +63,6 @@ func (s *Store) LastRollupStart(ctx context.Context) (time.Time, bool, error) {
 	return time.UnixMilli(bucket.Int64).UTC(), true, nil
 }
 
-func (s *Store) RollupStats(ctx context.Context, monitorID int64, since, before time.Time) (model.UptimeStats, error) {
-	var (
-		stats      model.UptimeStats
-		latencySum int64
-	)
-	err := s.reader().QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(total), 0),
-		       COALESCE(SUM(up), 0),
-		       COALESCE(SUM(warning), 0),
-		       COALESCE(SUM(down), 0),
-		       COALESCE(SUM(latency_sum_ms), 0)
-		FROM rollups
-		WHERE monitor_id = ? AND resolution_seconds = ?
-		  AND bucket_start_ms >= ? AND bucket_start_ms < ?
-	`, monitorID, HalfHourlyResolutionSeconds, since.UTC().UnixMilli(), before.UTC().UnixMilli()).Scan(
-		&stats.Total, &stats.Up, &stats.Warning, &stats.Down, &latencySum,
-	)
-	if err != nil {
-		return model.UptimeStats{}, fmt.Errorf("get rollup stats: %w", err)
-	}
-	if stats.Total > 0 {
-		stats.AvgLatency = time.Duration(latencySum/int64(stats.Total)) * time.Millisecond
-	}
-	return stats, nil
-}
-
 func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, since, before time.Time) (map[int64]model.UptimeStats, error) {
 	result := make(map[int64]model.UptimeStats, len(monitorIDs))
 	if len(monitorIDs) == 0 {
@@ -221,42 +195,6 @@ func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, sourc
 	current.Warning += source.Warning
 	current.Down += source.Down
 	target[monitorID] = current
-}
-
-func (s *Store) HalfHourlyBuckets(ctx context.Context, monitorID int64, since, before time.Time) ([]model.HourBucket, error) {
-	rows, err := s.reader().QueryContext(ctx, `
-		SELECT bucket_start_ms, total, up, warning, down, latency_sum_ms
-		FROM rollups
-		WHERE monitor_id = ? AND resolution_seconds = ?
-		  AND bucket_start_ms >= ? AND bucket_start_ms < ?
-		ORDER BY bucket_start_ms ASC
-	`, monitorID, HalfHourlyResolutionSeconds, since.UTC().UnixMilli(), before.UTC().UnixMilli())
-	if err != nil {
-		return nil, fmt.Errorf("get half-hourly buckets: %w", err)
-	}
-	defer rows.Close()
-
-	var buckets []model.HourBucket
-	for rows.Next() {
-		var (
-			bucket     model.HourBucket
-			bucketMS   int64
-			latencySum int64
-		)
-		if err := rows.Scan(&bucketMS, &bucket.Total, &bucket.Up, &bucket.Warning, &bucket.Down, &latencySum); err != nil {
-			return nil, fmt.Errorf("scan half-hourly bucket: %w", err)
-		}
-		bucket.MonitorID = monitorID
-		bucket.Start = time.UnixMilli(bucketMS).UTC()
-		if bucket.Total > 0 {
-			bucket.AvgLatency = time.Duration(latencySum/int64(bucket.Total)) * time.Millisecond
-		}
-		buckets = append(buckets, bucket)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate half-hourly buckets: %w", err)
-	}
-	return buckets, nil
 }
 
 func (s *Store) DailyBucketsForTimezone(ctx context.Context, monitorID int64, since, before time.Time, location *time.Location) ([]model.HourBucket, error) {

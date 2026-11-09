@@ -30,13 +30,7 @@ func (s *Store) UpsertCertificate(ctx context.Context, info model.CertificateInf
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO cert_info (fingerprint, subject, issuer, sans_json, not_before_ms, not_after_ms, updated_at_ms)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(fingerprint) DO UPDATE SET
-			subject = excluded.subject,
-			issuer = excluded.issuer,
-			sans_json = excluded.sans_json,
-			not_before_ms = excluded.not_before_ms,
-			not_after_ms = excluded.not_after_ms,
-			updated_at_ms = excluded.updated_at_ms
+		ON CONFLICT(fingerprint) DO NOTHING
 	`,
 		info.Fingerprint, info.Subject, info.Issuer, string(sans),
 		notBefore, notAfter, time.Now().UTC().UnixMilli(),

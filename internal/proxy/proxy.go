@@ -126,26 +126,7 @@ func DialContext(cfg *Config) (func(context.Context, string, string) (net.Conn, 
 				return connection, nil
 			}, nil
 		}
-		return func(ctx context.Context, network, address string) (net.Conn, error) {
-			type result struct {
-				conn net.Conn
-				err  error
-			}
-			results := make(chan result, 1)
-			go func() {
-				conn, err := dialer.Dial(network, address)
-				results <- result{conn: conn, err: err}
-			}()
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case result := <-results:
-				if result.err != nil {
-					return nil, wrapProxyError(result.err)
-				}
-				return result.conn, nil
-			}
-		}, nil
+		return nil, fmt.Errorf("SOCKS5 dialer does not support context cancellation")
 	case model.ProxyHTTP:
 		return func(ctx context.Context, network, address string) (net.Conn, error) {
 			connection, err := dialHTTPConnect(ctx, cfg, network, address)
