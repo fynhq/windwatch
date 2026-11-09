@@ -503,12 +503,21 @@ func vcardName(raw []json.RawMessage) string {
 }
 
 // HasSuspensionStatus reports RDAP statuses that make a domain unusable.
+// RDAP uses RFC 8056 values such as "client hold" and "pending delete" while
+// some registries return EPP camelCase names; compare a normalized form so
+// both server styles are recognized.
 func HasSuspensionStatus(statuses []string) bool {
 	for _, status := range statuses {
-		switch strings.ToLower(status) {
+		switch normalizeStatus(status) {
 		case "clienthold", "serverhold", "pendingdelete", "redemptionperiod":
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeStatus(status string) string {
+	status = strings.ToLower(status)
+	replacer := strings.NewReplacer(" ", "", "_", "", "-", "")
+	return replacer.Replace(status)
 }

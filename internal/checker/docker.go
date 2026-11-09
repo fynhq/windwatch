@@ -16,11 +16,15 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
+const dockerVersionRetryDelay = 10 * time.Second
+
 type dockerChecker struct {
-	client     *http.Client
-	baseURL    string
-	versionMu  sync.Mutex
-	apiVersion string
+	client         *http.Client
+	baseURL        string
+	versionMu      sync.Mutex
+	apiVersion     string
+	versionErr     error
+	versionRetryAt time.Time
 }
 
 type dockerInspect struct {
@@ -124,6 +128,16 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 	path := "/v" + version + "/containers/" + url.PathEscape(container) + "/json"
 	var inspect dockerInspect
 	statusCode, err := d.getJSON(ctx, path, &inspect)
+	if statusCode == http.StatusBadRequest {
+		// Docker returns 400 when the cached API version is below the daemon's
+		// minimum supported version (for example after a daemon upgrade).
+		d.invalidateAPIVersion()
+		if refreshed, refreshErr := d.getAPIVersion(ctx); refreshErr == nil {
+			version = refreshed
+			path = "/v" + version + "/containers/" + url.PathEscape(container) + "/json"
+			statusCode, err = d.getJSON(ctx, path, &inspect)
+		}
+	}
 	if err != nil {
 		return model.CheckResult{
 			Success:      false,
@@ -214,19 +228,36 @@ func (d *dockerChecker) getAPIVersion(ctx context.Context) (string, error) {
 	if d.apiVersion != "" {
 		return d.apiVersion, nil
 	}
+	now := time.Now()
+	if d.versionErr != nil && now.Before(d.versionRetryAt) {
+		return "", d.versionErr
+	}
 
 	var response struct {
 		APIVersion string `json:"ApiVersion"`
 	}
 	status, err := d.getJSON(ctx, "/version", &response)
 	if err != nil {
-		return "", fmt.Errorf("query Docker version: %w", err)
+		d.versionErr = fmt.Errorf("query Docker version: %w", err)
+		d.versionRetryAt = now.Add(dockerVersionRetryDelay)
+		return "", d.versionErr
 	}
 	if status < 200 || status >= 300 || response.APIVersion == "" {
-		return "", fmt.Errorf("docker version endpoint returned HTTP %d", status)
+		d.versionErr = fmt.Errorf("docker version endpoint returned HTTP %d", status)
+		d.versionRetryAt = now.Add(dockerVersionRetryDelay)
+		return "", d.versionErr
 	}
 	d.apiVersion = response.APIVersion
+	d.versionErr = nil
 	return d.apiVersion, nil
+}
+
+func (d *dockerChecker) invalidateAPIVersion() {
+	d.versionMu.Lock()
+	d.apiVersion = ""
+	d.versionErr = nil
+	d.versionRetryAt = time.Time{}
+	d.versionMu.Unlock()
 }
 
 func (d *dockerChecker) getJSON(ctx context.Context, path string, output any) (int, error) {

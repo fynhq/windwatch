@@ -138,9 +138,16 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 		return failure(model.ErrorKindInvalidConfig, err.Error()), nil
 	}
 
+	policy := redirectPolicy(cfg.FollowRedirects)
+	var redirectTLS *tls.ConnectionState
 	client := &http.Client{
-		Transport:     transport,
-		CheckRedirect: redirectPolicy(cfg.FollowRedirects),
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if redirectTLS == nil && req.Response != nil {
+				redirectTLS = req.Response.TLS
+			}
+			return policy(req, via)
+		},
 	}
 	start := time.Now()
 	response, err := client.Do(req)
@@ -158,6 +165,9 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 
 	metaJSON := encodeHTTPMeta(response.Request)
 	certificate := certificateFromTLS(response.TLS)
+	if certificate == nil {
+		certificate = certificateFromTLS(redirectTLS)
+	}
 	if request.Proxy != nil && response.StatusCode == http.StatusProxyAuthRequired {
 		return model.CheckResult{
 			Success:      false,

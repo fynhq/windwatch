@@ -123,6 +123,27 @@ func TestDomainForURL(t *testing.T) {
 	}
 }
 
+func TestHasSuspensionStatus(t *testing.T) {
+	cases := []struct {
+		name     string
+		statuses []string
+		want     bool
+	}{
+		{name: "client hold spaced", statuses: []string{"client hold"}, want: true},
+		{name: "server hold spaced", statuses: []string{"server hold"}, want: true},
+		{name: "pending delete spaced", statuses: []string{"pending delete"}, want: true},
+		{name: "redemption period spaced", statuses: []string{"redemption period"}, want: true},
+		{name: "client hold camel", statuses: []string{"clientHold"}, want: true},
+		{name: "pending delete underscore", statuses: []string{"pending_delete"}, want: true},
+		{name: "unrelated status", statuses: []string{"client transfer prohibited"}, want: false},
+	}
+	for _, testCase := range cases {
+		if got := HasSuspensionStatus(testCase.statuses); got != testCase.want {
+			t.Errorf("%s: HasSuspensionStatus(%v) = %v, want %v", testCase.name, testCase.statuses, got, testCase.want)
+		}
+	}
+}
+
 func TestFetchRDAP(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeRDAP(w)
