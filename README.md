@@ -13,7 +13,7 @@ English | [中文](#chinese)
 - **HTTP(S) monitors** — method, expected status, response keyword, redirects, timeout, optional certificate and domain expiry checks, and a per-monitor outbound proxy.
 - **TCP monitors** — verify that a `host:port` accepts connections.
 - **Docker monitors** — check that a container is running and, optionally, healthy.
-- **Push / heartbeat monitors** — a secret URL for scripts, cron jobs, or devices; silence past the interval plus grace period marks the monitor down. Tokens can be regenerated.
+- **Push / heartbeat monitors** — a secret URL for scripts, cron jobs, or devices; after the first heartbeat, silence past the interval plus grace period marks the monitor down. Tokens can be regenerated.
 - **Notifications** — any number of named Telegram bots and Generic, DingTalk, WeCom, or Feishu webhooks, each with its own language, proxy, and test action. Per-monitor selection, repeat reminders, retries, deduplication, and a delivery log.
 - **Dashboard and history** — search, status filters, 24h/7d/30d/90d uptime, latency, recent checks, and timezone-aware charts. Storage remains UTC.
 - **Multi-user web UI** — administrators manage everything; read-only viewers inspect dashboards, details, and events. Simplified Chinese and English, responsive layout, theme follows the operating system.
@@ -108,7 +108,7 @@ Each monitor has an interval, timeout, failure threshold, and recovery threshold
 curl -fsS https://windwatch.example.com/api/push/REPLACE_WITH_TOKEN
 ```
 
-`GET` and `POST` are accepted; the token is the only credential, valid heartbeats are limited to one per second per token, and unauthenticated floods are capped per client IP. The monitor stays `PENDING` until the first heartbeat; if none arrives within the interval plus grace period, it is marked `DOWN`. Treat the URL as a secret and keep it out of application and reverse-proxy logs.
+`GET` and `POST` are accepted; the token is the only credential, valid heartbeats are limited to one per second per token, and unauthenticated floods are capped per client IP. The monitor stays `PENDING` until the first heartbeat arrives; there is no initial timeout alert. Treat the URL as a secret and keep it out of application and reverse-proxy logs.
 
 **Outbound proxies** — HTTP and SOCKS5 proxies, with unique names and optional credentials, are configured under **Settings → Outbound proxies** and can be selected per HTTP/TCP monitor and per notification method. A failed proxy fails the check; there is no direct fallback. Docker and Push checks ignore proxies.
 
@@ -124,7 +124,7 @@ Delivery is attempted up to three times, then queued and retried with a longer b
 
 **Timezone** — choose an IANA timezone under **Settings → General** (default `UTC`). It controls displayed timestamps, notification times, and daily chart boundaries; storage remains UTC.
 
-**Accounts** — the first account created at `/setup` is an administrator. Administrators manage monitors, proxies, notifications, users, and the public page. Viewers can sign in and inspect dashboards, details, and events, but cannot change configuration or see Push tokens. At least one active administrator must remain; disabling an account or resetting its password invalidates its sessions. There is no self-registration, email invitation, or OIDC.
+**Accounts** — the first account created at `/setup` is an administrator. Administrators manage monitors, proxies, notifications, users, and the public page. Viewers can sign in and inspect dashboards, details, and events, but cannot change configuration or see Push tokens. At least one active administrator must remain; disabling an account or resetting its password invalidates its sessions. Resetting a password from the web UI keeps a disabled account disabled; the offline recovery command re-enables it. There is no self-registration, email invitation, or OIDC.
 
 **Public status page** — enable it under **Settings → Public page**, set a title and description, and select monitors. `/status` requires no login, refreshes every 30 seconds, shows only names, types, statuses, and 24h/7d/30d/90d uptime, and is marked `noindex, nofollow`. Disabling it returns 404.
 
@@ -169,7 +169,7 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 - **HTTP(S) 监控**：支持请求方法、期望状态码、响应关键字、跳转控制、超时、可选的证书与域名到期检查，以及按监控选择的出站代理。
 - **TCP 监控**：检查 `host:port` 是否可以建立连接。
 - **Docker 监控**：检查容器是否运行，并可要求容器处于 healthy 状态。
-- **Push / 心跳监控**：为脚本、定时任务或设备提供秘密 URL；超过“间隔 + 宽限期”没有心跳时判定异常。Token 可重新生成。
+- **Push / 心跳监控**：为脚本、定时任务或设备提供秘密 URL；首次心跳后，超过“间隔 + 宽限期”没有心跳时判定异常。Token 可重新生成。
 - **通知**：可添加任意数量、名称唯一的 Telegram Bot 和通用、钉钉、企微、飞书 Webhook，每种方式独立配置语言、代理和测试按钮。支持按监控选择通知方式、重复提醒、重试、去重和发送记录。
 - **仪表盘与历史**：搜索、状态筛选、24h/7d/30d/90d 可用率、延迟、最近检查和按时区归日的图表；存储始终使用 UTC。
 - **多用户 Web 界面**：管理员管理全部配置，只读观察者可查看仪表盘、详情和事件。支持简体中文和英文、响应式布局，主题跟随操作系统。
@@ -264,7 +264,7 @@ sudo systemctl enable --now windwatch
 curl -fsS https://windwatch.example.com/api/push/REPLACE_WITH_TOKEN
 ```
 
-支持 `GET` 和 `POST`；Token 是唯一凭据，同一 Token 每秒最多接受一次有效心跳，未认证的请求洪泛按客户端 IP 限流。首次心跳到达前监控保持 `PENDING`；超过“间隔 + 宽限期”仍未收到心跳则判定 `DOWN`。心跳 URL 本身就是密钥，不要让它进入应用日志或反向代理日志。
+支持 `GET` 和 `POST`；Token 是唯一凭据，同一 Token 每秒最多接受一次有效心跳，未认证的请求洪泛按客户端 IP 限流。首次心跳到达前监控保持 `PENDING`，不会产生首次心跳超时告警。心跳 URL 本身就是密钥，不要让它进入应用日志或反向代理日志。
 
 **出站代理**：在**设置 → 出站代理**中配置 HTTP 或 SOCKS5 代理，名称不能重复，可带用户名和密码。每个 HTTP/TCP 监控和每个通知方式都可以选择代理；代理不可用时检查直接失败，不会静默回退到直连。Docker 和 Push 检查不使用代理。
 
@@ -280,7 +280,7 @@ WindWatch 在 `DOWN`、恢复、证书临期和域名临期时发送通知。通
 
 **时区**：在**设置 → 常规**中选择 IANA 时区（默认 `UTC`），它控制界面时间、通知时间和日图边界；存储仍使用 UTC。
 
-**账号**：在 `/setup` 创建的第一个账号是管理员。管理员管理监控、代理、通知、用户和公开页。观察者可以登录并查看仪表盘、详情和事件，但不能修改配置，也看不到 Push Token。系统始终至少保留一个启用的管理员；停用账号或重置密码会让该账号的会话失效。不支持自助注册、邮件邀请或 OIDC。
+**账号**：在 `/setup` 创建的第一个账号是管理员。管理员管理监控、代理、通知、用户和公开页。观察者可以登录并查看仪表盘、详情和事件，但不能修改配置，也看不到 Push Token。系统始终至少保留一个启用的管理员；停用账号或重置密码会让该账号的会话失效。在后台重置密码不会重新启用已停用账号，离线恢复命令会重新启用。不支持自助注册、邮件邀请或 OIDC。
 
 **公开状态页**：在**设置 → 公开页**中启用、填写标题和说明并选择监控。`/status` 无需登录，每 30 秒刷新，只展示名称、类型、状态和 24h/7d/30d/90d 可用率，并标记 `noindex, nofollow`；关闭后返回 404。
 
