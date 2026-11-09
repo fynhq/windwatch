@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/fynhq/windwatch/internal/checker"
-	"github.com/fynhq/windwatch/internal/domains"
 	"github.com/fynhq/windwatch/internal/model"
 	outboundproxy "github.com/fynhq/windwatch/internal/proxy"
 	"github.com/fynhq/windwatch/internal/secret"
@@ -32,9 +31,6 @@ const (
 	halfHourlyRetention   = 365 * 24 * time.Hour
 	notificationRetention = 365 * 24 * time.Hour
 	certificateRetention  = 30 * 24 * time.Hour
-	domainInfoRetention   = 90 * 24 * time.Hour
-	domainRefreshInterval = 24 * time.Hour
-	domainRetryBase       = 30 * time.Minute
 	rollupInterval        = 5 * time.Minute
 	failureRecheckDelay   = 5 * time.Second
 	failureRecheckTimeout = 10 * time.Second
@@ -79,9 +75,8 @@ type Scheduler struct {
 	recheckDelay   time.Duration
 	recheckTimeout time.Duration
 
-	semaphore  chan struct{}
-	results    chan outcome
-	domainWake chan struct{}
+	semaphore chan struct{}
+	results   chan outcome
 
 	mu       sync.Mutex
 	ctx      context.Context
@@ -126,7 +121,6 @@ func New(st *store.Store, registry *checker.Registry, logger *slog.Logger) *Sche
 		recheckTimeout: failureRecheckTimeout,
 		semaphore:      make(chan struct{}, globalConcurrency),
 		results:        make(chan outcome, resultBuffer),
-		domainWake:     make(chan struct{}, 1),
 		runners:        make(map[int64]*runnerHandle),
 		inflight:       make(map[int64]struct{}),
 	}
@@ -147,7 +141,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	s.started = true
 	s.mu.Unlock()
 
-	s.wg.Add(3)
+	s.wg.Add(2)
 	go func() {
 		defer s.wg.Done()
 		defer s.recoverTask("collector")
@@ -157,11 +151,6 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		defer s.wg.Done()
 		defer s.recoverTask("maintenance")
 		s.maintain(ctx)
-	}()
-	go func() {
-		defer s.wg.Done()
-		defer s.recoverTask("domain-refresh")
-		s.refreshDomains(ctx)
 	}()
 
 	for _, monitor := range monitors {
@@ -210,12 +199,6 @@ func (s *Scheduler) Reload(monitorID int64) error {
 	}
 	if monitor.Enabled {
 		s.startRunner(monitor)
-	}
-	if monitor.Type == model.MonitorTypeHTTP && monitor.HTTP != nil && monitor.HTTP.DomainCheck {
-		select {
-		case s.domainWake <- struct{}{}:
-		default:
-		}
 	}
 	return nil
 }
@@ -641,7 +624,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	warning := job.result.Success && aux.active
 	warningKey := ""
 	if warning {
-		warningKey = warningReminderContext(monitor, aux, job.result)
+		warningKey = warningReminderContext(monitor, job.result)
 	}
 	nextState, event, closeDown := advance(monitor, monitor.State, job.result, job.checkedAt)
 	if event != nil && event.Type == model.EventDown && !downStartedAt.IsZero() {
@@ -730,7 +713,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	warningChanged := warning && nextState.Status == model.StatusWarning &&
 		(previousStatus != model.StatusWarning || previousWarningKey != warningKey)
 	if warningChanged && monitor.Enabled && monitorNotificationsEnabled(monitor) && s.notifier != nil && s.notificationsAvailable(ctx) {
-		notification := s.warningNotification(monitor, job.result, aux, nextState, job.checkedAt)
+		notification := s.warningNotification(monitor, job.result, nextState, job.checkedAt)
 		if s.notifier.Enqueue(notification) {
 			s.persistWarningContext(ctx, monitor.ID, warningKey)
 		} else {
@@ -739,7 +722,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	} else if nextState.Status != model.StatusWarning && previousWarningKey != "" {
 		s.persistWarningContext(ctx, monitor.ID, "")
 	}
-	s.processReminders(ctx, monitor, job.result, aux, warning, nextState, previousStatus, job.checkedAt)
+	s.processReminders(ctx, monitor, job.result, warning, nextState, previousStatus, job.checkedAt)
 }
 
 func monitorNotificationsEnabled(monitor model.Monitor) bool {
@@ -844,52 +827,30 @@ func truncateErrorText(value string) string {
 }
 
 type auxWarning struct {
-	active     bool
-	cert       bool
-	domain     bool
-	domainName string
-	domainInfo *model.DomainInfo
+	active bool
 }
 
-func (s *Scheduler) auxiliaryWarning(ctx context.Context, monitor model.Monitor, result model.CheckResult) auxWarning {
+func (s *Scheduler) auxiliaryWarning(_ context.Context, monitor model.Monitor, result model.CheckResult) auxWarning {
 	if !result.Success || monitor.HTTP == nil {
 		return auxWarning{}
 	}
-	var warning auxWarning
 	cfg := monitor.HTTP
 	if cfg.CertCheck && result.Certificate != nil && !result.Certificate.NotAfter.IsZero() {
 		days := int(time.Until(result.Certificate.NotAfter).Hours() / 24)
 		if days <= cfg.CertWarnDays {
-			warning.active = true
-			warning.cert = true
+			return auxWarning{active: true}
 		}
 	}
-	if cfg.DomainCheck {
-		domain, err := domains.DomainForURL(cfg.URL)
-		if err == nil {
-			if info, err := s.store.DomainInfo(ctx, domain); err == nil {
-				warning.domainName = domain
-				warning.domainInfo = &info
-				if !info.ExpiresAt.IsZero() {
-					days := int(time.Until(info.ExpiresAt).Hours() / 24)
-					if days <= cfg.DomainWarnDays {
-						warning.active = true
-						warning.domain = true
-					}
-				}
-				if domains.HasSuspensionStatus(info.Statuses) {
-					warning.active = true
-					warning.domain = true
-				}
-			}
-		}
-	}
-	return warning
+	return auxWarning{}
 }
 
-func (s *Scheduler) warningNotification(monitor model.Monitor, result model.CheckResult, warning auxWarning, nextState model.MonitorState, at time.Time) model.Notification {
-	notification := model.Notification{
-		Kind:          model.EventWarnDomain,
+func (s *Scheduler) warningNotification(monitor model.Monitor, result model.CheckResult, nextState model.MonitorState, at time.Time) model.Notification {
+	fingerprint := ""
+	if result.Certificate != nil {
+		fingerprint = result.Certificate.Fingerprint
+	}
+	return model.Notification{
+		Kind:          model.EventWarnCert,
 		MonitorID:     monitor.ID,
 		MonitorName:   monitor.Name,
 		MonitorTarget: monitor.Target(),
@@ -897,81 +858,9 @@ func (s *Scheduler) warningNotification(monitor model.Monitor, result model.Chec
 		Status:        nextState.Status,
 		OccurredAt:    at,
 		Cert:          result.Certificate,
-		Domain:        warning.domainInfo,
-	}
-	if warning.cert {
-		notification.Kind = model.EventWarnCert
-		fingerprint := ""
-		if result.Certificate != nil {
-			fingerprint = result.Certificate.Fingerprint
-		}
 		// Include the episode start so a warning that clears and later recurs
-		// with the same certificate/domain context is treated as a new event.
-		notification.Key = fmt.Sprintf("warn_cert:%d:%s:%d:%d", monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince.UnixMilli())
-		return notification
-	}
-	expires := int64(0)
-	if warning.domainInfo != nil && !warning.domainInfo.ExpiresAt.IsZero() {
-		expires = warning.domainInfo.ExpiresAt.UnixMilli()
-	}
-	notification.Key = fmt.Sprintf("warn_domain:%s:%d:%d:%d", warning.domainName, expires, monitor.HTTP.DomainWarnDays, nextState.StatusSince.UnixMilli())
-	return notification
-}
-
-func (s *Scheduler) refreshDomains(ctx context.Context) {
-	retryDelay := domainRetryBase
-	nextDelay := func(retry bool) time.Duration {
-		if !retry {
-			retryDelay = domainRetryBase
-			return domainRefreshInterval
-		}
-		delay := retryDelay
-		retryDelay = min(retryDelay*2, domainRefreshInterval)
-		return delay
-	}
-	refresh := func() (delay time.Duration) {
-		delay = domainRefreshInterval
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				s.log.Error("domain refresh panic", "panic", recovered, "stack", string(debug.Stack()))
-			}
-		}()
-		monitors, err := s.store.ListMonitors(ctx)
-		if err != nil {
-			s.log.Warn("list monitors for domain refresh", "error", err)
-			return nextDelay(true)
-		}
-		resolver := func(proxyID *int64) (*outboundproxy.Config, error) {
-			if proxyID == nil {
-				return nil, nil
-			}
-			proxyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			return s.resolveProxy(proxyCtx, *proxyID)
-		}
-		retry, err := domains.Refresh(ctx, s.store, monitors, resolver, s.now().UTC())
-		if err != nil {
-			s.log.Warn("refresh domains", "error", err)
-		}
-		return nextDelay(retry)
-	}
-
-	timer := time.NewTimer(refresh())
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		case <-s.domainWake:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-		}
-		timer.Reset(refresh())
+		// with the same certificate context is treated as a new event.
+		Key: fmt.Sprintf("warn_cert:%d:%s:%d:%d", monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince.UnixMilli()),
 	}
 }
 
@@ -1008,9 +897,6 @@ func (s *Scheduler) maintain(ctx context.Context) {
 		}
 		if err := s.store.DeleteUnreferencedCertificates(ctx, now.Add(-certificateRetention)); err != nil {
 			s.log.Warn("delete unreferenced certificates", "error", err)
-		}
-		if err := s.store.DeleteDomainInfoBefore(ctx, now.Add(-domainInfoRetention)); err != nil {
-			s.log.Warn("delete old domain info", "error", err)
 		}
 		if err := aggregate(now); err != nil {
 			s.log.Error("aggregate rollups", "error", err)

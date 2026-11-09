@@ -124,8 +124,6 @@ type monitorDetailView struct {
 	NotificationLabel string
 	CertEnabled       bool
 	Cert              *certificateDetailView
-	DomainEnabled     bool
-	Domain            *domainDetailView
 	PushURL           string
 	PushToken         string
 	PushLastHeartbeat string
@@ -138,17 +136,6 @@ type certificateDetailView struct {
 	Days        string
 	Fingerprint string
 	Warning     bool
-}
-
-type domainDetailView struct {
-	Domain    string
-	Registrar string
-	Expires   string
-	Days      string
-	Statuses  string
-	Fetched   string
-	Error     string
-	Warning   bool
 }
 
 type eventsPage struct {
@@ -210,8 +197,6 @@ type monitorFormValues struct {
 	TLSSkipVerify          bool
 	CertCheck              bool
 	CertWarnDays           string
-	DomainCheck            bool
-	DomainWarnDays         string
 	Host                   string
 	Port                   string
 	DockerContainer        string
@@ -371,8 +356,6 @@ func eventTypeLabel(translator *i18n.Translator, eventType model.EventType) stri
 		return translator.T("event.down")
 	case model.EventWarnCert:
 		return translator.T("event.warn_cert")
-	case model.EventWarnDomain:
-		return translator.T("event.warn_domain")
 	default:
 		return string(eventType)
 	}
@@ -382,7 +365,7 @@ func eventTypeClass(eventType model.EventType) string {
 	switch eventType {
 	case model.EventUp:
 		return "status-up"
-	case model.EventWarnCert, model.EventWarnDomain:
+	case model.EventWarnCert:
 		return "status-warning"
 	default:
 		return "status-down"
@@ -744,7 +727,6 @@ func defaultFormValues() monitorFormValues {
 		FollowRedirects:        true,
 		CertCheck:              true,
 		CertWarnDays:           "14",
-		DomainWarnDays:         "30",
 		DockerHealthy:          true,
 		NotifyEnabled:          true,
 	}
@@ -763,7 +745,6 @@ func formValuesFromMonitor(monitor model.Monitor) monitorFormValues {
 		FailureReminderCount:   fmt.Sprintf("%d", policy.FailureReminderCount),
 		FailureReminderMinutes: fmt.Sprintf("%d", int(policy.FailureReminderInterval/time.Minute)),
 		CertWarnDays:           "14",
-		DomainWarnDays:         "30",
 		DockerHealthy:          true,
 		NotifyEnabled:          monitor.NotifyEnabled,
 	}
@@ -781,12 +762,8 @@ func formValuesFromMonitor(monitor model.Monitor) monitorFormValues {
 		values.FollowRedirects = monitor.HTTP.FollowRedirects
 		values.TLSSkipVerify = monitor.HTTP.TLSSkipVerify
 		values.CertCheck = monitor.HTTP.CertCheck
-		values.DomainCheck = monitor.HTTP.DomainCheck
 		if monitor.HTTP.CertWarnDays > 0 {
 			values.CertWarnDays = fmt.Sprintf("%d", monitor.HTTP.CertWarnDays)
-		}
-		if monitor.HTTP.DomainWarnDays > 0 {
-			values.DomainWarnDays = fmt.Sprintf("%d", monitor.HTTP.DomainWarnDays)
 		}
 	}
 	if monitor.TCP != nil {

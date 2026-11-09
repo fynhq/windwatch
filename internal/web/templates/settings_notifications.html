@@ -142,25 +142,30 @@
         </div>
       </div>
 
-      <div class="form-grid">
-        <label class="field">
-          <span>{{.I18n.T "notification.language"}}</span>
-          <select name="language">
-            <option value="zh-CN" {{if eq .ChannelForm.Language "zh-CN"}}selected{{end}}>{{.I18n.T "language.zhCN"}}</option>
-            <option value="en" {{if eq .ChannelForm.Language "en"}}selected{{end}}>{{.I18n.T "language.en"}}</option>
-          </select>
-          <small class="hint">{{.I18n.T "notification.languageHint"}}</small>
-        </label>
-        <label class="field">
-          <span>{{.I18n.T "notification.proxy"}}</span>
-          <select name="proxy_id">
-            <option value="">{{.I18n.T "monitor.direct"}}</option>
-            {{range .Proxies}}
-            <option value="{{.ID}}" {{if eq $.ChannelForm.ProxyID (printf "%d" .ID)}}selected{{end}}>{{.Name}} ({{.Type}})</option>
-            {{end}}
-          </select>
-        </label>
-      </div>
+      <details class="advanced-section advanced-inline"{{if .Error}} open{{end}}>
+        <summary>{{.I18n.T "common.advanced"}}</summary>
+        <div class="advanced-body">
+          <div class="form-grid">
+            <label class="field">
+              <span>{{.I18n.T "notification.language"}}</span>
+              <select name="language">
+                <option value="zh-CN" {{if eq .ChannelForm.Language "zh-CN"}}selected{{end}}>{{.I18n.T "language.zhCN"}}</option>
+                <option value="en" {{if eq .ChannelForm.Language "en"}}selected{{end}}>{{.I18n.T "language.en"}}</option>
+              </select>
+              <small class="hint">{{.I18n.T "notification.languageHint"}}</small>
+            </label>
+            <label class="field">
+              <span>{{.I18n.T "notification.proxy"}}</span>
+              <select name="proxy_id">
+                <option value="">{{.I18n.T "monitor.direct"}}</option>
+                {{range .Proxies}}
+                <option value="{{.ID}}" {{if eq $.ChannelForm.ProxyID (printf "%d" .ID)}}selected{{end}}>{{.Name}} ({{.Type}})</option>
+                {{end}}
+              </select>
+            </label>
+          </div>
+        </div>
+      </details>
       <label class="switch-field">
         <input type="checkbox" name="enabled" value="1" {{if .ChannelForm.Enabled}}checked{{end}}>
         <span class="switch-track" aria-hidden="true"></span>

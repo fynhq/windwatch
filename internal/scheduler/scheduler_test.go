@@ -103,7 +103,7 @@ func TestAuxiliaryWarnings(t *testing.T) {
 	monitor := model.Monitor{
 		Name:             "HTTPS",
 		Type:             model.MonitorTypeHTTP,
-		HTTP:             &model.HTTPConfig{URL: "https://example.com", Method: "GET", ExpectedStatus: "200-299", CertCheck: true, CertWarnDays: 30, DomainCheck: true, DomainWarnDays: 30},
+		HTTP:             &model.HTTPConfig{URL: "https://example.com", Method: "GET", ExpectedStatus: "200-299", CertCheck: true, CertWarnDays: 30},
 		Interval:         60 * time.Second,
 		Timeout:          10 * time.Second,
 		FailThreshold:    1,
@@ -113,14 +113,6 @@ func TestAuxiliaryWarnings(t *testing.T) {
 	if _, err := st.CreateMonitor(t.Context(), monitor, time.Now().UTC()); err != nil {
 		t.Fatalf("CreateMonitor: %v", err)
 	}
-	domainsInfo := model.DomainInfo{
-		Domain:    "example.com",
-		ExpiresAt: time.Now().Add(10 * 24 * time.Hour),
-		FetchedAt: time.Now().UTC(),
-	}
-	if err := st.UpsertDomainInfo(t.Context(), domainsInfo); err != nil {
-		t.Fatalf("UpsertDomainInfo: %v", err)
-	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := New(st, checker.NewRegistry(), logger)
 	result := model.CheckResult{
@@ -128,13 +120,9 @@ func TestAuxiliaryWarnings(t *testing.T) {
 		Certificate: &model.CertificateInfo{NotAfter: time.Now().Add(10 * 24 * time.Hour)},
 	}
 	if !s.auxiliaryWarning(t.Context(), monitor, result).active {
-		t.Fatal("expected certificate/domain warning")
+		t.Fatal("expected certificate warning")
 	}
 	result.Certificate = &model.CertificateInfo{NotAfter: time.Now().Add(90 * 24 * time.Hour)}
-	domainsInfo.ExpiresAt = time.Now().Add(90 * 24 * time.Hour)
-	if err := st.UpsertDomainInfo(t.Context(), domainsInfo); err != nil {
-		t.Fatalf("UpsertDomainInfo: %v", err)
-	}
 	if s.auxiliaryWarning(t.Context(), monitor, result).active {
 		t.Fatal("did not expect a warning")
 	}

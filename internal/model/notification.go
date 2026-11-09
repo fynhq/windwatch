@@ -122,7 +122,6 @@ type Notification struct {
 	Reminder       int
 	ReminderTotal  int
 	Cert           *CertificateInfo
-	Domain         *DomainInfo
 }
 
 type NotificationLog struct {

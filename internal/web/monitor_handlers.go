@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fynhq/windwatch/internal/domains"
 	"github.com/fynhq/windwatch/internal/i18n"
 	"github.com/fynhq/windwatch/internal/model"
 	"github.com/fynhq/windwatch/internal/scheduler"
@@ -65,8 +64,6 @@ func formErrorKey(err error) string {
 		return "error.dockerContainer"
 	case errors.Is(err, model.ErrHTTPSCert):
 		return "error.certCheck"
-	case errors.Is(err, model.ErrDomainCheck):
-		return "error.domainCheck"
 	default:
 		return "error.invalidRequest"
 	}
@@ -93,8 +90,6 @@ func parseFormValues(r *http.Request) monitorFormValues {
 		TLSSkipVerify:          r.PostFormValue("tls_skip_verify") != "",
 		CertCheck:              r.PostFormValue("cert_check") != "",
 		CertWarnDays:           strings.TrimSpace(r.PostFormValue("cert_warn_days")),
-		DomainCheck:            r.PostFormValue("domain_check") != "",
-		DomainWarnDays:         strings.TrimSpace(r.PostFormValue("domain_warn_days")),
 		Host:                   strings.TrimSpace(r.PostFormValue("host")),
 		Port:                   strings.TrimSpace(r.PostFormValue("port")),
 		DockerContainer:        strings.TrimSpace(r.PostFormValue("docker_container")),
@@ -183,13 +178,6 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 				return base, newFormError("error.certCheck")
 			}
 		}
-		domainWarnDays := 30
-		if strings.TrimSpace(values.DomainWarnDays) != "" {
-			domainWarnDays, err = strconv.Atoi(values.DomainWarnDays)
-			if err != nil || domainWarnDays < 1 || domainWarnDays > 365 {
-				return base, newFormError("error.domainCheck")
-			}
-		}
 		base.HTTP = &model.HTTPConfig{
 			URL:             strings.TrimSpace(values.URL),
 			Method:          method,
@@ -199,16 +187,9 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 			TLSSkipVerify:   values.TLSSkipVerify,
 			CertCheck:       values.CertCheck,
 			CertWarnDays:    certWarnDays,
-			DomainCheck:     values.DomainCheck,
-			DomainWarnDays:  domainWarnDays,
 		}
 		base.TCP = nil
 		base.Docker = nil
-		if values.DomainCheck {
-			if _, err := domains.DomainForURL(base.HTTP.URL); err != nil {
-				return base, newFormError("error.domainCheck")
-			}
-		}
 	case model.MonitorTypeTCP:
 		port, err := strconv.Atoi(values.Port)
 		if err != nil || port < 1 || port > 65535 {
@@ -716,31 +697,6 @@ func (s *Server) populateMonitorExtras(r *http.Request, view *monitorDetailView,
 					Days:        fmt.Sprintf("%d", days),
 					Fingerprint: cert.Fingerprint,
 					Warning:     days <= monitor.HTTP.CertWarnDays,
-				}
-			}
-		}
-		if monitor.HTTP.DomainCheck {
-			view.DomainEnabled = true
-			if domain, err := domains.DomainForURL(monitor.HTTP.URL); err == nil {
-				if info, err := s.store.DomainInfo(r.Context(), domain); err == nil {
-					days := 0
-					daysText := "—"
-					warning := domains.HasSuspensionStatus(info.Statuses)
-					if !info.ExpiresAt.IsZero() {
-						days = int(info.ExpiresAt.Sub(now).Hours() / 24)
-						daysText = fmt.Sprintf("%d", days)
-						warning = warning || days <= monitor.HTTP.DomainWarnDays
-					}
-					view.Domain = &domainDetailView{
-						Domain:    info.Domain,
-						Registrar: info.Registrar,
-						Expires:   formatTime(translator, info.ExpiresAt, location),
-						Days:      daysText,
-						Statuses:  strings.Join(info.Statuses, ", "),
-						Fetched:   formatTime(translator, info.FetchedAt, location),
-						Error:     info.Error,
-						Warning:   warning,
-					}
 				}
 			}
 		}

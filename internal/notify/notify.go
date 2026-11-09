@@ -602,18 +602,6 @@ func (s *Service) genericWebhookBody(notification model.Notification, text strin
 			"days_remaining": int(notification.Cert.NotAfter.Sub(notification.OccurredAt).Hours() / 24),
 		}
 	}
-	if notification.Kind == model.EventWarnDomain && notification.Domain != nil {
-		domainDetails := map[string]any{
-			"name":      notification.Domain.Domain,
-			"registrar": notification.Domain.Registrar,
-			"statuses":  notification.Domain.Statuses,
-		}
-		if !notification.Domain.ExpiresAt.IsZero() {
-			domainDetails["expires_at"] = notification.Domain.ExpiresAt.UTC().Format(time.RFC3339)
-			domainDetails["days_remaining"] = int(notification.Domain.ExpiresAt.Sub(notification.OccurredAt).Hours() / 24)
-		}
-		details["domain"] = domainDetails
-	}
 	if len(details) > 0 {
 		payload.Details = details
 	}
@@ -671,27 +659,6 @@ func (s *Service) renderBase(language string, location *time.Location, notificat
 			days,
 			formatTime(notification.Cert.NotAfter, location),
 			notification.Cert.Issuer,
-		)
-	case model.EventWarnDomain:
-		if notification.Domain == nil {
-			return translator.Tf("notify.down", notification.MonitorName, target, notification.Message, formatTime(notification.OccurredAt, location))
-		}
-		if notification.Domain.ExpiresAt.IsZero() {
-			return translator.Tf("notify.warnDomainNoExpiry",
-				notification.MonitorName,
-				notification.Domain.Domain,
-				notification.Domain.Registrar,
-				strings.Join(notification.Domain.Statuses, ", "),
-			)
-		}
-		days := int(notification.Domain.ExpiresAt.Sub(notification.OccurredAt).Hours() / 24)
-		return translator.Tf("notify.warnDomain",
-			notification.MonitorName,
-			notification.Domain.Domain,
-			days,
-			formatTime(notification.Domain.ExpiresAt, location),
-			notification.Domain.Registrar,
-			strings.Join(notification.Domain.Statuses, ", "),
 		)
 	default:
 		return notification.Message

@@ -329,19 +329,6 @@ func TestNotificationsEnabled(t *testing.T) {
 	}
 }
 
-func TestDomainWarningWithoutExpiry(t *testing.T) {
-	service, _ := testNotifyService(t)
-	text := service.render(i18n.LangEN, model.Notification{
-		Kind:        model.EventWarnDomain,
-		MonitorName: "Example",
-		OccurredAt:  time.Now().UTC(),
-		Domain:      &model.DomainInfo{Domain: "example.com", Statuses: []string{"clientHold"}},
-	})
-	if !strings.Contains(text, "Expiration: unknown") {
-		t.Fatalf("text = %q", text)
-	}
-}
-
 func TestRecoveryDoesNotBlockNewNotifications(t *testing.T) {
 	service, st := testNotifyService(t)
 	slowStarted := make(chan struct{})

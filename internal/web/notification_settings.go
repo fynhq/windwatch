@@ -80,6 +80,8 @@ func notificationReasonKey(dedupeKey string) string {
 		return "notification.reason.recovery"
 	case strings.HasPrefix(dedupeKey, "down:"), strings.HasPrefix(dedupeKey, "remind_down:"):
 		return "notification.reason.down"
+	// Historical rows may still use warn_domain from the removed domain expiry
+	// feature; keep them readable until retention expires.
 	case strings.HasPrefix(dedupeKey, "warn_cert:"),
 		strings.HasPrefix(dedupeKey, "warn_domain:"),
 		strings.HasPrefix(dedupeKey, "remind_warning:"):

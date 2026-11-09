@@ -52,8 +52,6 @@ type HTTPConfig struct {
 	TLSSkipVerify   bool   `json:"tls_skip_verify,omitempty"`
 	CertCheck       bool   `json:"cert_check,omitempty"`
 	CertWarnDays    int    `json:"cert_warn_days,omitempty"`
-	DomainCheck     bool   `json:"domain_check,omitempty"`
-	DomainWarnDays  int    `json:"domain_warn_days,omitempty"`
 }
 
 type TCPConfig struct {
@@ -103,7 +101,7 @@ type MonitorState struct {
 	ConsecutiveFailures  int
 	ConsecutiveSuccesses int
 	UpdatedAt            time.Time
-	// WarningContext identifies the certificate/domain warning episode. It is
+	// WarningContext identifies the certificate warning episode. It is
 	// persisted so a restart does not turn an ongoing warning into a new one.
 	WarningContext string
 }
@@ -142,10 +140,9 @@ type Check struct {
 type EventType string
 
 const (
-	EventDown       EventType = "down"
-	EventUp         EventType = "up"
-	EventWarnCert   EventType = "warn_cert"
-	EventWarnDomain EventType = "warn_domain"
+	EventDown     EventType = "down"
+	EventUp       EventType = "up"
+	EventWarnCert EventType = "warn_cert"
 )
 
 type Event struct {
@@ -209,7 +206,6 @@ var (
 	ErrTCPPort         = errors.New("invalid TCP port")
 	ErrDockerContainer = errors.New("invalid Docker container")
 	ErrHTTPSCert       = errors.New("certificate checks require HTTPS")
-	ErrDomainCheck     = errors.New("domain checks require an HTTPS public domain")
 )
 
 func (m Monitor) Validate() error {
@@ -417,24 +413,12 @@ func validateHTTPConfig(cfg HTTPConfig) error {
 	if method == "HEAD" && cfg.Keyword != "" {
 		return ErrHTTPKeyword
 	}
-	if cfg.CertCheck || cfg.DomainCheck {
+	if cfg.CertCheck {
 		if parsed.Scheme != "https" {
-			if cfg.CertCheck {
-				return ErrHTTPSCert
-			}
-			return ErrDomainCheck
+			return ErrHTTPSCert
 		}
-	}
-	if cfg.CertCheck && (cfg.CertWarnDays < 1 || cfg.CertWarnDays > 365) {
-		return ErrHTTPSCert
-	}
-	if cfg.DomainCheck {
-		hostname := parsed.Hostname()
-		if cfg.DomainWarnDays < 1 || cfg.DomainWarnDays > 365 {
-			return ErrDomainCheck
-		}
-		if net.ParseIP(hostname) != nil || !strings.Contains(hostname, ".") {
-			return ErrDomainCheck
+		if cfg.CertWarnDays < 1 || cfg.CertWarnDays > 365 {
+			return ErrHTTPSCert
 		}
 	}
 	return nil

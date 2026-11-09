@@ -99,6 +99,7 @@ func TestNotificationChannelsCreateEditTest(t *testing.T) {
 		`data-webhook-format-select`,
 		`name="webhook_format"`,
 		`value="dingtalk"`,
+		`<details class="advanced-section advanced-inline">`,
 		`name="language"`,
 		`/settings/notifications/channels/` + strconv.FormatInt(telegram.ID, 10) + `/test`,
 	} {
@@ -520,7 +521,7 @@ func TestMonitorReminderConfigPerType(t *testing.T) {
 		`name="warning_reminder_count"`,
 		`name="warning_reminder_interval_minutes"`,
 		`name="cert_check"`,
-		`name="domain_check"`,
+		`<details class="advanced-section"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("HTTP monitor form missing %q", want)
@@ -537,7 +538,7 @@ func TestMonitorReminderConfigPerType(t *testing.T) {
 			t.Fatalf("TCP monitor form missing %q", want)
 		}
 	}
-	for _, unwanted := range []string{`name="warning_reminder_count"`, `name="cert_check"`, `name="domain_check"`} {
+	for _, unwanted := range []string{`name="warning_reminder_count"`, `name="cert_check"`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("TCP monitor form should not contain %q", unwanted)
 		}

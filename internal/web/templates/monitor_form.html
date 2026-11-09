@@ -29,56 +29,6 @@
       <span>{{.I18n.T "monitor.url"}}</span>
       <input type="url" name="url" value="{{.Values.URL}}" maxlength="2048" placeholder="https://example.com" required>
     </label>
-    <div class="form-grid">
-      <label class="field">
-        <span>{{.I18n.T "monitor.method"}}</span>
-        <select name="method">
-          <option value="GET" {{if eq .Values.Method "GET"}}selected{{end}}>GET</option>
-          <option value="HEAD" {{if eq .Values.Method "HEAD"}}selected{{end}}>HEAD</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>{{.I18n.T "monitor.expectedStatus"}}</span>
-        <input type="text" name="expected_status" value="{{.Values.ExpectedStatus}}" maxlength="20" placeholder="200-299">
-      </label>
-    </div>
-    <p class="hint">{{.I18n.T "monitor.expectedStatusHint"}}</p>
-    <label class="field">
-      <span>{{.I18n.T "monitor.keyword"}}</span>
-      <input type="text" name="keyword" value="{{.Values.Keyword}}" maxlength="500">
-    </label>
-    <p class="hint">{{.I18n.T "monitor.keywordHint"}}</p>
-    <label class="checkbox-field">
-      <input type="checkbox" name="follow_redirects" value="1" {{if .Values.FollowRedirects}}checked{{end}}>
-      <span>{{.I18n.T "monitor.followRedirects"}}</span>
-    </label>
-    <label class="checkbox-field">
-      <input type="checkbox" name="tls_skip_verify" value="1" {{if .Values.TLSSkipVerify}}checked{{end}}>
-      <span>{{.I18n.T "monitor.tlsSkipVerify"}}</span>
-    </label>
-  </div>
-
-  <div class="form-section">
-    <h2>{{.I18n.T "monitor.optionalChecks"}}</h2>
-    <p class="hint">{{.I18n.T "monitor.optionalChecksHint"}}</p>
-    <div class="form-grid">
-      <label class="checkbox-field">
-        <input type="checkbox" name="cert_check" value="1" data-toggle-target="cert-warn-days" {{if .Values.CertCheck}}checked{{end}}>
-        <span>{{.I18n.T "monitor.certCheck"}}</span>
-      </label>
-      <label class="field">
-        <span>{{.I18n.T "monitor.certWarnDays"}}</span>
-        <input type="number" id="cert-warn-days" name="cert_warn_days" value="{{.Values.CertWarnDays}}" min="1" max="365" {{if not .Values.CertCheck}}disabled{{end}}>
-      </label>
-      <label class="checkbox-field">
-        <input type="checkbox" name="domain_check" value="1" data-toggle-target="domain-warn-days" {{if .Values.DomainCheck}}checked{{end}}>
-        <span>{{.I18n.T "monitor.domainCheck"}}</span>
-      </label>
-      <label class="field">
-        <span>{{.I18n.T "monitor.domainWarnDays"}}</span>
-        <input type="number" id="domain-warn-days" name="domain_warn_days" value="{{.Values.DomainWarnDays}}" min="1" max="365" {{if not .Values.DomainCheck}}disabled{{end}}>
-      </label>
-    </div>
   </div>
   {{end}}
 
@@ -106,10 +56,6 @@
       <span>{{.I18n.T "monitor.container"}}</span>
       <input type="text" name="docker_container" value="{{.Values.DockerContainer}}" maxlength="255" placeholder="my-container" required>
     </label>
-    <label class="checkbox-field">
-      <input type="checkbox" name="docker_healthy" value="1" {{if .Values.DockerHealthy}}checked{{end}}>
-      <span>{{.I18n.T "monitor.requireHealthy"}}</span>
-    </label>
     <p class="hint">{{.I18n.T "monitor.dockerHint"}}</p>
   </div>
   {{end}}
@@ -134,16 +80,7 @@
         <input type="number" name="timeout" value="{{.Values.Timeout}}" min="1" max="300" required>
         <small class="hint">{{if .ShowPush}}{{.I18n.T "monitor.graceHint"}}{{else}}{{.I18n.T "monitor.timeoutHint"}}{{end}}</small>
       </label>
-      <label class="field">
-        <span>{{.I18n.T "monitor.failThreshold"}}</span>
-        <input type="number" name="fail_threshold" value="{{.Values.FailThreshold}}" min="1" max="20" required>
-      </label>
-      <label class="field">
-        <span>{{.I18n.T "monitor.recoverThreshold"}}</span>
-        <input type="number" name="recover_threshold" value="{{.Values.RecoverThreshold}}" min="1" max="20" required>
-      </label>
     </div>
-    <p class="hint">{{.I18n.T "monitor.thresholdHint"}}</p>
   </div>
 
   <div class="form-section">
@@ -170,47 +107,128 @@
     {{else}}
     <p class="hint">{{.I18n.T "monitor.noNotificationChannels"}} <a href="/settings/notifications">{{.I18n.T "monitor.manageNotifications"}}</a></p>
     {{end}}
-    <div class="field-group">
-      <h3 class="subheading">{{.I18n.T "notification.reminders"}}</h3>
-      <p class="hint">{{.I18n.T "notification.remindersHint"}}</p>
-      <div class="form-grid">
-        <label class="field">
-          <span>{{.I18n.T "notification.failureReminderCount"}}</span>
-          <input type="number" name="failure_reminder_count" min="0" max="100" value="{{.Values.FailureReminderCount}}">
-        </label>
-        <label class="field">
-          <span>{{.I18n.T "notification.failureReminderInterval"}}</span>
-          <input type="number" name="failure_reminder_interval_minutes" min="1" max="525600" value="{{.Values.FailureReminderMinutes}}">
-        </label>
-        {{if .ShowHTTP}}
-        <label class="field">
-          <span>{{.I18n.T "notification.warningReminderCount"}}</span>
-          <input type="number" name="warning_reminder_count" min="0" max="100" value="{{.Values.WarningReminderCount}}">
-        </label>
-        <label class="field">
-          <span>{{.I18n.T "notification.warningReminderInterval"}}</span>
-          <input type="number" name="warning_reminder_interval_minutes" min="1" max="525600" value="{{.Values.WarningReminderMinutes}}">
-        </label>
-        {{end}}
-      </div>
-    </div>
   </div>
 
-  {{if .ShowProxy}}
-  <div class="form-section">
-    <h2>{{.I18n.T "monitor.egressSection"}}</h2>
-    <label class="field">
-      <span>{{.I18n.T "monitor.egress"}}</span>
-      <select name="proxy_id">
-        <option value="">{{.I18n.T "monitor.direct"}}</option>
-        {{range .Proxies}}
-        <option value="{{.ID}}" {{if eq $.Values.ProxyID (printf "%d" .ID)}}selected{{end}}>{{.Name}} ({{.Type}})</option>
-        {{end}}
-      </select>
-    </label>
-    <p class="hint">{{.I18n.T "monitor.egressHint"}} <a href="/settings/proxies">{{.I18n.T "nav.settings"}}</a></p>
-  </div>
-  {{end}}
+  <details class="advanced-section"{{if .Error}} open{{end}}>
+    <summary>{{.I18n.T "common.advanced"}}</summary>
+    <div class="advanced-body">
+      <p class="hint">{{.I18n.T "common.advancedHint"}}</p>
+
+      {{if .ShowHTTP}}
+      <div class="form-section">
+        <h2>{{.I18n.T "monitor.requestOptions"}}</h2>
+        <div class="form-grid">
+          <label class="field">
+            <span>{{.I18n.T "monitor.method"}}</span>
+            <select name="method">
+              <option value="GET" {{if eq .Values.Method "GET"}}selected{{end}}>GET</option>
+              <option value="HEAD" {{if eq .Values.Method "HEAD"}}selected{{end}}>HEAD</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>{{.I18n.T "monitor.expectedStatus"}}</span>
+            <input type="text" name="expected_status" value="{{.Values.ExpectedStatus}}" maxlength="20" placeholder="200-299">
+          </label>
+        </div>
+        <p class="hint">{{.I18n.T "monitor.expectedStatusHint"}}</p>
+        <label class="field">
+          <span>{{.I18n.T "monitor.keyword"}}</span>
+          <input type="text" name="keyword" value="{{.Values.Keyword}}" maxlength="500">
+        </label>
+        <p class="hint">{{.I18n.T "monitor.keywordHint"}}</p>
+        <label class="checkbox-field">
+          <input type="checkbox" name="follow_redirects" value="1" {{if .Values.FollowRedirects}}checked{{end}}>
+          <span>{{.I18n.T "monitor.followRedirects"}}</span>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="tls_skip_verify" value="1" {{if .Values.TLSSkipVerify}}checked{{end}}>
+          <span>{{.I18n.T "monitor.tlsSkipVerify"}}</span>
+        </label>
+      </div>
+
+      <div class="form-section">
+        <h2>{{.I18n.T "monitor.optionalChecks"}}</h2>
+        <p class="hint">{{.I18n.T "monitor.optionalChecksHint"}}</p>
+        <div class="form-grid">
+          <label class="checkbox-field">
+            <input type="checkbox" name="cert_check" value="1" data-toggle-target="cert-warn-days" {{if .Values.CertCheck}}checked{{end}}>
+            <span>{{.I18n.T "monitor.certCheck"}}</span>
+          </label>
+          <label class="field">
+            <span>{{.I18n.T "monitor.certWarnDays"}}</span>
+            <input type="number" id="cert-warn-days" name="cert_warn_days" value="{{.Values.CertWarnDays}}" min="1" max="365" {{if not .Values.CertCheck}}disabled{{end}}>
+          </label>
+        </div>
+      </div>
+      {{end}}
+
+      {{if .ShowDocker}}
+      <div class="form-section">
+        <h2>{{.I18n.T "monitor.dockerHealthSection"}}</h2>
+        <label class="checkbox-field">
+          <input type="checkbox" name="docker_healthy" value="1" {{if .Values.DockerHealthy}}checked{{end}}>
+          <span>{{.I18n.T "monitor.requireHealthy"}}</span>
+        </label>
+      </div>
+      {{end}}
+
+      <div class="form-section">
+        <h2>{{.I18n.T "monitor.thresholdSection"}}</h2>
+        <div class="form-grid">
+          <label class="field">
+            <span>{{.I18n.T "monitor.failThreshold"}}</span>
+            <input type="number" name="fail_threshold" value="{{.Values.FailThreshold}}" min="1" max="20">
+          </label>
+          <label class="field">
+            <span>{{.I18n.T "monitor.recoverThreshold"}}</span>
+            <input type="number" name="recover_threshold" value="{{.Values.RecoverThreshold}}" min="1" max="20">
+          </label>
+        </div>
+        <p class="hint">{{.I18n.T "monitor.thresholdHint"}}</p>
+      </div>
+
+      <div class="form-section">
+        <h2>{{.I18n.T "notification.reminders"}}</h2>
+        <p class="hint">{{.I18n.T "notification.remindersHint"}}</p>
+        <div class="form-grid">
+          <label class="field">
+            <span>{{.I18n.T "notification.failureReminderCount"}}</span>
+            <input type="number" name="failure_reminder_count" min="0" max="100" value="{{.Values.FailureReminderCount}}">
+          </label>
+          <label class="field">
+            <span>{{.I18n.T "notification.failureReminderInterval"}}</span>
+            <input type="number" name="failure_reminder_interval_minutes" min="1" max="525600" value="{{.Values.FailureReminderMinutes}}">
+          </label>
+          {{if .ShowHTTP}}
+          <label class="field">
+            <span>{{.I18n.T "notification.warningReminderCount"}}</span>
+            <input type="number" name="warning_reminder_count" min="0" max="100" value="{{.Values.WarningReminderCount}}">
+          </label>
+          <label class="field">
+            <span>{{.I18n.T "notification.warningReminderInterval"}}</span>
+            <input type="number" name="warning_reminder_interval_minutes" min="1" max="525600" value="{{.Values.WarningReminderMinutes}}">
+          </label>
+          {{end}}
+        </div>
+      </div>
+
+      {{if .ShowProxy}}
+      <div class="form-section">
+        <h2>{{.I18n.T "monitor.egressSection"}}</h2>
+        <label class="field">
+          <span>{{.I18n.T "monitor.egress"}}</span>
+          <select name="proxy_id">
+            <option value="">{{.I18n.T "monitor.direct"}}</option>
+            {{range .Proxies}}
+            <option value="{{.ID}}" {{if eq $.Values.ProxyID (printf "%d" .ID)}}selected{{end}}>{{.Name}} ({{.Type}})</option>
+            {{end}}
+          </select>
+        </label>
+        <p class="hint">{{.I18n.T "monitor.egressHint"}} <a href="/settings/proxies">{{.I18n.T "nav.settings"}}</a></p>
+      </div>
+      {{end}}
+    </div>
+  </details>
 
   <div class="form-actions">
     <button class="button button-primary" type="submit">{{if .IsEdit}}{{.I18n.T "monitor.saveChanges"}}{{else}}{{.I18n.T "monitor.save"}}{{end}}</button>

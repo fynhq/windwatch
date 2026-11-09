@@ -465,17 +465,55 @@ func TestMonitorFormLayout(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("edit form status=%d body=%s", response.StatusCode, body)
 	}
-	for _, expected := range []string{`id="monitor-form"`, `form="monitor-form"`, `<h2>Basics</h2>`, `<h2>HTTP request</h2>`, `<h2>Schedule and thresholds</h2>`, `<h2>Notifications</h2>`} {
+	for _, expected := range []string{
+		`id="monitor-form"`,
+		`form="monitor-form"`,
+		`<h2>Basics</h2>`,
+		`<h2>HTTP request</h2>`,
+		`<h2>Schedule</h2>`,
+		`<h2>Notifications</h2>`,
+		`<details class="advanced-section">`,
+		`<h2>Request options</h2>`,
+		`<h2>Thresholds</h2>`,
+		`<h2>Reminders</h2>`,
+		`<h2>Outbound connection</h2>`,
+	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("edit form missing %q: %s", expected, body)
 		}
 	}
 	basic := strings.Index(body, "<h2>Basics</h2>")
 	httpSection := strings.Index(body, "<h2>HTTP request</h2>")
-	schedule := strings.Index(body, "<h2>Schedule and thresholds</h2>")
+	schedule := strings.Index(body, "<h2>Schedule</h2>")
 	notifications := strings.Index(body, "<h2>Notifications</h2>")
-	if !(basic >= 0 && basic < httpSection && httpSection < schedule && schedule < notifications) {
-		t.Fatalf("form section order = %d, %d, %d, %d", basic, httpSection, schedule, notifications)
+	advanced := strings.Index(body, `<details class="advanced-section">`)
+	if !(basic >= 0 && basic < httpSection && httpSection < schedule && schedule < notifications && notifications < advanced) {
+		t.Fatalf("form section order = %d, %d, %d, %d, %d", basic, httpSection, schedule, notifications, advanced)
+	}
+}
+
+func TestMonitorFormAdvancedOpensOnError(t *testing.T) {
+	_, _, testServer := newWebTestServer(t)
+	adminClient, csrf := setupAdminSession(t, testServer)
+
+	response, err := adminClient.PostForm(testServer.URL+"/monitors", url.Values{
+		"csrf_token":        {csrf},
+		"type":              {"http"},
+		"name":              {"Invalid threshold"},
+		"url":               {"https://example.com"},
+		"method":            {"GET"},
+		"expected_status":   {"200-299"},
+		"interval":          {"60"},
+		"timeout":           {"10"},
+		"fail_threshold":    {"0"},
+		"recover_threshold": {"1"},
+	})
+	if err != nil {
+		t.Fatalf("POST invalid monitor: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(body, `<details class="advanced-section" open>`) {
+		t.Fatalf("advanced section did not open on validation error: status=%d", response.StatusCode)
 	}
 }
 

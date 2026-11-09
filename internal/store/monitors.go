@@ -669,7 +669,7 @@ func (s *Store) SetMonitorPendingAfterResume(ctx context.Context, monitorID int6
 	return nil
 }
 
-// SetWarningContext records the current certificate/domain warning episode.
+// SetWarningContext records the current certificate warning episode.
 // Persisting it keeps a restart from resetting status_since and re-notifying.
 func (s *Store) SetWarningContext(ctx context.Context, monitorID int64, value string) error {
 	if _, err := s.db.ExecContext(ctx, `

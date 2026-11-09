@@ -55,7 +55,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 
 	expectedTables := []string{
 		"admin", "sessions", "settings", "proxies", "monitors", "monitor_state",
-		"checks", "events", "push_tokens", "cert_info", "domain_info",
+		"checks", "events", "push_tokens", "cert_info",
 		"notification_channels", "monitor_notifications", "notify_log",
 		"notification_reminders", "rollups", "notification_outbox",
 	}
@@ -68,6 +68,14 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("missing table %s", table)
 		}
+	}
+	var droppedDomainTable int
+	if err := st.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'domain_info'").Scan(&droppedDomainTable); err != nil {
+		t.Fatalf("check dropped domain table: %v", err)
+	}
+	if droppedDomainTable != 0 {
+		t.Fatal("domain_info table should be dropped")
 	}
 	var cleanupIndexes int
 	if err := st.db.QueryRowContext(ctx, `

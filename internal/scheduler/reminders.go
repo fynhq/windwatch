@@ -17,7 +17,6 @@ func (s *Scheduler) processReminders(
 	ctx context.Context,
 	monitor model.Monitor,
 	result model.CheckResult,
-	warning auxWarning,
 	warningActive bool,
 	nextState model.MonitorState,
 	previousStatus model.MonitorStatus,
@@ -66,7 +65,7 @@ func (s *Scheduler) processReminders(
 
 	contextKey := ""
 	if currentKind == reminderKindWarning {
-		contextKey = warningReminderContext(monitor, warning, result)
+		contextKey = warningReminderContext(monitor, result)
 	}
 	state, found, err := s.store.ReminderState(ctx, monitor.ID, currentKind)
 	if err != nil {
@@ -100,7 +99,7 @@ func (s *Scheduler) processReminders(
 	if currentKind == reminderKindDown {
 		downtimeStart = s.outageStart(ctx, monitor.ID, nextState.StatusSince, checkedAt)
 	}
-	notification := s.buildReminderNotification(monitor, result, warning, nextState, checkedAt, currentKind, contextKey, sequence, count, downtimeStart)
+	notification := s.buildReminderNotification(monitor, result, nextState, checkedAt, currentKind, contextKey, sequence, count, downtimeStart)
 	if !s.notifier.Enqueue(notification) {
 		s.log.Error("persist reminder notification", "monitor_id", monitor.ID, "kind", currentKind, "error", "notification outbox is unavailable")
 		return
@@ -116,7 +115,6 @@ func (s *Scheduler) processReminders(
 func (s *Scheduler) buildReminderNotification(
 	monitor model.Monitor,
 	result model.CheckResult,
-	warning auxWarning,
 	nextState model.MonitorState,
 	checkedAt time.Time,
 	kind, contextKey string,
@@ -145,24 +143,18 @@ func (s *Scheduler) buildReminderNotification(
 			ReminderTotal:  total,
 		}
 	}
-	notification := s.warningNotification(monitor, result, warning, nextState, checkedAt)
+	notification := s.warningNotification(monitor, result, nextState, checkedAt)
 	notification.Key = fmt.Sprintf("remind_warning:%d:%s:%d:%d", monitor.ID, contextKey, nextState.StatusSince.UnixMilli(), sequence)
 	notification.Reminder = sequence
 	notification.ReminderTotal = total
 	return notification
 }
 
-func warningReminderContext(monitor model.Monitor, warning auxWarning, result model.CheckResult) string {
-	if monitor.HTTP == nil {
+func warningReminderContext(monitor model.Monitor, result model.CheckResult) string {
+	if monitor.HTTP == nil || result.Certificate == nil {
 		return "warning"
 	}
-	if warning.cert && result.Certificate != nil {
-		return fmt.Sprintf("cert:%s:%d", result.Certificate.Fingerprint, monitor.HTTP.CertWarnDays)
-	}
-	if warning.domainInfo != nil {
-		return fmt.Sprintf("domain:%s:%d:%d", warning.domainName, warning.domainInfo.ExpiresAt.UnixMilli(), monitor.HTTP.DomainWarnDays)
-	}
-	return "warning"
+	return fmt.Sprintf("cert:%s:%d", result.Certificate.Fingerprint, monitor.HTTP.CertWarnDays)
 }
 
 func (s *Scheduler) clearReminderStates(ctx context.Context, monitorID int64) {

@@ -146,7 +146,7 @@ func TestReplacePushTokenResetsHeartbeatAndState(t *testing.T) {
 	}
 }
 
-func TestCertificateAndDomainInfo(t *testing.T) {
+func TestCertificateInfo(t *testing.T) {
 	ctx := context.Background()
 	st := openTestStore(t)
 	if err := st.Migrate(ctx); err != nil {
@@ -186,20 +186,5 @@ func TestCertificateAndDomainInfo(t *testing.T) {
 	latest, err := st.LatestCertificate(ctx, id)
 	if err != nil || latest.Fingerprint != "fp" || latest.NotAfter.IsZero() {
 		t.Fatalf("LatestCertificate=%+v err=%v", latest, err)
-	}
-
-	info := model.DomainInfo{
-		Domain:    "example.com",
-		Registrar: "Example Registrar",
-		Statuses:  []string{"clientTransferProhibited"},
-		ExpiresAt: now.Add(365 * 24 * time.Hour),
-		FetchedAt: now,
-	}
-	if err := st.UpsertDomainInfo(ctx, info); err != nil {
-		t.Fatalf("UpsertDomainInfo: %v", err)
-	}
-	stored, err := st.DomainInfo(ctx, "example.com")
-	if err != nil || stored.Registrar != info.Registrar || len(stored.Statuses) != 1 {
-		t.Fatalf("DomainInfo=%+v err=%v", stored, err)
 	}
 }

@@ -281,23 +281,13 @@ func TestUptimeStatsForMonitorsCombined(t *testing.T) {
 	assertStats("rollup plus tail")
 }
 
-func TestUnreferencedCertificateAndDomainCleanup(t *testing.T) {
+func TestUnreferencedCertificateCleanup(t *testing.T) {
 	st := newStoreTest(t)
 	now := time.Now().UTC()
 	if err := st.UpsertCertificate(t.Context(), model.CertificateInfo{
 		Fingerprint: "cert-fp", Subject: "CN=example", Issuer: "CA", NotAfter: now.Add(30 * 24 * time.Hour),
 	}); err != nil {
 		t.Fatalf("UpsertCertificate: %v", err)
-	}
-	if err := st.UpsertDomainInfo(t.Context(), model.DomainInfo{
-		Domain: "old.example", FetchedAt: now.Add(-100 * 24 * time.Hour),
-	}); err != nil {
-		t.Fatalf("UpsertDomainInfo old: %v", err)
-	}
-	if err := st.UpsertDomainInfo(t.Context(), model.DomainInfo{
-		Domain: "fresh.example", FetchedAt: now,
-	}); err != nil {
-		t.Fatalf("UpsertDomainInfo fresh: %v", err)
 	}
 	if err := st.DeleteUnreferencedCertificates(t.Context(), now.Add(time.Hour)); err != nil {
 		t.Fatalf("DeleteUnreferencedCertificates: %v", err)
@@ -309,14 +299,5 @@ func TestUnreferencedCertificateAndDomainCleanup(t *testing.T) {
 	}
 	if certCount != 0 {
 		t.Fatal("certificate was not cleaned up")
-	}
-	if err := st.DeleteDomainInfoBefore(t.Context(), now.Add(-90*24*time.Hour)); err != nil {
-		t.Fatalf("DeleteDomainInfoBefore: %v", err)
-	}
-	if _, err := st.DomainInfo(t.Context(), "old.example"); err == nil {
-		t.Fatal("old domain info was not cleaned up")
-	}
-	if _, err := st.DomainInfo(t.Context(), "fresh.example"); err != nil {
-		t.Fatalf("fresh domain info: %v", err)
 	}
 }

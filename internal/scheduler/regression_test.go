@@ -201,8 +201,8 @@ func TestWarningKeyIncludesEpisodeStart(t *testing.T) {
 	}
 	s := &Scheduler{}
 	cert := &model.CertificateInfo{Fingerprint: "fp", NotAfter: time.Now().Add(24 * time.Hour)}
-	first := s.warningNotification(monitor, model.CheckResult{Certificate: cert}, auxWarning{cert: true}, model.MonitorState{Status: model.StatusWarning, StatusSince: time.UnixMilli(1000)}, time.Now())
-	second := s.warningNotification(monitor, model.CheckResult{Certificate: cert}, auxWarning{cert: true}, model.MonitorState{Status: model.StatusWarning, StatusSince: time.UnixMilli(2000)}, time.Now())
+	first := s.warningNotification(monitor, model.CheckResult{Certificate: cert}, model.MonitorState{Status: model.StatusWarning, StatusSince: time.UnixMilli(1000)}, time.Now())
+	second := s.warningNotification(monitor, model.CheckResult{Certificate: cert}, model.MonitorState{Status: model.StatusWarning, StatusSince: time.UnixMilli(2000)}, time.Now())
 	if first.Key == second.Key {
 		t.Fatalf("warning keys for different episodes must differ: %q", first.Key)
 	}

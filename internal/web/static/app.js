@@ -787,22 +787,16 @@
       return;
     }
     var cert = document.querySelector("input[name='cert_check']");
-    var domain = document.querySelector("input[name='domain_check']");
-    if (!cert && !domain) {
+    if (!cert) {
       return;
     }
     function refresh() {
       var value = urlInput.value.trim();
       var plainHTTP = /^http:\/\//i.test(value);
-      [cert, domain].forEach(function (checkbox) {
-        if (!checkbox) {
-          return;
-        }
-        if (plainHTTP) {
-          checkbox.checked = false;
-        }
-        checkbox.disabled = plainHTTP;
-      });
+      if (plainHTTP) {
+        cert.checked = false;
+      }
+      cert.disabled = plainHTTP;
       refreshToggles();
     }
     urlInput.addEventListener("input", refresh);

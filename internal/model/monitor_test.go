@@ -106,18 +106,6 @@ func TestHTTPSOptionalValidation(t *testing.T) {
 	if err := monitor.Validate(); !errors.Is(err, ErrHTTPSCert) {
 		t.Fatalf("certificate over HTTP error = %v", err)
 	}
-
-	monitor = validHTTPMonitor()
-	monitor.HTTP.DomainCheck = true
-	monitor.HTTP.DomainWarnDays = 30
-	if err := monitor.Validate(); err != nil {
-		t.Fatalf("valid domain check: %v", err)
-	}
-
-	monitor.HTTP.URL = "https://127.0.0.1"
-	if err := monitor.Validate(); !errors.Is(err, ErrDomainCheck) {
-		t.Fatalf("IP domain check error = %v", err)
-	}
 }
 
 func TestMonitorValidateTCP(t *testing.T) {

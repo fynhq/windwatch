@@ -96,7 +96,6 @@ func TestProxySettingsAndMonitorSelection(t *testing.T) {
 		"recover_threshold": {"1"},
 		"proxy_id":          {strconv.FormatInt(proxyID, 10)},
 		"cert_warn_days":    {"14"},
-		"domain_warn_days":  {"30"},
 	})
 	if err != nil {
 		t.Fatalf("POST proxied monitor: %v", err)

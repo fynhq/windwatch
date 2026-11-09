@@ -270,48 +270,6 @@ func TestApplyEnqueuesWarningNotificationsOnce(t *testing.T) {
 		t.Fatalf("renewed certificate notifications = %+v", sink.notifications)
 	}
 
-	domainMonitor := model.Monitor{
-		Name:                   "Domain",
-		Type:                   model.MonitorTypeHTTP,
-		HTTP:                   &model.HTTPConfig{URL: "https://example.org", Method: "GET", ExpectedStatus: "200-299", DomainCheck: true, DomainWarnDays: 30},
-		Interval:               time.Minute,
-		Timeout:                time.Second,
-		FailThreshold:          1,
-		RecoverThreshold:       1,
-		NotifyEnabled:          true,
-		Enabled:                true,
-		NotificationChannelIDs: []int64{channelID},
-	}
-	domainID, err := st.CreateMonitor(t.Context(), domainMonitor, now)
-	if err != nil {
-		t.Fatalf("CreateMonitor domain: %v", err)
-	}
-	info := model.DomainInfo{
-		Domain:    "example.org",
-		Registrar: "Test Registrar",
-		Statuses:  []string{"clientTransferProhibited"},
-		ExpiresAt: now.Add(10 * 24 * time.Hour),
-		FetchedAt: now,
-	}
-	if err := st.UpsertDomainInfo(t.Context(), info); err != nil {
-		t.Fatalf("UpsertDomainInfo: %v", err)
-	}
-	s.apply(t.Context(), outcome{
-		monitorID: domainID,
-		result:    model.CheckResult{Success: true},
-		checkedAt: now,
-	})
-	if len(sink.notifications) != 3 {
-		t.Fatalf("domain notifications = %d, want 3", len(sink.notifications))
-	}
-	domainWarning := sink.notifications[2]
-	if domainWarning.Kind != model.EventWarnDomain || domainWarning.Status != model.StatusWarning ||
-		domainWarning.Domain == nil || domainWarning.Domain.Domain != "example.org" {
-		t.Fatalf("unexpected domain warning: %+v", domainWarning)
-	}
-	if !strings.HasPrefix(domainWarning.Key, "warn_domain:example.org:") {
-		t.Fatalf("domain warning key = %q", domainWarning.Key)
-	}
 }
 
 func TestDisabledChannelsDoNotConsumeReminders(t *testing.T) {

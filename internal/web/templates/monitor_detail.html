@@ -187,28 +187,6 @@
     </section>
     {{end}}
 
-    {{if .Monitor.DomainEnabled}}
-    <section class="panel detail-panel">
-      <div class="panel-head">
-        <h2>{{.I18n.T "monitor.domainTitle"}}</h2>
-        {{if .Monitor.Domain}}{{if .Monitor.Domain.Warning}}<span class="status-pill status-warning">{{.I18n.T "status.warning"}}</span>{{end}}{{end}}
-      </div>
-      {{if .Monitor.Domain}}
-      <dl class="config-list">
-        <div><dt>{{.I18n.T "monitor.domainName"}}</dt><dd>{{.Monitor.Domain.Domain}}</dd></div>
-        <div><dt>{{.I18n.T "monitor.domainRegistrar"}}</dt><dd>{{if .Monitor.Domain.Registrar}}{{.Monitor.Domain.Registrar}}{{else}}—{{end}}</dd></div>
-        <div><dt>{{.I18n.T "monitor.domainExpires"}}</dt><dd>{{.Monitor.Domain.Expires}}</dd></div>
-        <div><dt>{{.I18n.T "monitor.domainDays"}}</dt><dd>{{.Monitor.Domain.Days}}</dd></div>
-        <div><dt>{{.I18n.T "monitor.domainStatus"}}</dt><dd>{{if .Monitor.Domain.Statuses}}{{.Monitor.Domain.Statuses}}{{else}}—{{end}}</dd></div>
-        <div><dt>{{.I18n.T "monitor.domainFetched"}}</dt><dd>{{.Monitor.Domain.Fetched}}</dd></div>
-      </dl>
-      {{if .Monitor.Domain.Error}}<p class="alert alert-error">{{.I18n.T "monitor.domainRefreshFailed"}}<br>{{.Monitor.Domain.Error}}</p>{{end}}
-      {{else}}
-      <p class="muted">{{.I18n.T "monitor.domainUnavailable"}}</p>
-      {{end}}
-    </section>
-    {{end}}
-
     <section class="panel detail-panel">
       <div class="panel-head"><h2>{{.I18n.T "monitor.config"}}</h2>{{if .IsAdmin}}<a href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>{{end}}</div>
       <dl class="config-list">

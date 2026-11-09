@@ -352,6 +352,39 @@
   border-top: 1px solid var(--border);
 }
 
+.advanced-section {
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.advanced-section > summary {
+  padding: 16px 0;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.advanced-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.advanced-body {
+  display: grid;
+  gap: 18px;
+  padding: 16px 0;
+}
+
+.advanced-inline {
+  margin: 4px 0;
+}
+
+.advanced-inline .advanced-body {
+  padding: 12px 0;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

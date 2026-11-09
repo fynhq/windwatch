@@ -3,6 +3,7 @@ package checker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -62,6 +63,10 @@ func newDockerChecker(host string) *dockerChecker {
 	transport := &http.Transport{}
 	baseURL := "http://docker"
 	switch {
+	case host == "":
+		transport.DialContext = func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("Docker endpoint is not configured; set DOCKER_HOST")
+		}
 	case strings.HasPrefix(host, "unix://"):
 		socketPath := strings.TrimPrefix(host, "unix://")
 		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -77,15 +82,6 @@ func newDockerChecker(host string) *dockerChecker {
 		socketPath := host
 		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "unix", socketPath)
-		}
-	case strings.HasPrefix(host, "npipe://"):
-		dialer, err := dockerNPipeDialer(host)
-		if err != nil {
-			transport.DialContext = func(context.Context, string, string) (net.Conn, error) {
-				return nil, err
-			}
-		} else {
-			transport.DialContext = dialer
 		}
 	default:
 		transport.DialContext = func(context.Context, string, string) (net.Conn, error) {
