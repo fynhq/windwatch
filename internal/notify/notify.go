@@ -28,7 +28,6 @@ import (
 )
 
 const (
-	maxQueueSize  = 128
 	maxRetryAfter = 30 * time.Second
 )
 
@@ -37,7 +36,7 @@ type Service struct {
 	cipher          *secret.Cipher
 	catalogs        *i18n.Catalogs
 	log             *slog.Logger
-	queue           chan model.Notification
+	wake            chan struct{}
 	wg              sync.WaitGroup
 	telegramBaseURL string
 
@@ -58,7 +57,7 @@ func New(st *store.Store, cipher *secret.Cipher, catalogs *i18n.Catalogs, logger
 		cipher:           cipher,
 		catalogs:         catalogs,
 		log:              logger,
-		queue:            make(chan model.Notification, maxQueueSize),
+		wake:             make(chan struct{}, 1),
 		telegramBaseURL:  "https://api.telegram.org",
 		retryDelays:      []time.Duration{time.Second, 5 * time.Second},
 		retrySchedule:    defaultRetryDelay,
@@ -86,16 +85,9 @@ func (s *Service) Start(ctx context.Context) {
 	}()
 	go func() {
 		defer s.wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case notification := <-s.queue:
-				s.runSafely("dispatch", func() {
-					s.dispatch(ctx, notification)
-				})
-			}
-		}
+		s.runSafely("outbox", func() {
+			s.outboxLoop(ctx)
+		})
 	}()
 }
 
@@ -115,13 +107,17 @@ func (s *Service) Wait() {
 }
 
 func (s *Service) Enqueue(notification model.Notification) bool {
-	select {
-	case s.queue <- notification:
-		return true
-	default:
-		s.log.Warn("notification queue is full", "monitor_id", notification.MonitorID, "event", notification.Kind)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.store.EnqueueNotificationOutbox(ctx, notification, time.Now().UTC()); err != nil {
+		s.log.Error("persist notification outbox", "monitor_id", notification.MonitorID, "event", notification.Kind, "error", err)
 		return false
 	}
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+	return true
 }
 
 func (s *Service) NotificationsEnabled(ctx context.Context) (bool, error) {
@@ -132,17 +128,18 @@ func (s *Service) NotificationsEnabled(ctx context.Context) (bool, error) {
 	return count > 0, nil
 }
 
-func (s *Service) dispatch(ctx context.Context, notification model.Notification) {
+func (s *Service) dispatch(ctx context.Context, notification model.Notification) error {
 	config, err := LoadConfig(ctx, s.store)
 	if err != nil {
 		s.log.Error("load notification settings", "error", err)
-		return
+		return err
 	}
 	channelIDs, err := s.store.NotificationChannelIDsForMonitor(ctx, notification.MonitorID)
 	if err != nil {
 		s.log.Error("load monitor notification channels", "monitor_id", notification.MonitorID, "error", err)
-		return
+		return err
 	}
+	var channelErr error
 	for _, channelID := range channelIDs {
 		channel, err := s.store.NotificationChannelByID(ctx, channelID)
 		if errors.Is(err, store.ErrNotFound) {
@@ -150,6 +147,9 @@ func (s *Service) dispatch(ctx context.Context, notification model.Notification)
 		}
 		if err != nil {
 			s.log.Warn("load notification channel", "channel_id", channelID, "error", err)
+			if channelErr == nil {
+				channelErr = err
+			}
 			continue
 		}
 		if !channel.Enabled {
@@ -159,6 +159,7 @@ func (s *Service) dispatch(ctx context.Context, notification model.Notification)
 			s.log.Warn("send notification", "channel_id", channel.ID, "monitor_id", notification.MonitorID, "kind", notification.Kind, "error", err)
 		}
 	}
+	return channelErr
 }
 
 func (s *Service) Test(ctx context.Context, channelID int64) error {
@@ -266,11 +267,10 @@ func (s *Service) sendTelegramText(ctx context.Context, channel model.Notificati
 		}
 		client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 		if err != nil {
-			sendErr := permanentError{err: fmt.Errorf("notification channel client: %w", err)}
-			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", sendErr)
-			s.recordFailure(ctx, entry, sendErr)
+			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", err)
+			s.recordFailure(ctx, entry, err)
 			if firstErr == nil {
-				firstErr = sendErr
+				firstErr = err
 			}
 			continue
 		}
@@ -398,7 +398,7 @@ func (s *Service) sendWebhookAttempt(ctx context.Context, channel model.Notifica
 	}
 	client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 	if err != nil {
-		return permanentError{err: fmt.Errorf("notification channel client: %w", err)}
+		return err
 	}
 	defer cleanup()
 	return s.sendWebhookOnce(ctx, channel, client, format, secretValue, body)
@@ -709,7 +709,7 @@ func (s *Service) httpClient(ctx context.Context, proxyID *int64) (*http.Client,
 			return nil, func() {}, err
 		}
 		if err := outboundproxy.ApplyHTTPTransport(proxyConfig, transport); err != nil {
-			return nil, func() {}, err
+			return nil, func() {}, permanentError{err: fmt.Errorf("apply notification proxy: %w", err)}
 		}
 	}
 	return &http.Client{
@@ -723,17 +723,24 @@ func (s *Service) httpClient(ctx context.Context, proxyID *int64) (*http.Client,
 
 func (s *Service) resolveProxy(ctx context.Context, proxyID int64) (*outboundproxy.Config, error) {
 	stored, err := s.store.ProxyByID(ctx, proxyID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, permanentError{err: fmt.Errorf("notification proxy no longer exists: %w", err)}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load notification proxy: %w", err)
 	}
 	password := ""
 	if stored.PasswordEnc != "" {
 		password, err = s.cipher.Decrypt(stored.PasswordEnc)
 		if err != nil {
-			return nil, err
+			return nil, permanentError{err: fmt.Errorf("decrypt notification proxy password: %w", err)}
 		}
 	}
-	return outboundproxy.NewConfig(stored.Type, stored.Address, stored.Username, password)
+	config, err := outboundproxy.NewConfig(stored.Type, stored.Address, stored.Username, password)
+	if err != nil {
+		return nil, permanentError{err: fmt.Errorf("invalid notification proxy configuration: %w", err)}
+	}
+	return config, nil
 }
 
 type permanentError struct {

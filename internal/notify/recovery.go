@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
@@ -20,6 +21,7 @@ const (
 	// ordered state notifications on one broken target cannot keep refilling
 	// the batch and starve due rows for other monitors and channels.
 	blockedRetryDefer = 30 * time.Second
+	retryConcurrency  = 4
 )
 
 func defaultRetryDelay(completed int) time.Duration {
@@ -31,15 +33,6 @@ func defaultRetryDelay(completed int) time.Duration {
 	default:
 		return 5 * time.Minute
 	}
-}
-
-func (s *Service) recoverPending(ctx context.Context) {
-	entries, err := s.store.PendingNotifications(ctx, pendingRecoveryCap)
-	if err != nil {
-		s.log.Error("load pending notifications", "error", err)
-		return
-	}
-	s.recoverPendingEntries(ctx, entries)
 }
 
 func (s *Service) recoverPendingEntries(ctx context.Context, entries []model.NotificationLog) {
@@ -59,6 +52,13 @@ func (s *Service) recoverPendingEntries(ctx context.Context, entries []model.Not
 		}
 		if s.expired(entry, time.Now().UTC()) {
 			s.failExpired(recoverCtx, entry, "pending notification expired")
+			continue
+		}
+		if entry.Attempts > 0 && !entry.NextAttemptAt.IsZero() && entry.NextAttemptAt.After(time.Now().UTC()) {
+			// A restart must not bypass a 429/backoff already scheduled for
+			// this row. The retry loop owns it once it becomes due. An initial
+			// claim (attempts == 0) still uses the lease only to avoid a
+			// concurrent sender, so startup recovery may resume it.
 			continue
 		}
 		s.log.Info("resending pending notification", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "created_at", entry.CreatedAt.UTC().Format(time.RFC3339))
@@ -112,25 +112,54 @@ func (s *Service) retryDue(ctx context.Context) {
 		s.log.Error("load due notifications", "error", err)
 		return
 	}
+	// Preserve creation order per channel/target, but let unrelated targets make
+	// progress while one slow channel is waiting on its own timeout.
+	groups := make(map[string][]model.NotificationLog)
+	order := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if retryCtx.Err() != nil {
-			return
+		key := entry.Channel + "\x00" + strconv.FormatInt(entry.ChannelID, 10) + "\x00" + entry.Target
+		if _, ok := groups[key]; !ok {
+			order = append(order, key)
 		}
-		if s.blockedByEarlierState(retryCtx, entry) {
-			s.deferBlocked(retryCtx, entry)
-			continue
-		}
-		if s.expired(entry, time.Now().UTC()) {
-			s.failExpired(retryCtx, entry, "notification retry window expired")
-			continue
-		}
-		s.log.Info("retrying pending notification", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "attempts", entry.Attempts)
-		if err := s.attemptEntry(retryCtx, entry); err != nil {
-			s.recordFailure(retryCtx, entry, err)
-			continue
-		}
-		s.markSent(retryCtx, entry)
+		groups[key] = append(groups[key], entry)
 	}
+
+	semaphore := make(chan struct{}, retryConcurrency)
+	var wg sync.WaitGroup
+	for _, key := range order {
+		group := groups[key]
+		wg.Add(1)
+		semaphore <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer s.recoverTask("retry-group")
+			defer func() { <-semaphore }()
+			for _, entry := range group {
+				if retryCtx.Err() != nil {
+					return
+				}
+				s.retryEntry(retryCtx, entry)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func (s *Service) retryEntry(ctx context.Context, entry model.NotificationLog) {
+	if s.blockedByEarlierState(ctx, entry) {
+		s.deferBlocked(ctx, entry)
+		return
+	}
+	if s.expired(entry, time.Now().UTC()) {
+		s.failExpired(ctx, entry, "notification retry window expired")
+		return
+	}
+	s.log.Info("retrying pending notification", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "attempts", entry.Attempts)
+	if err := s.attemptEntry(ctx, entry); err != nil {
+		s.recordFailure(ctx, entry, err)
+		return
+	}
+	s.markSent(ctx, entry)
 }
 
 func (s *Service) expired(entry model.NotificationLog, now time.Time) bool {
@@ -230,7 +259,7 @@ func (s *Service) attemptEntry(ctx context.Context, entry model.NotificationLog)
 		}
 		client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 		if err != nil {
-			return permanentError{err: fmt.Errorf("notification channel client: %w", err)}
+			return err
 		}
 		defer cleanup()
 		if err := s.postTelegram(ctx, client, token, entry.Target, entry.Payload); err != nil {

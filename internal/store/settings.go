@@ -58,11 +58,6 @@ func (s *Store) SetSettings(ctx context.Context, values map[string]string, now t
 // while the dispatching goroutine is still making its immediate attempts.
 const notificationClaimLease = 2 * time.Minute
 
-func (s *Store) ClaimNotification(ctx context.Context, dedupeKey, channel string, channelID int64, channelName, target, payload, monitorName string, now time.Time) (bool, error) {
-	claimed, _, err := s.ClaimNotificationID(ctx, dedupeKey, channel, channelID, channelName, target, payload, monitorName, now)
-	return claimed, err
-}
-
 func (s *Store) ClaimNotificationID(ctx context.Context, dedupeKey, channel string, channelID int64, channelName, target, payload, monitorName string, now time.Time) (bool, int64, error) {
 	claimedAt := now.UTC()
 	result, err := s.db.ExecContext(ctx, `

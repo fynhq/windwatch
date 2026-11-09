@@ -111,20 +111,24 @@ func TestPendingRecovery(t *testing.T) {
 	webhookChannel := createTestChannel(t, service, st, "Webhook recovery", model.NotificationChannelWebhook, "", webhook.URL, webhookSecret, true)
 
 	now := time.Now().UTC()
-	if _, err := st.ClaimNotification(t.Context(), "pending:telegram", string(telegramChannel.Type), telegramChannel.ID, telegramChannel.Name, "111", "recovered text", "Example site", now.Add(-time.Minute)); err != nil {
+	if _, _, err := st.ClaimNotificationID(t.Context(), "pending:telegram", string(telegramChannel.Type), telegramChannel.ID, telegramChannel.Name, "111", "recovered text", "Example site", now.Add(-time.Minute)); err != nil {
 		t.Fatalf("claim telegram: %v", err)
 	}
-	if _, err := st.ClaimNotification(t.Context(), "pending:webhook", string(webhookChannel.Type), webhookChannel.ID, webhookChannel.Name, webhookChannel.NotificationTarget(), `{"version":1,"event":"down"}`, "Example site", now.Add(-time.Minute)); err != nil {
+	if _, _, err := st.ClaimNotificationID(t.Context(), "pending:webhook", string(webhookChannel.Type), webhookChannel.ID, webhookChannel.Name, webhookChannel.NotificationTarget(), `{"version":1,"event":"down"}`, "Example site", now.Add(-time.Minute)); err != nil {
 		t.Fatalf("claim webhook: %v", err)
 	}
-	if _, err := st.ClaimNotification(t.Context(), "pending:expired", string(telegramChannel.Type), telegramChannel.ID, telegramChannel.Name, "111", "expired text", "Example site", now.Add(-25*time.Hour)); err != nil {
+	if _, _, err := st.ClaimNotificationID(t.Context(), "pending:expired", string(telegramChannel.Type), telegramChannel.ID, telegramChannel.Name, "111", "expired text", "Example site", now.Add(-25*time.Hour)); err != nil {
 		t.Fatalf("claim expired: %v", err)
 	}
-	if _, err := st.ClaimNotification(t.Context(), "pending:empty", string(webhookChannel.Type), webhookChannel.ID, webhookChannel.Name, webhookChannel.NotificationTarget(), "", "Example site", now.Add(-time.Minute)); err != nil {
+	if _, _, err := st.ClaimNotificationID(t.Context(), "pending:empty", string(webhookChannel.Type), webhookChannel.ID, webhookChannel.Name, webhookChannel.NotificationTarget(), "", "Example site", now.Add(-time.Minute)); err != nil {
 		t.Fatalf("claim empty: %v", err)
 	}
 
-	service.recoverPending(t.Context())
+	pending, err := st.PendingNotifications(t.Context(), pendingRecoveryCap)
+	if err != nil {
+		t.Fatalf("PendingNotifications: %v", err)
+	}
+	service.recoverPendingEntries(t.Context(), pending)
 	mu.Lock()
 	telegramCount := len(telegramTexts)
 	webhookCount := len(webhookHits)

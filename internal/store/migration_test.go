@@ -57,7 +57,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		"admin", "sessions", "settings", "proxies", "monitors", "monitor_state",
 		"checks", "events", "push_tokens", "cert_info", "domain_info",
 		"notification_channels", "monitor_notifications", "notify_log",
-		"notification_reminders", "rollups",
+		"notification_reminders", "rollups", "notification_outbox",
 	}
 	for _, table := range expectedTables {
 		var count int

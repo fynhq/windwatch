@@ -366,7 +366,7 @@ func TestRecoveryDoesNotBlockNewNotifications(t *testing.T) {
 	now := time.Now().UTC()
 	channel := createTestChannel(t, service, st, "Recovery hook", model.NotificationChannelWebhook, "", webhook.URL, "", true)
 	monitorID := createTestMonitor(t, st, channel.ID)
-	if ok, err := st.ClaimNotification(t.Context(), "recovery-slow", string(channel.Type), channel.ID, channel.Name, channel.NotificationTarget(), "slow recovery", "Example site", now); err != nil || !ok {
+	if ok, _, err := st.ClaimNotificationID(t.Context(), "recovery-slow", string(channel.Type), channel.ID, channel.Name, channel.NotificationTarget(), "slow recovery", "Example site", now); err != nil || !ok {
 		t.Fatalf("ClaimNotification: ok=%v err=%v", ok, err)
 	}
 

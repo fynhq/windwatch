@@ -455,7 +455,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNotificationChannel: %v", err)
 	}
-	claimed, err := st.ClaimNotification(t.Context(), "down:1:1000", string(channel.Type), channelID, channel.Name, "https://example.com/hook", `{"version":1,"event":"down","text":"delivery-body"}`, "Example site", now)
+	claimed, _, err := st.ClaimNotificationID(t.Context(), "down:1:1000", string(channel.Type), channelID, channel.Name, "https://example.com/hook", `{"version":1,"event":"down","text":"delivery-body"}`, "Example site", now)
 	if err != nil || !claimed {
 		t.Fatalf("ClaimNotification claimed=%v err=%v", claimed, err)
 	}
