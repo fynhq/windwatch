@@ -325,6 +325,27 @@
     return template.replace("%d", visible).replace("%d", total);
   }
 
+  function monitorSelector(target) {
+    return target === "status" ? "[data-status-monitor]" : "[data-monitor-card]";
+  }
+
+  function collectMonitorStatuses(region, target) {
+    var nodes = region.querySelectorAll(monitorSelector(target));
+    var statuses = target === "status" ? [] : {};
+    for (var i = 0; i < nodes.length; i++) {
+      var status = nodes[i].getAttribute("data-status") || "";
+      if (target === "status") {
+        statuses.push(status);
+        continue;
+      }
+      var id = nodes[i].getAttribute("data-monitor-id");
+      if (id) {
+        statuses[id] = status;
+      }
+    }
+    return statuses;
+  }
+
   function setFilterButtons(buttons, active) {
     for (var i = 0; i < buttons.length; i++) {
       var button = buttons[i];
@@ -583,6 +604,42 @@
       }
     }
 
+    function markStatusChanged(card) {
+      card.classList.add("is-status-changed");
+      window.setTimeout(function () {
+        card.classList.remove("is-status-changed");
+      }, 1000);
+    }
+
+    function flashChangedStatuses(previous) {
+      var region = liveRegion();
+      if (!region) {
+        return;
+      }
+      var nodes = region.querySelectorAll(monitorSelector(target));
+      if (target === "status" && previous.length !== nodes.length) {
+        // A whitelist change can reorder the public list; skip that refresh
+        // instead of highlighting cards that only shifted position.
+        return;
+      }
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var status = node.getAttribute("data-status") || "";
+        if (target === "status") {
+          // The public page must not expose monitor IDs, so its cards are
+          // compared by their stable server-rendered order.
+          if (previous[i] && previous[i] !== status) {
+            markStatusChanged(node);
+          }
+          continue;
+        }
+        var id = node.getAttribute("data-monitor-id");
+        if (id && previous[id] && previous[id] !== status) {
+          markStatusChanged(node);
+        }
+      }
+    }
+
     function replaceFragment(html) {
       var active = document.activeElement;
       if (active && active.matches && active.matches("[data-monitor-search]")) {
@@ -596,12 +653,14 @@
         return;
       }
       var focus = captureFocus();
+      var previousStatuses = collectMonitorStatuses(current, target);
       current.innerHTML = next.innerHTML;
       refreshLabelRefs();
       if (target === "dashboard") {
         initMonitorFilters();
       }
       restoreFocus(focus);
+      flashChangedStatuses(previousStatuses);
       startedAt = Date.now();
       updateLabel();
     }
@@ -781,6 +840,69 @@
     });
   }
 
+  function resetPendingForm(form, submitter) {
+    if (form) {
+      form.classList.remove("is-pending");
+      form.removeAttribute("aria-busy");
+    }
+    if (submitter) {
+      submitter.classList.remove("is-pending");
+      submitter.disabled = false;
+      submitter.removeAttribute("data-pending-disabled");
+    }
+  }
+
+  function resetAllPendingForms() {
+    var forms = document.querySelectorAll("form[aria-busy='true']");
+    for (var i = 0; i < forms.length; i++) {
+      forms[i].classList.remove("is-pending");
+      forms[i].removeAttribute("aria-busy");
+    }
+    var buttons = document.querySelectorAll("[data-pending-disabled]");
+    for (var j = 0; j < buttons.length; j++) {
+      buttons[j].classList.remove("is-pending");
+      buttons[j].disabled = false;
+      buttons[j].removeAttribute("data-pending-disabled");
+    }
+  }
+
+  function initPendingForms() {
+    document.addEventListener("submit", function (event) {
+      if (event.defaultPrevented) {
+        return;
+      }
+      var form = event.target;
+      if (!form || form.tagName !== "FORM") {
+        return;
+      }
+      if ((form.getAttribute("method") || "get").toLowerCase() !== "post") {
+        return;
+      }
+      if ((form.getAttribute("action") || "") === "/logout") {
+        return;
+      }
+      var submitter = event.submitter;
+      if (!submitter || !submitter.classList || !submitter.classList.contains("button")) {
+        return;
+      }
+      submitter.disabled = true;
+      submitter.setAttribute("data-pending-disabled", "");
+      form.setAttribute("aria-busy", "true");
+      window.setTimeout(function () {
+        if (event.defaultPrevented) {
+          resetPendingForm(form, submitter);
+          return;
+        }
+        if (!document.body.contains(form)) {
+          return;
+        }
+        form.classList.add("is-pending");
+        submitter.classList.add("is-pending");
+      }, 120);
+    });
+    window.addEventListener("pageshow", resetAllPendingForms);
+  }
+
   function initHTTPSChecks() {
     var urlInput = document.querySelector("input[name='url']");
     if (!urlInput) {
@@ -844,6 +966,9 @@
     initCopyFields();
     initAutoSubmitForms();
     initConfirmForms();
+    // Register after confirm forms so a cancelled confirm is already
+    // defaultPrevented when the pending handler runs.
+    initPendingForms();
     initEventDialog();
     initNotificationContentDialog();
   });

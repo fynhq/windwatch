@@ -165,7 +165,7 @@ func TestPublicStatusPage(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("/status status=%d body=%s", response.StatusCode, body)
 	}
-	for _, want := range []string{"Acme status", "Live service health", "Public site", "public-history-bars", "90d uptime", "public-history-range-narrow"} {
+	for _, want := range []string{"Acme status", "Live service health", "Public site", "public-history-bars", "90d uptime", "public-history-range-narrow", "data-status-monitor", `data-status="status-`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("/status missing %q: %s", want, body)
 		}
@@ -313,7 +313,7 @@ func TestDashboardRecentChecksAndHistoryTabs(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !strings.Contains(body, "Last 24 checks") {
 		t.Fatalf("dashboard recent checks label missing: status=%d body=%s", response.StatusCode, body)
 	}
-	for _, expected := range []string{`data-monitor-filter="down"`, `data-monitor-search`, "Current latency", "Last 24 checks:", "66.67%"} {
+	for _, expected := range []string{`data-monitor-filter="down"`, `data-monitor-search`, `data-monitor-id="`, "Current latency", "Last 24 checks:", "66.67%"} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("dashboard missing %q: %s", expected, body)
 		}

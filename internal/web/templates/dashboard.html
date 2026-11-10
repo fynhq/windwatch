@@ -66,7 +66,7 @@
 
 <section class="monitor-list" aria-label="{{.I18n.T "dashboard.monitorList"}}">
   {{range .Monitors}}
-  <article class="monitor-card {{.StatusClass}}" data-monitor-card data-status="{{.StatusKey}}" data-search="{{.SearchText}}">
+  <article class="monitor-card {{.StatusClass}}" data-monitor-card data-monitor-id="{{.ID}}" data-status="{{.StatusKey}}" data-search="{{.SearchText}}">
     <div class="monitor-card-top">
       <div class="monitor-identity">
         <div class="monitor-title-line">

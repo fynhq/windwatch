@@ -40,6 +40,10 @@
   --radius-sm: 10px;
   --sidebar-width: 248px;
   --touch-target: 44px;
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --motion-attention: 900ms;
+  --motion-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -278,6 +282,7 @@ button {
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .nav-item:hover {
@@ -313,6 +318,7 @@ button {
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .nav-subitem:hover {
@@ -358,6 +364,7 @@ button {
   text-align: left;
   text-decoration: none;
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .sidebar-control:hover {
@@ -451,6 +458,7 @@ button {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .icon-button:hover {
@@ -689,7 +697,7 @@ h2 {
   font: inherit;
   font-size: 14px;
   font-weight: 400;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .field input:hover,
@@ -779,6 +787,11 @@ fieldset:disabled {
   line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .button-primary {
@@ -823,6 +836,32 @@ fieldset:disabled {
   color: var(--danger);
 }
 
+.button.is-pending {
+  position: relative;
+  padding-right: 34px;
+  cursor: progress;
+}
+
+.button.is-pending::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: button-spin 700ms linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Alerts and empty states */
 .alert {
   margin: 0 0 20px;
@@ -864,7 +903,7 @@ fieldset:disabled {
   background: var(--surface);
   box-shadow: var(--shadow);
   pointer-events: auto;
-  animation: toast-in 160ms ease-out;
+  animation: toast-in var(--motion-base) var(--motion-ease);
 }
 
 .toast-success {
@@ -878,7 +917,7 @@ fieldset:disabled {
 .toast.is-leaving {
   opacity: 0;
   transform: translateY(-4px);
-  transition: opacity 140ms ease, transform 140ms ease;
+  transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .toast-message {
@@ -921,10 +960,43 @@ fieldset:disabled {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(6px) scale(0.985);
+  transition:
+    opacity var(--motion-base) var(--motion-ease),
+    transform var(--motion-base) var(--motion-ease),
+    display var(--motion-base) allow-discrete,
+    overlay var(--motion-base) allow-discrete;
+}
+
+.dialog[open] {
+  opacity: 1;
+  transform: none;
+}
+
+@starting-style {
+  .dialog[open] {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
 }
 
 .dialog::backdrop {
-  background: var(--backdrop);
+  background-color: transparent;
+  transition:
+    background-color var(--motion-base) var(--motion-ease),
+    display var(--motion-base) allow-discrete,
+    overlay var(--motion-base) allow-discrete;
+}
+
+.dialog[open]::backdrop {
+  background-color: var(--backdrop);
+}
+
+@starting-style {
+  .dialog[open]::backdrop {
+    background-color: transparent;
+  }
 }
 
 .dialog-form,
@@ -1006,26 +1078,74 @@ body:has(dialog[open]) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .toast {
     animation: none;
   }
 
-  .toast,
-  .toast.is-leaving,
-  .monitor-card,
-  .stat,
-  .type-card,
-  .settings-index-link,
-  .button,
-  .nav-item,
-  .history-tab {
-    transition: none;
-  }
-
   .monitor-card:hover,
   .stat:hover,
-  .type-card:hover {
+  .type-card:hover,
+  .button:active:not(:disabled),
+  .settings-index-link:hover .settings-index-arrow {
     transform: none;
+  }
+}
+
+/* Cross-document view transitions keep navigation continuous without
+   turning the server-rendered app into a client-side router. The sidebar
+   and top bars stay in the root snapshot; only the main content animates. */
+@view-transition {
+  navigation: auto;
+}
+
+.app-body .main-content {
+  view-transition-name: main-content;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-old(main-content) {
+  animation: content-out var(--motion-fast) var(--motion-ease) both;
+}
+
+::view-transition-new(main-content) {
+  animation: content-in var(--motion-base) var(--motion-ease) both;
+}
+
+@keyframes content-out {
+  to {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
+
+  ::view-transition-old(main-content),
+  ::view-transition-new(main-content) {
+    animation: none !important;
   }
 }
 
@@ -1079,6 +1199,10 @@ td {
   vertical-align: top;
 }
 
+tbody td {
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
 th {
   color: var(--faint);
   font-size: 12px;
@@ -1130,7 +1254,7 @@ tbody tr:last-child td {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-3);
-  transition: background 140ms ease, border-color 140ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
 .switch-track::after {
@@ -1143,7 +1267,7 @@ tbody tr:last-child td {
   border-radius: 50%;
   background: var(--switch-thumb);
   box-shadow: var(--switch-thumb-shadow);
-  transition: transform 140ms ease;
+  transition: transform var(--motion-fast) var(--motion-ease);
 }
 
 .switch-field input:checked + .switch-track {
@@ -1246,6 +1370,7 @@ tbody tr:last-child td {
   box-shadow: var(--shadow-soft);
   color: var(--text);
   text-decoration: none;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .settings-index-link:hover {

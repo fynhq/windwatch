@@ -36,7 +36,7 @@
 {{if .HasMonitors}}
 <section class="public-monitor-list" aria-label="{{.I18n.T "public.monitors"}}">
   {{range .Monitors}}
-  <article class="public-monitor">
+  <article class="public-monitor" data-status-monitor data-status="{{.StatusClass}}">
     <div class="public-monitor-head">
       <div>
         <h2>{{.Name}}</h2>

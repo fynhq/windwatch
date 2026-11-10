@@ -18,6 +18,10 @@
   padding: 8px 13px;
 }
 
+.page-actions .button.is-pending {
+  padding-right: 34px;
+}
+
 .page-actions .button .icon {
   width: 16px;
   height: 16px;
@@ -28,7 +32,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  transition: border-color 120ms ease, transform 120ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .stat:hover {
@@ -68,7 +72,7 @@
   border-left: 3px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .monitor-card:hover {
@@ -188,7 +192,7 @@
   flex: 1;
   min-width: 3px;
   border-radius: 3px;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
 
 .bars span:hover {
@@ -272,7 +276,7 @@
   color: var(--text);
   box-shadow: var(--shadow-soft);
   text-decoration: none;
-  transition: border-color 120ms ease, transform 120ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .type-card:hover {
@@ -518,6 +522,7 @@
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .history-tab:hover {
@@ -542,6 +547,17 @@
 
 .history-panel[hidden] {
   display: none;
+}
+
+.history-panel:not([hidden]) {
+  animation: history-panel-in var(--motion-base) var(--motion-ease);
+}
+
+@keyframes history-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
 
 .history-subhead {
@@ -1096,6 +1112,24 @@
   background: var(--faint);
 }
 
+/* The polling refresh replaces the live region wholesale. Only cards whose
+   status actually changed get this one-shot cue; a steady animation would
+   replay every 30 seconds and pull attention away from the page. */
+.monitor-card.is-status-changed,
+.public-monitor.is-status-changed {
+  animation: status-changed var(--motion-attention) var(--motion-ease);
+}
+
+@keyframes status-changed {
+  0% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
 .overview-filters,
 .events-filters {
   display: flex;
@@ -1117,6 +1151,7 @@
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  transition: border-color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .filter-chip:disabled {
@@ -1193,6 +1228,7 @@
   color: var(--text);
   font: inherit;
   font-size: 13px;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .search-field input:hover {
@@ -1228,7 +1264,7 @@
   border-left: 3px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .monitor-card:hover {
@@ -2043,6 +2079,7 @@
   border-radius: 10px;
   background: var(--accent-soft);
   color: var(--accent);
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .settings-index-icon .icon {
@@ -2052,6 +2089,14 @@
 
 .settings-index-link:hover .settings-index-icon {
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.settings-index-arrow {
+  transition: transform var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.settings-index-link:hover .settings-index-arrow {
+  transform: translateX(2px);
 }
 
 /* Form actions */
