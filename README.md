@@ -146,7 +146,7 @@ make race
 make build
 ```
 
-The same checks are available directly with `gofmt -l .`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and `go build ./cmd/windwatch`; `make dist` and `make docker-build` wrap the deployment builds, and `make version` prints the current version. The code lives in `cmd/windwatch` and `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`. Tests use local fakes for HTTP, TCP, Docker, RDAP, Telegram, and proxies; SQLite uses the pure-Go `modernc.org/sqlite` driver, so `CGO_ENABLED=0` builds are supported.
+The same checks are available directly with `gofmt -l .`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and `go build ./cmd/windwatch`; `make dist` and `make docker-build` wrap the deployment builds, and `make version` prints the current version. The code lives in `cmd/windwatch` and `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`. Tests use local fakes for HTTP, TCP, Docker, Telegram, and proxies; SQLite uses the pure-Go `modernc.org/sqlite` driver, so `CGO_ENABLED=0` builds are supported.
 
 ## License
 
@@ -302,7 +302,7 @@ make race
 make build
 ```
 
-也可以直接运行 `gofmt -l .`、`go vet ./...`、`go test ./...`、`go test -race ./...` 和 `go build ./cmd/windwatch`；`make dist` 和 `make docker-build` 负责部署构建，`make version` 输出当前版本。代码位于 `cmd/windwatch` 和 `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`。测试使用本地替身覆盖 HTTP、TCP、Docker、RDAP、Telegram 和代理；SQLite 使用纯 Go 的 `modernc.org/sqlite` 驱动，因此支持 `CGO_ENABLED=0` 构建。
+也可以直接运行 `gofmt -l .`、`go vet ./...`、`go test ./...`、`go test -race ./...` 和 `go build ./cmd/windwatch`；`make dist` 和 `make docker-build` 负责部署构建，`make version` 输出当前版本。代码位于 `cmd/windwatch` 和 `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`。测试使用本地替身覆盖 HTTP、TCP、Docker、Telegram 和代理；SQLite 使用纯 Go 的 `modernc.org/sqlite` 驱动，因此支持 `CGO_ENABLED=0` 构建。
 
 ## 开源协议
 
