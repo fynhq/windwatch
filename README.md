@@ -22,7 +22,7 @@ English | [中文](#chinese)
 
 ## Quick start
 
-Requirements: Go 1.27.3 or newer.
+Requirements: Go 1.27.4 or newer.
 
 ```bash
 CGO_ENABLED=0 go build -trimpath -o windwatch ./cmd/windwatch
@@ -178,7 +178,7 @@ WindWatch（听风者）用来监控网站、TCP 端口、Docker 容器和外部
 
 ## 快速开始
 
-需要 Go 1.27.3 或更高版本。
+需要 Go 1.27.4 或更高版本。
 
 ```bash
 CGO_ENABLED=0 go build -trimpath -o windwatch ./cmd/windwatch
