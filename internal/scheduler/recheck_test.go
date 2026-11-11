@@ -165,9 +165,9 @@ func TestApplyUsesFirstFailureForDownEvent(t *testing.T) {
 		t.Fatalf("state = %+v, want DOWN since %s", current.State, checkedAt)
 	}
 
-	checks, err := st.RecentChecks(t.Context(), id, 10)
+	checks, err := st.RecentCheckSummaries(t.Context(), id, 10)
 	if err != nil {
-		t.Fatalf("RecentChecks: %v", err)
+		t.Fatalf("RecentCheckSummaries: %v", err)
 	}
 	if len(checks) != 1 || !checks[0].CheckedAt.Equal(checkedAt) {
 		t.Fatalf("checks = %+v, want one check at %s", checks, checkedAt)
@@ -218,9 +218,9 @@ func TestSchedulerRecheckClearsTransientFailure(t *testing.T) {
 	if got := requests.Load(); got != 2 {
 		t.Fatalf("requests = %d, want 2", got)
 	}
-	checks, err := st.RecentChecks(t.Context(), id, 10)
+	checks, err := st.RecentCheckSummaries(t.Context(), id, 10)
 	if err != nil {
-		t.Fatalf("RecentChecks: %v", err)
+		t.Fatalf("RecentCheckSummaries: %v", err)
 	}
 	if len(checks) != 1 || checks[0].Status != model.CheckUp {
 		t.Fatalf("checks = %+v, want one successful check", checks)
@@ -281,9 +281,9 @@ func TestSchedulerRecheckConfirmsFailure(t *testing.T) {
 	if got := requests.Load(); got != 2 {
 		t.Fatalf("requests = %d, want 2", got)
 	}
-	checks, err := st.RecentChecks(t.Context(), id, 10)
+	checks, err := st.RecentCheckSummaries(t.Context(), id, 10)
 	if err != nil {
-		t.Fatalf("RecentChecks: %v", err)
+		t.Fatalf("RecentCheckSummaries: %v", err)
 	}
 	if len(checks) != 1 || checks[0].Status != model.CheckDown {
 		t.Fatalf("checks = %+v, want one failed check", checks)

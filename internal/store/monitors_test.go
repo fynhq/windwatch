@@ -185,16 +185,16 @@ func TestRecordCheckAndHistory(t *testing.T) {
 		t.Fatalf("consecutive successes = %d", stored.State.ConsecutiveSuccesses)
 	}
 
-	checks, err := st.RecentChecks(ctx, id, 10)
+	checks, err := st.RecentCheckSummaries(ctx, id, 10)
 	if err != nil {
-		t.Fatalf("RecentChecks: %v", err)
+		t.Fatalf("RecentCheckSummaries: %v", err)
 	}
 	if len(checks) != 3 || checks[0].Status != model.CheckUp || checks[1].Status != model.CheckDown {
 		t.Fatalf("unexpected checks: %+v", checks)
 	}
-	byMonitor, err := st.RecentChecksByMonitor(ctx, []int64{id}, 2)
+	byMonitor, err := st.RecentCheckSummariesByMonitor(ctx, []int64{id}, 2)
 	if err != nil {
-		t.Fatalf("RecentChecksByMonitor: %v", err)
+		t.Fatalf("RecentCheckSummariesByMonitor: %v", err)
 	}
 	recent := byMonitor[id]
 	if len(recent) != 2 || recent[0].Status != model.CheckUp || recent[1].Status != model.CheckDown {
@@ -221,6 +221,54 @@ func TestRecordCheckAndHistory(t *testing.T) {
 	}
 	if events[0].Type != model.EventUp || events[1].Type != model.EventDown || events[1].EndedAt == nil {
 		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestRecentCheckSummariesByMonitorGroupsAndLimits(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t)
+	if err := st.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	ids := make([]int64, 0, 2)
+	for index := 0; index < 2; index++ {
+		id, err := st.CreateMonitor(ctx, testHTTPMonitor("https://example.com"), now)
+		if err != nil {
+			t.Fatalf("CreateMonitor: %v", err)
+		}
+		ids = append(ids, id)
+		for step := 0; step < 3; step++ {
+			checkedAt := now.Add(time.Duration(step) * time.Minute)
+			if err := st.RecordCheck(ctx, model.Check{
+				MonitorID: id,
+				CheckedAt: checkedAt,
+				Status:    model.CheckUp,
+				Latency:   time.Duration(step+1) * time.Millisecond,
+				MetaJSON:  "{}",
+			}, model.MonitorState{
+				Status:      model.StatusUp,
+				StatusSince: checkedAt,
+				LastCheck:   checkedAt,
+				UpdatedAt:   checkedAt,
+			}, nil, false); err != nil {
+				t.Fatalf("RecordCheck: %v", err)
+			}
+		}
+	}
+
+	byMonitor, err := st.RecentCheckSummariesByMonitor(ctx, ids, 2)
+	if err != nil {
+		t.Fatalf("RecentCheckSummariesByMonitor: %v", err)
+	}
+	for _, id := range ids {
+		checks := byMonitor[id]
+		if len(checks) != 2 {
+			t.Fatalf("monitor %d checks = %d, want 2", id, len(checks))
+		}
+		if checks[0].CheckedAt != now.Add(2*time.Minute) || checks[1].CheckedAt != now.Add(time.Minute) {
+			t.Fatalf("monitor %d checks are not newest-first: %+v", id, checks)
+		}
 	}
 }
 
@@ -252,9 +300,9 @@ func TestMonitorDeleteCascadesHistory(t *testing.T) {
 	if err := st.DeleteMonitor(ctx, id); err != nil {
 		t.Fatalf("DeleteMonitor: %v", err)
 	}
-	checks, err := st.RecentChecks(ctx, id, 10)
+	checks, err := st.RecentCheckSummaries(ctx, id, 10)
 	if err != nil {
-		t.Fatalf("RecentChecks: %v", err)
+		t.Fatalf("RecentCheckSummaries: %v", err)
 	}
 	if len(checks) != 0 {
 		t.Fatalf("checks were not cascaded: %+v", checks)

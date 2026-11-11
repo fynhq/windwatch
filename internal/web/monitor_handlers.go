@@ -660,7 +660,7 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	checks, err := s.store.RecentChecks(r.Context(), id, 50)
+	checks, err := s.store.RecentCheckSummaries(r.Context(), id, 50)
 	if err != nil {
 		s.log.Error("load recent checks", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
@@ -816,7 +816,7 @@ func (s *Server) buildMonitorFormPage(r *http.Request, auth model.AuthInfo, moni
 	}
 }
 
-func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, monitor model.Monitor, checks []model.Check, events []model.Event, stats24, stats7d, stats30, stats90 model.UptimeStats, buckets, daily30, daily90 []model.HourBucket, now time.Time) monitorDetailPage {
+func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, monitor model.Monitor, checks []model.CheckSummary, events []model.Event, stats24, stats7d, stats30, stats90 model.UptimeStats, buckets, daily30, daily90 []model.HourBucket, now time.Time) monitorDetailPage {
 	data := s.authenticatedPage(r, auth, "monitor.title")
 	data.Title = monitor.Name
 	data.BackURL = "/"

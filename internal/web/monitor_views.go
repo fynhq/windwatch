@@ -298,7 +298,7 @@ func dashboardOverall(translator *i18n.Translator, total, up, warning, down, pen
 	return class, label
 }
 
-func summarizeChecks(translator *i18n.Translator, checks []model.Check, limit int) string {
+func summarizeChecks(translator *i18n.Translator, checks []model.CheckSummary, limit int) string {
 	if limit <= 0 {
 		limit = 24
 	}
@@ -322,7 +322,7 @@ func summarizeChecks(translator *i18n.Translator, checks []model.Check, limit in
 	return translator.Tf("dashboard.recentSummary", up, warning, down)
 }
 
-func checkBarRange(translator *i18n.Translator, now time.Time, checks []model.Check, limit int) (string, string) {
+func checkBarRange(translator *i18n.Translator, now time.Time, checks []model.CheckSummary, limit int) (string, string) {
 	if limit <= 0 {
 		limit = 24
 	}
@@ -372,16 +372,21 @@ func eventTypeClass(eventType model.EventType) string {
 	}
 }
 
-func buildCheckBars(translator *i18n.Translator, checks []model.Check, limit int, location *time.Location) []statusBar {
+func buildCheckBars(translator *i18n.Translator, checks []model.CheckSummary, limit int, location *time.Location) []statusBar {
 	if limit <= 0 {
 		limit = 24
 	}
 	if len(checks) > limit {
 		checks = checks[:limit]
 	}
-	bars := make([]statusBar, 0, limit)
-	for index := len(checks) - 1; index >= 0; index-- {
-		check := checks[index]
+	bars := make([]statusBar, limit)
+	empty := statusBar{Class: "bar-empty", Title: translator.T("common.noData")}
+	for index := 0; index < limit-len(checks); index++ {
+		bars[index] = empty
+	}
+	// checks[0] is the newest sample; bars grow oldest to newest from left to
+	// right, so fill the tail backwards without repeated prepend allocations.
+	for index, check := range checks {
 		class := "bar-down"
 		switch check.Status {
 		case model.CheckUp:
@@ -393,10 +398,7 @@ func buildCheckBars(translator *i18n.Translator, checks []model.Check, limit int
 		if check.Latency > 0 {
 			title += " · " + formatLatency(check.Latency)
 		}
-		bars = append(bars, statusBar{Class: class, Title: title})
-	}
-	for len(bars) < limit {
-		bars = append([]statusBar{{Class: "bar-empty", Title: translator.T("common.noData")}}, bars...)
+		bars[limit-1-index] = statusBar{Class: class, Title: title}
 	}
 	return bars
 }
@@ -426,7 +428,7 @@ func summarizeHourBuckets(translator *i18n.Translator, now time.Time, buckets []
 	return translator.Tf("monitor.hourlySummary", upHours, warningHours, downHours)
 }
 
-func buildRecentChart(translator *i18n.Translator, checks []model.Check, limit int, location *time.Location) historyChart {
+func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, limit int, location *time.Location) historyChart {
 	if limit <= 0 {
 		limit = 24
 	}

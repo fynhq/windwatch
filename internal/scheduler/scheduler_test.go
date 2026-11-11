@@ -249,9 +249,9 @@ func TestSchedulerManualCheckPersistsResults(t *testing.T) {
 		return err == nil && current.State.Status == model.StatusDown
 	})
 
-	checks, err := st.RecentChecks(t.Context(), id, 10)
+	checks, err := st.RecentCheckSummaries(t.Context(), id, 10)
 	if err != nil {
-		t.Fatalf("RecentChecks: %v", err)
+		t.Fatalf("RecentCheckSummaries: %v", err)
 	}
 	if len(checks) != 2 {
 		t.Fatalf("checks = %d, want 2", len(checks))

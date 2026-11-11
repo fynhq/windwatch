@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
@@ -325,6 +326,36 @@ func TestTCPAddressUsesPort(t *testing.T) {
 	}
 	if got := monitor.Target(); got != net.JoinHostPort("::1", strconv.Itoa(8080)) {
 		t.Fatalf("Target() = %q", got)
+	}
+}
+
+func TestBodyContainsKeywordAcrossChunks(t *testing.T) {
+	body := strings.Repeat("x", keywordChunkBytes-2) + "needle"
+	found, truncated, err := bodyContainsKeyword(iotest.OneByteReader(strings.NewReader(body)), "needle")
+	if err != nil || !found || truncated {
+		t.Fatalf("boundary keyword: found=%v truncated=%v err=%v", found, truncated, err)
+	}
+}
+
+func TestBodyContainsKeywordLimitSemantics(t *testing.T) {
+	cases := []struct {
+		name      string
+		body      string
+		found     bool
+		truncated bool
+	}{
+		{name: "shorter body", body: strings.Repeat("x", 1024)},
+		{name: "exact limit", body: strings.Repeat("x", maxKeywordBodyBytes)},
+		{name: "truncated body", body: strings.Repeat("x", maxKeywordBodyBytes+1), truncated: true},
+		{name: "keyword past limit", body: strings.Repeat("x", maxKeywordBodyBytes+1) + "needle", truncated: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			found, truncated, err := bodyContainsKeyword(strings.NewReader(tc.body), "needle")
+			if err != nil || found != tc.found || truncated != tc.truncated {
+				t.Fatalf("found=%v truncated=%v err=%v, want found=%v truncated=%v", found, truncated, err, tc.found, tc.truncated)
+			}
+		})
 	}
 }
 

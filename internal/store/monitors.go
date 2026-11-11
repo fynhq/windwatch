@@ -559,27 +559,72 @@ func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.
 	return nil
 }
 
-// RecentChecksByMonitor runs one indexed top-N query per monitor. A window
-// function would scan all retained checks on every dashboard refresh.
-func (s *Store) RecentChecksByMonitor(ctx context.Context, monitorIDs []int64, limit int) (map[int64][]model.Check, error) {
-	result := make(map[int64][]model.Check, len(monitorIDs))
-	for _, monitorID := range monitorIDs {
-		checks, err := s.RecentChecks(ctx, monitorID, limit)
-		if err != nil {
-			return nil, err
+// RecentCheckSummariesByMonitor batches indexed top-N subqueries into one
+// statement per chunk. A window function would scan all retained checks, while
+// one statement per monitor adds a prepared statement and rows allocation for
+// every card on each dashboard refresh.
+func (s *Store) RecentCheckSummariesByMonitor(ctx context.Context, monitorIDs []int64, limit int) (map[int64][]model.CheckSummary, error) {
+	result := make(map[int64][]model.CheckSummary, len(monitorIDs))
+	if limit <= 0 {
+		limit = 50
+	}
+	const monitorsPerQuery = 100
+	for start := 0; start < len(monitorIDs); start += monitorsPerQuery {
+		end := start + monitorsPerQuery
+		if end > len(monitorIDs) {
+			end = len(monitorIDs)
 		}
-		result[monitorID] = checks
+		chunk := monitorIDs[start:end]
+		var query strings.Builder
+		args := make([]any, 0, len(chunk)*2)
+		for index, monitorID := range chunk {
+			if index > 0 {
+				query.WriteString(" UNION ALL ")
+			}
+			query.WriteString(`SELECT * FROM (
+				SELECT monitor_id, checked_at_ms, status, latency_ms
+				FROM checks
+				WHERE monitor_id = ?
+				ORDER BY checked_at_ms DESC
+				LIMIT ?
+			)`)
+			args = append(args, monitorID, limit)
+		}
+		rows, err := s.reader().QueryContext(ctx, query.String(), args...)
+		if err != nil {
+			return nil, fmt.Errorf("list recent checks by monitor: %w", err)
+		}
+		for rows.Next() {
+			var (
+				check     model.CheckSummary
+				checkedAt int64
+				latencyMS int64
+			)
+			if err := rows.Scan(&check.MonitorID, &checkedAt, &check.Status, &latencyMS); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan recent check by monitor: %w", err)
+			}
+			check.CheckedAt = time.UnixMilli(checkedAt).UTC()
+			check.Latency = time.Duration(latencyMS) * time.Millisecond
+			result[check.MonitorID] = append(result[check.MonitorID], check)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("iterate recent checks by monitor: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close recent checks by monitor: %w", err)
+		}
 	}
 	return result, nil
 }
 
-func (s *Store) RecentChecks(ctx context.Context, monitorID int64, limit int) ([]model.Check, error) {
+func (s *Store) RecentCheckSummaries(ctx context.Context, monitorID int64, limit int) ([]model.CheckSummary, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := s.reader().QueryContext(ctx, `
-		SELECT monitor_id, checked_at_ms, status, latency_ms, http_status,
-		       error_kind, error_message, meta_json, cert_fingerprint
+		SELECT monitor_id, checked_at_ms, status, latency_ms
 		FROM checks
 		WHERE monitor_id = ?
 		ORDER BY checked_at_ms DESC
@@ -590,28 +635,18 @@ func (s *Store) RecentChecks(ctx context.Context, monitorID int64, limit int) ([
 	}
 	defer rows.Close()
 
-	var checks []model.Check
+	checks := make([]model.CheckSummary, 0, limit)
 	for rows.Next() {
 		var (
-			check      model.Check
-			checkedAt  int64
-			httpStatus sql.NullInt64
-			latencyMS  int64
-			certFP     sql.NullString
+			check     model.CheckSummary
+			checkedAt int64
+			latencyMS int64
 		)
-		if err := rows.Scan(
-			&check.MonitorID, &checkedAt, &check.Status, &latencyMS, &httpStatus,
-			&check.ErrorKind, &check.ErrorMessage, &check.MetaJSON,
-			&certFP,
-		); err != nil {
+		if err := rows.Scan(&check.MonitorID, &checkedAt, &check.Status, &latencyMS); err != nil {
 			return nil, fmt.Errorf("scan recent check: %w", err)
 		}
 		check.CheckedAt = time.UnixMilli(checkedAt).UTC()
 		check.Latency = time.Duration(latencyMS) * time.Millisecond
-		if httpStatus.Valid {
-			check.HTTPStatus = int(httpStatus.Int64)
-		}
-		check.CertFingerprint = certFP.String
 		checks = append(checks, check)
 	}
 	if err := rows.Err(); err != nil {

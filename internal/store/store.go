@@ -35,11 +35,14 @@ type Store struct {
 }
 
 var (
+	// Each pooled connection keeps its own page cache. One MiB is enough for
+	// the small hot index working set of this schema and bounds the three
+	// expected connections at 3 MiB instead of 12 MiB.
 	sqlitePragmas = []string{
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA busy_timeout = 5000",
 		"PRAGMA foreign_keys = ON",
-		"PRAGMA cache_size = -4096",
+		"PRAGMA cache_size = -1024",
 	}
 	sqliteHookOnce sync.Once
 )

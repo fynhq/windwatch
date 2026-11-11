@@ -247,7 +247,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	recentChecks, err := s.store.RecentChecksByMonitor(r.Context(), monitorIDs, 24)
+	recentChecks, err := s.store.RecentCheckSummariesByMonitor(r.Context(), monitorIDs, 24)
 	if err != nil {
 		s.log.Error("load dashboard recent checks", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")

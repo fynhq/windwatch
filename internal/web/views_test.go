@@ -100,7 +100,7 @@ func TestBuildRecentChart(t *testing.T) {
 	}
 	translator := catalogs.Translator(i18n.LangEN)
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
-	checks := []model.Check{
+	checks := []model.CheckSummary{
 		{CheckedAt: now, Status: model.CheckUp, Latency: 50 * time.Millisecond},
 		{CheckedAt: now.Add(-time.Hour), Status: model.CheckDown, Latency: 100 * time.Millisecond},
 		{CheckedAt: now.Add(-2 * time.Hour), Status: model.CheckWarning, Latency: 30 * time.Millisecond},
@@ -177,6 +177,38 @@ func TestBuildDailyChartBreaksOnFailureLatency(t *testing.T) {
 	}
 	if len(chart.LinePaths) != 2 {
 		t.Fatalf("daily line paths = %d, want 2 segments around the failed day", len(chart.LinePaths))
+	}
+}
+
+func TestBuildCheckBarsPadsAndOrders(t *testing.T) {
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("i18n.Load: %v", err)
+	}
+	translator := catalogs.Translator(i18n.LangEN)
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	checks := []model.CheckSummary{
+		{CheckedAt: now, Status: model.CheckUp},
+		{CheckedAt: now.Add(-time.Minute), Status: model.CheckDown},
+	}
+	bars := buildCheckBars(translator, checks, 4, time.UTC)
+	want := []string{"bar-empty", "bar-empty", "bar-down", "bar-up"}
+	if len(bars) != len(want) {
+		t.Fatalf("bars = %d, want %d", len(bars), len(want))
+	}
+	for index, class := range want {
+		if bars[index].Class != class {
+			t.Fatalf("bar %d class = %q, want %q", index, bars[index].Class, class)
+		}
+	}
+	empty := buildCheckBars(translator, nil, 3, time.UTC)
+	if len(empty) != 3 {
+		t.Fatalf("empty bars = %d, want 3", len(empty))
+	}
+	for index, bar := range empty {
+		if bar.Class != "bar-empty" {
+			t.Fatalf("empty bar %d class = %q", index, bar.Class)
+		}
 	}
 }
 

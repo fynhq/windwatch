@@ -60,7 +60,7 @@ func newDockerChecker(host string) *dockerChecker {
 		host = defaultDockerHost
 	}
 
-	transport := &http.Transport{}
+	transport := &http.Transport{MaxResponseHeaderBytes: 64 << 10}
 	baseURL := "http://docker"
 	switch {
 	case host == "":
@@ -274,11 +274,7 @@ func (d *dockerChecker) getJSON(ctx context.Context, path string, output any) (i
 		io.Copy(io.Discard, response.Body)
 		return response.StatusCode, nil
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		return response.StatusCode, err
-	}
-	if err := json.Unmarshal(data, output); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(output); err != nil {
 		return response.StatusCode, fmt.Errorf("decode Docker response: %w", err)
 	}
 	return response.StatusCode, nil

@@ -670,6 +670,7 @@ func (s *Service) httpClient(ctx context.Context, proxyID *int64) (*http.Client,
 	// "Direct" must mean the same thing for notifications as it does for
 	// monitor checks; do not inherit HTTP_PROXY/HTTPS_PROXY from the environment.
 	transport.Proxy = nil
+	transport.MaxResponseHeaderBytes = 64 << 10
 	if proxyID != nil {
 		proxyConfig, err := s.resolveProxy(ctx, *proxyID)
 		if err != nil {

@@ -23,9 +23,22 @@ import (
 const (
 	maxDiscardBodyBytes = 64 << 10
 	maxKeywordBodyBytes = 1 << 20
-	maxRedirects        = 5
-	maxTransportEntries = 32
+	keywordChunkBytes   = 32 << 10
+	// model.Monitor.Validate limits keywords to 500 runes; four UTF-8 bytes
+	// per rune gives the largest carry window that validation can produce.
+	maxKeywordCarryBytes = 4 * 500
+	maxRedirects         = 5
+	maxTransportEntries  = 32
 )
+
+// Keyword checks scan a bounded stream instead of buffering the response body.
+// The pool keeps the steady-state scan buffer small while the carry window
+// preserves matches that cross a chunk boundary.
+var keywordBufferPool = sync.Pool{
+	New: func() any {
+		return make([]byte, keywordChunkBytes+maxKeywordCarryBytes)
+	},
+}
 
 var errTooManyRedirects = errors.New("too many redirects")
 
@@ -51,12 +64,17 @@ func newHTTPChecker() *httpChecker {
 			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   4,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2: true,
+		// Idle keep-alive connections retain TLS and bufio buffers, and the
+		// transport cache can hold several TLS/proxy variants. A small pool
+		// still covers concurrent checks without letting idle connections
+		// become a large fixed memory cost.
+		MaxIdleConns:           16,
+		MaxIdleConnsPerHost:    4,
+		IdleConnTimeout:        90 * time.Second,
+		TLSHandshakeTimeout:    10 * time.Second,
+		ExpectContinueTimeout:  1 * time.Second,
+		MaxResponseHeaderBytes: 64 << 10,
 	}
 	return &httpChecker{base: transport, cache: make(map[transportKey]*http.Transport)}
 }
@@ -193,7 +211,7 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 
 	if method != http.MethodHead {
 		if cfg.Keyword != "" {
-			body, err := io.ReadAll(io.LimitReader(response.Body, maxKeywordBodyBytes+1))
+			found, truncated, err := bodyContainsKeyword(response.Body, cfg.Keyword)
 			if err != nil {
 				kind, message := classifyError(err)
 				return model.CheckResult{
@@ -206,9 +224,9 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 					Certificate:  certificate,
 				}, nil
 			}
-			if !bytes.Contains(body, []byte(cfg.Keyword)) {
+			if !found {
 				message := "expected keyword was not found"
-				if len(body) > maxKeywordBodyBytes {
+				if truncated {
 					message = "expected keyword was not found within the first 1 MiB of the response"
 				}
 				return model.CheckResult{
@@ -246,6 +264,51 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 		MetaJSON:    metaJSON,
 		Certificate: certificate,
 	}, nil
+}
+
+// bodyContainsKeyword scans at most maxKeywordBodyBytes+1 bytes while keeping
+// only the last keyword-sized carry window between reads. The extra byte keeps
+// the existing distinction between an exact-limit body and a truncated one.
+func bodyContainsKeyword(body io.Reader, keyword string) (found, truncated bool, err error) {
+	needle := []byte(keyword)
+	if len(needle) == 0 {
+		return true, false, nil
+	}
+	carryLimit := len(needle) - 1
+	bufferLen := keywordChunkBytes + carryLimit
+	buf, _ := keywordBufferPool.Get().([]byte)
+	if len(buf) < bufferLen {
+		keywordBufferPool.Put(buf)
+		buf = make([]byte, bufferLen)
+	}
+	defer keywordBufferPool.Put(buf)
+
+	limited := &io.LimitedReader{R: body, N: maxKeywordBodyBytes + 1}
+	total := 0
+	carry := 0
+	for {
+		n, readErr := limited.Read(buf[carry : carry+keywordChunkBytes])
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return false, false, readErr
+		}
+		if n > 0 {
+			total += n
+			window := buf[:carry+n]
+			if bytes.Contains(window, needle) {
+				return true, false, nil
+			}
+			if carryLimit > 0 {
+				carry = carryLimit
+				if total < carry {
+					carry = total
+				}
+				copy(buf[:carry], window[len(window)-carry:])
+			}
+		}
+		if readErr != nil {
+			return false, total > maxKeywordBodyBytes, nil
+		}
+	}
 }
 
 func certificateFromTLS(state *tls.ConnectionState) *model.CertificateInfo {

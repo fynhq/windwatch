@@ -137,6 +137,15 @@ type Check struct {
 	CertFingerprint string
 }
 
+// CheckSummary carries only the fields used by status bars, charts, and outage
+// lookback. Avoid loading diagnostic strings when rendering history.
+type CheckSummary struct {
+	MonitorID int64
+	CheckedAt time.Time
+	Status    string
+	Latency   time.Duration
+}
+
 type EventType string
 
 const (

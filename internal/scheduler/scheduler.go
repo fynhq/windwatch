@@ -746,7 +746,7 @@ func (s *Scheduler) firstFailureStart(ctx context.Context, monitor model.Monitor
 	if prior <= 0 {
 		return at
 	}
-	checks, err := s.store.RecentChecks(ctx, monitor.ID, prior)
+	checks, err := s.store.RecentCheckSummaries(ctx, monitor.ID, prior)
 	if err != nil {
 		s.log.Warn("load checks for outage start", "monitor_id", monitor.ID, "error", err)
 		return at
@@ -915,6 +915,11 @@ func (s *Scheduler) maintain(ctx context.Context) {
 		if err := s.store.CheckpointWAL(ctx); err != nil {
 			s.log.Warn("checkpoint wal", "error", err)
 		}
+		// Large deletes and aggregate scans leave enough garbage that the Go
+		// scavenger can keep the process well above its live set for hours.
+		// Reclaim once per maintenance cycle; this is far too expensive to do
+		// after ordinary requests.
+		debug.FreeOSMemory()
 	}
 	cleanupSafely := func() {
 		defer s.recoverTask("maintenance")
