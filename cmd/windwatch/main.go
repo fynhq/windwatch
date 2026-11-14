@@ -74,7 +74,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fileLog.Close()
+	defer func() { _ = fileLog.Close() }()
 	logger := slog.New(slog.NewTextHandler(io.MultiWriter(os.Stderr, fileLog), &slog.HandlerOptions{Level: cfg.LogLevel}))
 	application, err := app.New(cfg, logger)
 	if err != nil {
@@ -116,7 +116,7 @@ func runResetPassword(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open data store: %w", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	if err := st.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
@@ -149,7 +149,7 @@ func runResetPassword(args []string) error {
 	if err := st.RecoverUserPassword(ctx, target.ID, hash, time.Now()); err != nil {
 		return fmt.Errorf("reset password: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "Password reset for %q; the account was enabled and all its sessions were invalidated.\n", target.Username)
+	_, _ = fmt.Fprintf(os.Stdout, "Password reset for %q; the account was enabled and all its sessions were invalidated.\n", target.Username)
 	return nil
 }
 
@@ -228,7 +228,7 @@ func runHealthcheck(args []string) error {
 		return fmt.Errorf("healthcheck request: %w", err)
 	}
 	defer response.Body.Close()
-	io.Copy(io.Discard, response.Body)
+	_, _ = io.Copy(io.Discard, response.Body)
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("healthcheck returned HTTP %d", response.StatusCode)

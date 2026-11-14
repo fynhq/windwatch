@@ -30,11 +30,20 @@ jobs:
       - name: Run race tests
         run: make race
 
+      - name: Run static analysis
+        run: make lint
+
+      - name: Report coverage
+        run: make cover
+
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: Build
         run: make build
+
+      - name: Release smoke
+        run: make smoke
 
   # Public-surface guard: reject private-document references, local environment
   # narration, verification trailers, local paths, secrets, and unexpected CJK

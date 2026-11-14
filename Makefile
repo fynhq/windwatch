@@ -26,7 +26,10 @@ LDFLAGS_DEV := $(LDFLAGS_COMMON) \
 LDFLAGS_RELEASE := $(LDFLAGS_COMMON) \
 	-X github.com/fynhq/windwatch/internal/version.Version=$(VERSION_TAG)
 
-.PHONY: all build dist docker-build docker-up docker-down fmt fmt-check vet test race check version clean
+STATICCHECK_PKG ?= honnef.co/go/tools/cmd/staticcheck@latest
+ERRCHECK_PKG ?= github.com/kisielk/errcheck@latest
+
+.PHONY: all build dist docker-build docker-up docker-down fmt fmt-check vet test race check lint cover smoke version clean
 
 all: check build
 
@@ -81,6 +84,30 @@ test:
 
 race:
 	go test -race ./...
+
+lint:
+	go run $(STATICCHECK_PKG) ./...
+	go run $(ERRCHECK_PKG) -ignoretests -exclude .errcheck-excludes ./...
+
+cover:
+	go test -cover ./...
+
+# Exercise the release LDFLAGS and the version line before a tag exists.
+smoke:
+	@set -e; \
+	tmp="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS_RELEASE)' -o "$$tmp/windwatch" ./cmd/windwatch; \
+	output="$$("$$tmp/windwatch" version)"; \
+	echo "$$output"; \
+	case "$$output" in \
+		"windwatch $(VERSION_TAG)"*) ;; \
+		*) echo "release version must start with windwatch $(VERSION_TAG)" >&2; exit 1 ;; \
+	esac; \
+	case "$$output" in \
+		*"built "*) ;; \
+		*) echo "release version is missing build metadata" >&2; exit 1 ;; \
+	esac
 
 check: fmt-check vet test
 

@@ -46,17 +46,17 @@ func LoadOrCreateKey(path string) ([]byte, error) {
 		return nil, fmt.Errorf("create temporary secret key: %w", err)
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	defer func() { _ = os.Remove(tempName) }()
 	if err := temp.Chmod(0o600); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return nil, fmt.Errorf("set temporary secret key permissions: %w", err)
 	}
 	if _, err := temp.Write(key); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return nil, fmt.Errorf("write secret key: %w", err)
 	}
 	if err := temp.Sync(); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return nil, fmt.Errorf("sync secret key: %w", err)
 	}
 	if err := temp.Close(); err != nil {

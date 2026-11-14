@@ -203,7 +203,7 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 // staticAssetVersion fingerprints the embedded assets so template URLs change

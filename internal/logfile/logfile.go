@@ -109,7 +109,7 @@ func (w *Writer) prune(now time.Time) {
 			continue
 		}
 		if dateText < cutoff {
-			os.Remove(filepath.Join(w.dir, name))
+			_ = os.Remove(filepath.Join(w.dir, name))
 		}
 	}
 }

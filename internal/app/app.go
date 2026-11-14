@@ -43,7 +43,7 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	closeOnError := true
 	defer func() {
 		if closeOnError {
-			st.Close()
+			_ = st.Close()
 		}
 	}()
 
@@ -99,7 +99,7 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	defer a.store.Close()
+	defer func() { _ = a.store.Close() }()
 
 	cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 5*time.Second)
 	if err := a.store.DeleteExpiredSessions(cleanupCtx, time.Now().UTC()); err != nil {
