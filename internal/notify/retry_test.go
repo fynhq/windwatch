@@ -34,7 +34,7 @@ func TestTransportErrorKeepsCauseWithoutURL(t *testing.T) {
 	}
 }
 
-func TestStateMonitorID(t *testing.T) {
+func TestStateNotificationMonitorID(t *testing.T) {
 	tests := []struct {
 		key string
 		id  int64
@@ -49,9 +49,9 @@ func TestStateMonitorID(t *testing.T) {
 		{key: "down::1", ok: false},
 	}
 	for _, test := range tests {
-		id, ok := stateMonitorID(test.key)
+		id, ok := model.StateNotificationMonitorID(test.key)
 		if ok != test.ok || id != test.id {
-			t.Fatalf("stateMonitorID(%q) = %d,%v; want %d,%v", test.key, id, ok, test.id, test.ok)
+			t.Fatalf("StateNotificationMonitorID(%q) = %d,%v; want %d,%v", test.key, id, ok, test.id, test.ok)
 		}
 	}
 }

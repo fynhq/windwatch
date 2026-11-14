@@ -60,6 +60,23 @@ func NewConfig(proxyType model.ProxyType, address, username, password string) (*
 	return cfg, nil
 }
 
+// FromStored converts a persisted proxy row into a runtime configuration. The
+// decrypt callback is nil when the caller has no secret cipher available.
+func FromStored(stored model.Proxy, decrypt func(string) (string, error)) (*Config, error) {
+	password := ""
+	if stored.PasswordEnc != "" {
+		if decrypt == nil {
+			return nil, errors.New("secret key is not initialized")
+		}
+		value, err := decrypt(stored.PasswordEnc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt proxy password: %w", err)
+		}
+		password = value
+	}
+	return NewConfig(stored.Type, stored.Address, stored.Username, password)
+}
+
 func ApplyHTTPTransport(cfg *Config, transport *http.Transport) error {
 	if cfg == nil {
 		return nil

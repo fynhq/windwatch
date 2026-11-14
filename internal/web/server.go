@@ -57,10 +57,12 @@ type Server struct {
 	settingsValues  map[string]string
 	settingsExpires time.Time
 	settingsVersion uint64
+	settingsWriteMu sync.Mutex
 
 	adminMu      sync.Mutex
 	adminValue   bool
 	adminExpires time.Time
+	adminVersion uint64
 
 	publicMu        sync.Mutex
 	publicSnapshot  *publicStatusSnapshot

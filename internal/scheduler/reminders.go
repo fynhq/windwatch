@@ -100,16 +100,14 @@ func (s *Scheduler) processReminders(
 		downtimeStart = s.outageStart(ctx, monitor.ID, nextState.StatusSince, checkedAt)
 	}
 	notification := s.buildReminderNotification(monitor, result, nextState, checkedAt, currentKind, contextKey, sequence, count, downtimeStart)
-	if !s.notifier.Enqueue(notification) {
-		s.log.Error("persist reminder notification", "monitor_id", monitor.ID, "kind", currentKind, "error", "notification outbox is unavailable")
-		return
-	}
-	s.log.Info("reminder notification enqueued", "monitor_id", monitor.ID, "kind", currentKind, "sequence", sequence, "total", count, "next_at", checkedAt.Add(interval).UTC().Format(time.RFC3339))
 	state.SentCount = sequence
 	state.NextAt = checkedAt.Add(interval)
-	if err := s.store.SaveReminderState(ctx, state, checkedAt); err != nil {
-		s.log.Warn("advance reminder state", "monitor_id", monitor.ID, "error", err)
+	if err := s.store.SaveReminderStateWithNotification(ctx, state, checkedAt, &notification); err != nil {
+		s.log.Error("persist reminder notification", "monitor_id", monitor.ID, "kind", currentKind, "error", err)
+		return
 	}
+	s.wakeNotifications([]model.Notification{notification})
+	s.log.Info("reminder notification enqueued", "monitor_id", monitor.ID, "kind", currentKind, "sequence", sequence, "total", count, "next_at", checkedAt.Add(interval).UTC().Format(time.RFC3339))
 }
 
 func (s *Scheduler) buildReminderNotification(
@@ -127,7 +125,7 @@ func (s *Scheduler) buildReminderNotification(
 			downtime = 0
 		}
 		return model.Notification{
-			Key:            fmt.Sprintf("remind_down:%d:%d:%d", monitor.ID, nextState.StatusSince.UnixMilli(), sequence),
+			Key:            model.DownReminderKey(monitor.ID, nextState.StatusSince, sequence),
 			Kind:           model.EventDown,
 			MonitorID:      monitor.ID,
 			MonitorName:    monitor.Name,
@@ -144,7 +142,7 @@ func (s *Scheduler) buildReminderNotification(
 		}
 	}
 	notification := s.warningNotification(monitor, result, nextState, checkedAt)
-	notification.Key = fmt.Sprintf("remind_warning:%d:%s:%d:%d", monitor.ID, contextKey, nextState.StatusSince.UnixMilli(), sequence)
+	notification.Key = model.WarningReminderKey(monitor.ID, contextKey, nextState.StatusSince, sequence)
 	notification.Reminder = sequence
 	notification.ReminderTotal = total
 	return notification

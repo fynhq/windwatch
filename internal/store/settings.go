@@ -172,15 +172,12 @@ func (s *Store) HasEarlierPendingStateNotification(ctx context.Context, id, moni
 		return false, nil
 	}
 	var count int
+	patterns := model.StateNotificationLikePatterns(monitorID)
 	if err := s.reader().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM notify_log
 		WHERE status = 'pending' AND channel_id = ? AND target = ? AND id < ?
 			AND (dedupe_key LIKE ? OR dedupe_key LIKE ? OR dedupe_key LIKE ?)
-	`, channelID, target, id,
-		fmt.Sprintf("down:%d:%%", monitorID),
-		fmt.Sprintf("up:%d:%%", monitorID),
-		fmt.Sprintf("remind_down:%d:%%", monitorID),
-	).Scan(&count); err != nil {
+	`, channelID, target, id, patterns[0], patterns[1], patterns[2]).Scan(&count); err != nil {
 		return false, fmt.Errorf("check earlier pending state notification: %w", err)
 	}
 	return count > 0, nil

@@ -10,19 +10,30 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
+// execer is satisfied by *sql.DB and *sql.Tx. Keeping the outbox insert behind
+// this small interface lets the scheduler persist notification intents in the
+// same transaction as the check that produced them.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 // EnqueueNotificationOutbox persists a notification before any network work.
 // The in-memory dispatcher only wakes on this row; the row itself is the
 // durable record that survives a restart or a slow notification channel.
 func (s *Store) EnqueueNotificationOutbox(ctx context.Context, notification model.Notification, now time.Time) error {
+	return enqueueNotificationOutbox(ctx, s.db, notification, now)
+}
+
+func enqueueNotificationOutbox(ctx context.Context, exec execer, notification model.Notification, createdAt time.Time) error {
 	payload, err := json.Marshal(notification)
 	if err != nil {
 		return fmt.Errorf("encode notification outbox: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := exec.ExecContext(ctx, `
 		INSERT OR IGNORE INTO notification_outbox (
 			dedupe_key, monitor_id, payload_json, created_at_ms
 		) VALUES (?, ?, ?, ?)
-	`, notificationOutboxKey(notification, now), notification.MonitorID, string(payload), now.UTC().UnixMilli()); err != nil {
+	`, notificationOutboxKey(notification, createdAt), notification.MonitorID, string(payload), createdAt.UTC().UnixMilli()); err != nil {
 		return fmt.Errorf("insert notification outbox: %w", err)
 	}
 	return nil

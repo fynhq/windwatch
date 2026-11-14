@@ -225,25 +225,35 @@ func (s *Server) loadPublicSettingsPage(r *http.Request, auth model.AuthInfo) (p
 	}, nil
 }
 
+type settingsSectionDefinition struct {
+	Name       string
+	PathPrefix string
+	TitleKey   string
+	IntroKey   string
+}
+
+var settingsSections = []settingsSectionDefinition{
+	{Name: "public", PathPrefix: "/settings/public", TitleKey: "settings.navPublic", IntroKey: "settings.publicStatusIntro"},
+	{Name: "notifications", PathPrefix: "/settings/notifications", TitleKey: "settings.navNotifications", IntroKey: "notification.intro"},
+	{Name: "logs", PathPrefix: "/settings/logs", TitleKey: "settings.navLogs", IntroKey: "settings.logsIntro"},
+	{Name: "proxies", PathPrefix: "/settings/proxies", TitleKey: "settings.navProxies", IntroKey: "proxy.listHint"},
+}
+
 func settingsSectionLocaleKeys(section string) (titleKey, introKey string) {
-	switch section {
-	case "public":
-		return "settings.navPublic", "settings.publicStatusIntro"
-	case "notifications":
-		return "settings.navNotifications", "notification.intro"
-	case "logs":
-		return "settings.navLogs", "settings.logsIntro"
-	case "proxies":
-		return "settings.navProxies", "proxy.listHint"
-	default:
-		return "settings.navGeneral", "settings.systemIntro"
+	for _, definition := range settingsSections {
+		if definition.Name == section {
+			return definition.TitleKey, definition.IntroKey
+		}
 	}
+	return "settings.navGeneral", "settings.systemIntro"
 }
 
 func (s *Server) handleTimezoneSave(w http.ResponseWriter, r *http.Request, auth model.AuthInfo) {
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
+	s.settingsWriteMu.Lock()
+	defer s.settingsWriteMu.Unlock()
 	timezone := strings.TrimSpace(r.PostFormValue("timezone"))
 	if timezone == "" {
 		timezone = model.DefaultTimezone

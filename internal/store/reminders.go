@@ -37,7 +37,40 @@ func (s *Store) ReminderState(ctx context.Context, monitorID int64, kind string)
 }
 
 func (s *Store) SaveReminderState(ctx context.Context, state model.NotificationReminder, now time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
+	return saveReminderState(ctx, s.db, state, now)
+}
+
+// SaveReminderStateWithNotification persists the reminder counter and its
+// outbox intent in one transaction, so a crash cannot duplicate a reminder or
+// advance the counter without a queued notification.
+func (s *Store) SaveReminderStateWithNotification(
+	ctx context.Context,
+	state model.NotificationReminder,
+	now time.Time,
+	notification *model.Notification,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin reminder state update: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := saveReminderState(ctx, tx, state, now); err != nil {
+		return err
+	}
+	if notification != nil {
+		if err := enqueueNotificationOutbox(ctx, tx, *notification, now); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reminder state update: %w", err)
+	}
+	return nil
+}
+
+func saveReminderState(ctx context.Context, exec execer, state model.NotificationReminder, now time.Time) error {
+	_, err := exec.ExecContext(ctx, `
 		INSERT INTO notification_reminders (
 			monitor_id, kind, status_since_ms, context_key, sent_count, next_at_ms, updated_at_ms
 		) VALUES (?, ?, ?, ?, ?, ?, ?)

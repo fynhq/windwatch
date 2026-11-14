@@ -23,9 +23,31 @@ type proxyFormValues struct {
 	Password string
 }
 
+// proxyOption is the template-facing view of a proxy. It deliberately omits
+// PasswordEnc so page models cannot accidentally render a stored secret.
+type proxyOption struct {
+	ID      int64
+	Name    string
+	Type    model.ProxyType
+	Address string
+}
+
+func proxyOptions(proxies []model.Proxy) []proxyOption {
+	options := make([]proxyOption, 0, len(proxies))
+	for _, proxy := range proxies {
+		options = append(options, proxyOption{
+			ID:      proxy.ID,
+			Name:    proxy.Name,
+			Type:    proxy.Type,
+			Address: proxy.Address,
+		})
+	}
+	return options
+}
+
 type proxySettingsPage struct {
 	settingsSectionPage
-	Proxies          []model.Proxy
+	Proxies          []proxyOption
 	ProxyForm        proxyFormValues
 	ProxyFormOpen    bool
 	ProxyFormEdit    bool
@@ -43,7 +65,7 @@ func (s *Server) loadProxySettingsPage(r *http.Request, auth model.AuthInfo) (pr
 	}
 	return proxySettingsPage{
 		settingsSectionPage: base,
-		Proxies:             proxies,
+		Proxies:             proxyOptions(proxies),
 		ProxyFormAction:     "/settings/proxies",
 		ProxyTestAction:     "/settings/proxies/test",
 		ProxyTypeOptions:    []model.ProxyType{model.ProxyHTTP, model.ProxySOCKS5},
@@ -141,10 +163,7 @@ func (s *Server) renderProxyTestError(w http.ResponseWriter, r *http.Request, au
 }
 
 func truncateDetail(value string) string {
-	if len(value) > 256 {
-		return value[:256]
-	}
-	return value
+	return model.TruncateText(value, 256)
 }
 
 func (s *Server) handleProxyCreate(w http.ResponseWriter, r *http.Request, auth model.AuthInfo) {

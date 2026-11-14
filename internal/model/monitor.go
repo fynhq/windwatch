@@ -17,6 +17,23 @@ const (
 	// MaxMonitors is a safety ceiling rather than a product promise. The
 	// documented performance targets assume a much smaller number.
 	MaxMonitors = 500
+
+	MinIntervalSeconds = 20
+	MaxIntervalSeconds = 24 * 60 * 60
+	MinTimeoutSeconds  = 1
+	MaxTimeoutSeconds  = 5 * 60
+	MinThreshold       = 1
+	MaxThreshold       = 20
+
+	MaxMonitorNameLength     = 100
+	MaxURLBytes              = 2048
+	MaxTCPHostBytes          = 255
+	MaxDockerContainerLength = 255
+	MaxHTTPKeywordRunes      = 500
+	MinPort                  = 1
+	MaxPort                  = 65535
+	MinCertWarnDays          = 1
+	MaxCertWarnDays          = 365
 )
 
 type MonitorType string
@@ -219,16 +236,17 @@ var (
 
 func (m Monitor) Validate() error {
 	name := strings.TrimSpace(m.Name)
-	if name == "" || utf8.RuneCountInString(name) > 100 {
+	if name == "" || utf8.RuneCountInString(name) > MaxMonitorNameLength {
 		return ErrMonitorName
 	}
-	if m.Interval < 20*time.Second || m.Interval > 24*time.Hour {
+	if m.Interval < MinIntervalSeconds*time.Second || m.Interval > MaxIntervalSeconds*time.Second {
 		return ErrInterval
 	}
-	if m.Timeout < time.Second || m.Timeout > 5*time.Minute || m.Timeout >= m.Interval {
+	if m.Timeout < MinTimeoutSeconds*time.Second || m.Timeout > MaxTimeoutSeconds*time.Second || m.Timeout >= m.Interval {
 		return ErrTimeout
 	}
-	if m.FailThreshold < 1 || m.FailThreshold > 20 || m.RecoverThreshold < 1 || m.RecoverThreshold > 20 {
+	if m.FailThreshold < MinThreshold || m.FailThreshold > MaxThreshold ||
+		m.RecoverThreshold < MinThreshold || m.RecoverThreshold > MaxThreshold {
 		return ErrThreshold
 	}
 	if err := m.Reminders.Validate(); err != nil {
@@ -255,7 +273,7 @@ func (m Monitor) Validate() error {
 			return ErrDockerContainer
 		}
 		container := strings.TrimSpace(m.Docker.Container)
-		if container == "" || utf8.RuneCountInString(container) > 255 {
+		if container == "" || utf8.RuneCountInString(container) > MaxDockerContainerLength {
 			return ErrDockerContainer
 		}
 		if strings.IndexFunc(container, func(r rune) bool {
@@ -317,6 +335,7 @@ func (m *Monitor) DecodeConfig(data []byte) error {
 		}
 		m.HTTP = &cfg
 		m.TCP = nil
+		m.Docker = nil
 	case MonitorTypeTCP:
 		var cfg TCPConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
@@ -396,7 +415,7 @@ func StatusMatches(expectation string, code int) bool {
 
 func validateHTTPConfig(cfg HTTPConfig) error {
 	trimmedURL := strings.TrimSpace(cfg.URL)
-	if trimmedURL == "" || len(trimmedURL) > 2048 {
+	if trimmedURL == "" || len(trimmedURL) > MaxURLBytes {
 		return ErrHTTPURL
 	}
 	parsed, err := url.Parse(trimmedURL)
@@ -416,7 +435,7 @@ func validateHTTPConfig(cfg HTTPConfig) error {
 	if _, _, err := ParseExpectedStatus(cfg.ExpectedStatus); err != nil {
 		return ErrHTTPStatus
 	}
-	if utf8.RuneCountInString(cfg.Keyword) > 500 {
+	if utf8.RuneCountInString(cfg.Keyword) > MaxHTTPKeywordRunes {
 		return ErrHTTPKeyword
 	}
 	if method == "HEAD" && cfg.Keyword != "" {
@@ -426,7 +445,7 @@ func validateHTTPConfig(cfg HTTPConfig) error {
 		if parsed.Scheme != "https" {
 			return ErrHTTPSCert
 		}
-		if cfg.CertWarnDays < 1 || cfg.CertWarnDays > 365 {
+		if cfg.CertWarnDays < MinCertWarnDays || cfg.CertWarnDays > MaxCertWarnDays {
 			return ErrHTTPSCert
 		}
 	}
@@ -435,7 +454,7 @@ func validateHTTPConfig(cfg HTTPConfig) error {
 
 func validateTCPConfig(cfg TCPConfig) error {
 	host := strings.TrimSpace(cfg.Host)
-	if host == "" || len(host) > 255 {
+	if host == "" || len(host) > MaxTCPHostBytes {
 		return ErrTCPHost
 	}
 	if strings.IndexFunc(host, func(r rune) bool {
@@ -443,7 +462,7 @@ func validateTCPConfig(cfg TCPConfig) error {
 	}) >= 0 {
 		return ErrTCPHost
 	}
-	if cfg.Port < 1 || cfg.Port > 65535 {
+	if cfg.Port < MinPort || cfg.Port > MaxPort {
 		return ErrTCPPort
 	}
 	return nil

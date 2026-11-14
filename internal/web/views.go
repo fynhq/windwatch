@@ -35,6 +35,7 @@ var noticeKeys = map[string]string{
 	"monitor_created":                  "notice.monitorCreated",
 	"monitor_updated":                  "notice.monitorUpdated",
 	"monitor_deleted":                  "notice.monitorDeleted",
+	"scheduler_reload_failed":          "notice.schedulerReloadFailed",
 	"monitor_paused":                   "notice.monitorPaused",
 	"monitor_resumed":                  "notice.monitorResumed",
 	"push_token_regenerated":           "notice.pushTokenRegenerated",
@@ -127,18 +128,12 @@ func settingsSectionForPath(path string) string {
 	if path == "/settings" {
 		return "overview"
 	}
-	switch {
-	case strings.HasPrefix(path, "/settings/public"):
-		return "public"
-	case strings.HasPrefix(path, "/settings/notifications"):
-		return "notifications"
-	case strings.HasPrefix(path, "/settings/logs"):
-		return "logs"
-	case strings.HasPrefix(path, "/settings/proxies"):
-		return "proxies"
-	default:
-		return "general"
+	for _, section := range settingsSections {
+		if strings.HasPrefix(path, section.PathPrefix) {
+			return section.Name
+		}
 	}
+	return "general"
 }
 
 func formatTime(translator *i18n.Translator, value time.Time, location *time.Location) string {

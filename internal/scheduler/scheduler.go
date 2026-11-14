@@ -55,6 +55,11 @@ type outcome struct {
 	// rejects such requests, but the scheduler API keeps its historical
 	// behavior for tests and internal callers.
 	manual bool
+	// generation identifies the monitor configuration that produced this
+	// result. A reload or pause/resume invalidates in-flight outcomes so a
+	// stale probe cannot advance state after the user changed the monitor.
+	generation uint64
+	versioned  bool
 }
 
 type runnerHandle struct {
@@ -78,12 +83,14 @@ type Scheduler struct {
 	semaphore chan struct{}
 	results   chan outcome
 
-	mu       sync.Mutex
-	ctx      context.Context
-	started  bool
-	runners  map[int64]*runnerHandle
-	inflight map[int64]struct{}
-	wg       sync.WaitGroup
+	mu          sync.Mutex
+	ctx         context.Context
+	started     bool
+	stopping    bool
+	runners     map[int64]*runnerHandle
+	inflight    map[int64]struct{}
+	generations map[int64]uint64
+	wg          sync.WaitGroup
 }
 
 func (s *Scheduler) SetCipher(cipher *secret.Cipher) {
@@ -123,6 +130,7 @@ func New(st *store.Store, registry *checker.Registry, logger *slog.Logger) *Sche
 		results:        make(chan outcome, resultBuffer),
 		runners:        make(map[int64]*runnerHandle),
 		inflight:       make(map[int64]struct{}),
+		generations:    make(map[int64]uint64),
 	}
 }
 
@@ -162,6 +170,9 @@ func (s *Scheduler) Start(ctx context.Context) error {
 }
 
 func (s *Scheduler) Wait() {
+	s.mu.Lock()
+	s.stopping = true
+	s.mu.Unlock()
 	s.wg.Wait()
 }
 
@@ -189,14 +200,21 @@ func (s *Scheduler) Reload(monitorID int64) error {
 	if err != nil {
 		return err
 	}
-	s.stopRunner(monitorID)
+	// Load before stopping the old runner. A transient read failure must not
+	// leave an otherwise healthy monitor unscheduled.
 	monitor, err := s.store.MonitorByID(runCtx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
+		s.stopRunner(monitorID)
+		s.mu.Lock()
+		delete(s.generations, monitorID)
+		s.mu.Unlock()
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("load monitor %d: %w", monitorID, err)
 	}
+	s.bumpGeneration(monitorID)
+	s.stopRunner(monitorID)
 	if monitor.Enabled {
 		s.startRunner(monitor)
 	}
@@ -205,6 +223,9 @@ func (s *Scheduler) Reload(monitorID int64) error {
 
 func (s *Scheduler) Remove(monitorID int64) {
 	s.stopRunner(monitorID)
+	s.mu.Lock()
+	delete(s.generations, monitorID)
+	s.mu.Unlock()
 }
 
 // SetMonitorEnabled applies pause/resume semantics in one place so the web layer
@@ -212,44 +233,34 @@ func (s *Scheduler) Remove(monitorID int64) {
 // reminder state on pause, closes any open DOWN event, and resets threshold
 // counters so paused time does not count toward warnings or outages.
 func (s *Scheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enabled bool) error {
-	if err := s.store.SetMonitorEnabled(ctx, monitorID, enabled); err != nil {
+	// Invalidate in-flight results before the state change so a probe that
+	// started before the user pressed pause cannot advance the monitor later.
+	s.bumpGeneration(monitorID)
+	now := s.now().UTC()
+	if err := s.store.SetMonitorEnabledWithReset(ctx, monitorID, enabled, now); err != nil {
 		return fmt.Errorf("set monitor enabled: %w", err)
 	}
-	now := s.now().UTC()
-	if !enabled {
-		if err := s.store.DeleteReminderStates(ctx, monitorID); err != nil {
-			s.log.Warn("clear reminder states after pause", "monitor_id", monitorID, "error", err)
-		}
-	}
-	if err := s.store.CloseOpenDownEvents(ctx, monitorID, now); err != nil {
-		s.log.Warn("close open down events after toggle", "monitor_id", monitorID, "error", err)
-	}
-	if err := s.store.ResetMonitorCounters(ctx, monitorID, now); err != nil {
-		s.log.Warn("reset monitor counters after toggle", "monitor_id", monitorID, "error", err)
-	}
-	if enabled {
-		if err := s.store.SetMonitorPendingAfterResume(ctx, monitorID, now); err != nil {
-			s.log.Warn("set monitor pending after resume", "monitor_id", monitorID, "error", err)
-		}
-	}
 	if err := s.Reload(monitorID); err != nil {
+		// Reload is no longer destructive on failure: the old runner remains
+		// active and execute() re-reads the enabled flag every cycle.
 		s.log.Warn("reload scheduler after toggle", "monitor_id", monitorID, "error", err)
 	}
 	return nil
 }
 
 func (s *Scheduler) CheckNow(monitorID int64) error {
-	runCtx, err := s.context()
-	if err != nil {
-		return err
-	}
 	s.mu.Lock()
-	_, busy := s.inflight[monitorID]
-	s.mu.Unlock()
-	if busy {
+	if !s.started || s.stopping || s.ctx == nil || s.ctx.Err() != nil {
+		s.mu.Unlock()
+		return ErrNotStarted
+	}
+	if _, busy := s.inflight[monitorID]; busy {
+		s.mu.Unlock()
 		return ErrCheckRunning
 	}
+	runCtx := s.ctx
 	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
 		s.executeSafely(runCtx, monitorID, true)
@@ -260,10 +271,22 @@ func (s *Scheduler) CheckNow(monitorID int64) error {
 func (s *Scheduler) context() (context.Context, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.started || s.ctx == nil || s.ctx.Err() != nil {
+	if !s.started || s.stopping || s.ctx == nil || s.ctx.Err() != nil {
 		return nil, ErrNotStarted
 	}
 	return s.ctx, nil
+}
+
+func (s *Scheduler) bumpGeneration(monitorID int64) {
+	s.mu.Lock()
+	s.generations[monitorID]++
+	s.mu.Unlock()
+}
+
+func (s *Scheduler) generationCurrent(monitorID int64, generation uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.generations[monitorID] == generation
 }
 
 func (s *Scheduler) startRunner(monitor model.Monitor) {
@@ -283,13 +306,18 @@ func (s *Scheduler) startRunner(monitor model.Monitor) {
 	runCtx, cancel := context.WithCancel(ctx)
 
 	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+		cancel()
+		return
+	}
 	if old := s.runners[monitor.ID]; old != nil {
 		old.cancel()
 	}
 	s.runners[monitor.ID] = &runnerHandle{cancel: cancel}
+	s.wg.Add(1)
 	s.mu.Unlock()
 
-	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		defer s.recoverTask("runner")
@@ -335,6 +363,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		return
 	}
 	s.inflight[monitorID] = struct{}{}
+	generation := s.generations[monitorID]
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
@@ -354,7 +383,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		return
 	}
 	if monitor.Type == model.MonitorTypePush {
-		s.enqueuePushOutcome(ctx, monitor, manual)
+		s.enqueuePushOutcomeVersioned(ctx, monitor, manual, generation, true)
 		return
 	}
 
@@ -362,11 +391,18 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 	if monitor.ProxyID != nil && (monitor.Type == model.MonitorTypeHTTP || monitor.Type == model.MonitorTypeTCP) {
 		egress, err = s.resolveProxy(ctx, *monitor.ProxyID)
 		if err != nil {
-			s.sendOutcome(ctx, monitorID, model.CheckResult{
-				ErrorKind:    model.ErrorKindProxy,
-				ErrorMessage: truncateErrorText(err.Error()),
-				MetaJSON:     "{}",
-			}, s.now().UTC(), time.Time{}, manual)
+			s.sendOutcome(ctx, outcome{
+				monitorID: monitorID,
+				result: model.CheckResult{
+					ErrorKind:    model.ErrorKindProxy,
+					ErrorMessage: truncateErrorText(err.Error()),
+					MetaJSON:     "{}",
+				},
+				checkedAt:  s.now().UTC(),
+				manual:     manual,
+				generation: generation,
+				versioned:  true,
+			})
 			return
 		}
 	}
@@ -408,7 +444,15 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		}
 	}
 
-	s.sendOutcome(ctx, monitorID, result, s.now().UTC(), failureStartedAt, manual)
+	s.sendOutcome(ctx, outcome{
+		monitorID:        monitorID,
+		result:           result,
+		checkedAt:        s.now().UTC(),
+		failureStartedAt: failureStartedAt,
+		manual:           manual,
+		generation:       generation,
+		versioned:        true,
+	})
 }
 
 // probe runs one check attempt under the global concurrency limit. Each
@@ -507,6 +551,10 @@ func (s *Scheduler) runPushMonitor(ctx context.Context, monitor model.Monitor) {
 }
 
 func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monitor, manual bool) {
+	s.enqueuePushOutcomeVersioned(ctx, monitor, manual, 0, false)
+}
+
+func (s *Scheduler) enqueuePushOutcomeVersioned(ctx context.Context, monitor model.Monitor, manual bool, generation uint64, versioned bool) {
 	token, err := s.store.PushTokenByMonitorID(ctx, monitor.ID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && token.LastHeartbeat.IsZero()) {
 		return
@@ -527,17 +575,17 @@ func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monito
 		result.ErrorKind = model.ErrorKindHeartbeatTimeout
 		result.ErrorMessage = fmt.Sprintf("no heartbeat since %s", token.LastHeartbeat.Format(time.RFC3339))
 	}
-	s.sendOutcome(ctx, monitor.ID, result, now, time.Time{}, manual)
+	s.sendOutcome(ctx, outcome{
+		monitorID:  monitor.ID,
+		result:     result,
+		checkedAt:  now,
+		manual:     manual,
+		generation: generation,
+		versioned:  versioned,
+	})
 }
 
-func (s *Scheduler) sendOutcome(ctx context.Context, monitorID int64, result model.CheckResult, checkedAt time.Time, failureStartedAt time.Time, manual bool) {
-	job := outcome{
-		monitorID:        monitorID,
-		result:           result,
-		checkedAt:        checkedAt,
-		failureStartedAt: failureStartedAt,
-		manual:           manual,
-	}
+func (s *Scheduler) sendOutcome(ctx context.Context, job outcome) {
 	select {
 	case s.results <- job:
 		return
@@ -556,17 +604,15 @@ func (s *Scheduler) resolveProxy(ctx context.Context, proxyID int64) (*outboundp
 	if err != nil {
 		return nil, fmt.Errorf("load proxy %d: %w", proxyID, err)
 	}
-	password := ""
-	if stored.PasswordEnc != "" {
-		if s.cipher == nil {
-			return nil, fmt.Errorf("secret key is not initialized")
-		}
-		password, err = s.cipher.Decrypt(stored.PasswordEnc)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt proxy password: %w", err)
-		}
+	var decrypt func(string) (string, error)
+	if s.cipher != nil {
+		decrypt = s.cipher.Decrypt
 	}
-	return outboundproxy.NewConfig(stored.Type, stored.Address, stored.Username, password)
+	config, err := outboundproxy.FromStored(stored, decrypt)
+	if err != nil {
+		return nil, fmt.Errorf("load proxy %d: %w", proxyID, err)
+	}
+	return config, nil
 }
 
 func (s *Scheduler) collect(ctx context.Context) {
@@ -591,6 +637,10 @@ func (s *Scheduler) collect(ctx context.Context) {
 }
 
 func (s *Scheduler) apply(ctx context.Context, job outcome) {
+	if job.versioned && !s.generationCurrent(job.monitorID, job.generation) {
+		s.log.Debug("discarding stale check result", "monitor_id", job.monitorID, "generation", job.generation)
+		return
+	}
 	monitor, err := s.store.MonitorByID(ctx, job.monitorID)
 	if errors.Is(err, store.ErrNotFound) {
 		return
@@ -603,7 +653,8 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		// A scheduled result can finish after the user pauses a monitor. Do not
 		// let that late result reopen a DOWN event or advance state while paused.
 		// Manual/internal results are still applied for compatibility; the web
-		// layer rejects manual checks on paused monitors.
+		// layer rejects manual checks on paused monitors, and versioned outcomes
+		// are discarded above when the pause changed the generation.
 		s.log.Debug("discarding result for paused monitor", "monitor_id", monitor.ID)
 		return
 	}
@@ -672,7 +723,56 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	if event != nil && event.Type == model.EventUp && previousStatus == model.StatusDown {
 		outageStart = s.outageStart(ctx, monitor.ID, previousSince, job.checkedAt)
 	}
-	if err := s.store.RecordCheck(ctx, check, nextState, event, closeDown); err != nil {
+
+	warningChanged := warning && nextState.Status == model.StatusWarning &&
+		(previousStatus != model.StatusWarning || previousWarningKey != warningKey)
+	notificationReady := false
+	if event != nil || warningChanged {
+		notificationReady = monitor.Enabled && monitorNotificationsEnabled(monitor) &&
+			s.notifier != nil && s.notificationsAvailable(ctx)
+	}
+	notifications := make([]model.Notification, 0, 2)
+	if event != nil && notificationReady {
+		notification := model.Notification{
+			Key:           model.StateNotificationKey(string(event.Type), monitor.ID, job.checkedAt),
+			Kind:          event.Type,
+			MonitorID:     monitor.ID,
+			MonitorName:   monitor.Name,
+			MonitorTarget: monitor.Target(),
+			MonitorType:   monitor.Type,
+			Status:        nextState.Status,
+			Message:       job.result.ErrorMessage,
+			OccurredAt:    job.checkedAt,
+		}
+		if event.Type == model.EventUp && previousStatus == model.StatusDown {
+			if outageStart.IsZero() {
+				outageStart = previousSince
+			}
+			if !outageStart.IsZero() && !outageStart.After(job.checkedAt) {
+				notification.DowntimeStart = outageStart
+				notification.Downtime = job.checkedAt.Sub(outageStart)
+				notification.DowntimeCycles = outageCycles(notification.Downtime, monitor.Interval, monitor.Type)
+			}
+		}
+		notifications = append(notifications, notification)
+	}
+	if warningChanged && notificationReady {
+		notifications = append(notifications, s.warningNotification(monitor, job.result, nextState, job.checkedAt))
+	}
+
+	// Persist the warning episode independently of whether a notification
+	// channel is currently available. Otherwise status_since would advance on
+	// every successful check while notifications are disabled.
+	var warningContext *string
+	if nextState.Status == model.StatusWarning && warning {
+		value := warningKey
+		warningContext = &value
+	} else if nextState.Status != model.StatusWarning && previousWarningKey != "" {
+		value := ""
+		warningContext = &value
+	}
+
+	if err := s.store.RecordCheckWithNotifications(ctx, check, nextState, event, closeDown, notifications, warningContext); err != nil {
 		s.log.Error("record check", "monitor_id", monitor.ID, "error", err)
 		return
 	}
@@ -683,46 +783,27 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 			"previous", previousStatus,
 			"status", nextState.Status,
 		)
-		if monitor.Enabled && monitorNotificationsEnabled(monitor) && s.notifier != nil && s.notificationsAvailable(ctx) {
-			notification := model.Notification{
-				Key:           fmt.Sprintf("%s:%d:%d", event.Type, monitor.ID, job.checkedAt.UnixMilli()),
-				Kind:          event.Type,
-				MonitorID:     monitor.ID,
-				MonitorName:   monitor.Name,
-				MonitorTarget: monitor.Target(),
-				MonitorType:   monitor.Type,
-				Status:        nextState.Status,
-				Message:       job.result.ErrorMessage,
-				OccurredAt:    job.checkedAt,
-			}
-			if event.Type == model.EventUp && previousStatus == model.StatusDown {
-				if outageStart.IsZero() {
-					outageStart = previousSince
-				}
-				if !outageStart.IsZero() && !outageStart.After(job.checkedAt) {
-					notification.DowntimeStart = outageStart
-					notification.Downtime = job.checkedAt.Sub(outageStart)
-					notification.DowntimeCycles = outageCycles(notification.Downtime, monitor.Interval, monitor.Type)
-				}
-			}
-			if !s.notifier.Enqueue(notification) {
-				s.log.Error("persist state notification", "monitor_id", monitor.ID, "kind", event.Type, "error", "notification outbox is unavailable")
-			}
-		}
 	}
-	warningChanged := warning && nextState.Status == model.StatusWarning &&
-		(previousStatus != model.StatusWarning || previousWarningKey != warningKey)
-	if warningChanged && monitor.Enabled && monitorNotificationsEnabled(monitor) && s.notifier != nil && s.notificationsAvailable(ctx) {
-		notification := s.warningNotification(monitor, job.result, nextState, job.checkedAt)
-		if s.notifier.Enqueue(notification) {
-			s.persistWarningContext(ctx, monitor.ID, warningKey)
-		} else {
-			s.log.Error("persist warning notification", "monitor_id", monitor.ID, "error", "notification outbox is unavailable")
-		}
-	} else if nextState.Status != model.StatusWarning && previousWarningKey != "" {
-		s.persistWarningContext(ctx, monitor.ID, "")
-	}
+	s.wakeNotifications(notifications)
+
 	s.processReminders(ctx, monitor, job.result, warning, nextState, previousStatus, job.checkedAt)
+}
+
+func (s *Scheduler) wakeNotifications(notifications []model.Notification) {
+	if s.notifier == nil || len(notifications) == 0 {
+		return
+	}
+	if waker, ok := s.notifier.(interface{ Wake() }); ok {
+		waker.Wake()
+		return
+	}
+	// Test sinks implement only Enqueue; the outbox insert is idempotent for
+	// production but keeps the fake sink observable in tests.
+	for _, notification := range notifications {
+		if !s.notifier.Enqueue(notification) {
+			s.log.Warn("wake notification outbox", "monitor_id", notification.MonitorID, "kind", notification.Kind)
+		}
+	}
 }
 
 func monitorNotificationsEnabled(monitor model.Monitor) bool {
@@ -812,18 +893,8 @@ func (s *Scheduler) notificationsAvailable(ctx context.Context) bool {
 	return enabled
 }
 
-func (s *Scheduler) persistWarningContext(ctx context.Context, monitorID int64, value string) {
-	if err := s.store.SetWarningContext(ctx, monitorID, value); err != nil {
-		s.log.Warn("persist warning context", "monitor_id", monitorID, "error", err)
-	}
-}
-
 func truncateErrorText(value string) string {
-	const limit = 512
-	if len(value) > limit {
-		return value[:limit]
-	}
-	return value
+	return model.TruncateText(value, 512)
 }
 
 type auxWarning struct {
@@ -860,7 +931,7 @@ func (s *Scheduler) warningNotification(monitor model.Monitor, result model.Chec
 		Cert:          result.Certificate,
 		// Include the episode start so a warning that clears and later recurs
 		// with the same certificate context is treated as a new event.
-		Key: fmt.Sprintf("warn_cert:%d:%s:%d:%d", monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince.UnixMilli()),
+		Key: model.WarnCertNotificationKey(monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince),
 	}
 }
 

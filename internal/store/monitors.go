@@ -446,6 +446,81 @@ func (s *Store) SetMonitorEnabled(ctx context.Context, id int64, enabled bool) e
 	return nil
 }
 
+// SetMonitorEnabledWithReset applies the complete pause/resume state change in
+// one transaction: enabled flag, reminder cleanup, open DOWN event, threshold
+// counters, PENDING reset and the passive heartbeat baseline. Leaving any of
+// these behind would let paused time leak into the next outage episode.
+func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64, enabled bool, at time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin monitor toggle: %w", err)
+	}
+	defer tx.Rollback()
+
+	var monitorType model.MonitorType
+	if err := tx.QueryRowContext(ctx, "SELECT type FROM monitors WHERE id = ?", monitorID).Scan(&monitorType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("load monitor type for toggle: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE monitors SET enabled = ? WHERE id = ?", boolInt(enabled), monitorID); err != nil {
+		return fmt.Errorf("set monitor enabled: %w", err)
+	}
+	now := at.UTC().UnixMilli()
+	if !enabled {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM notification_reminders WHERE monitor_id = ?", monitorID); err != nil {
+			return fmt.Errorf("clear reminder states after pause: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE events SET ended_at_ms = ?
+		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
+	`, now, monitorID, model.EventDown); err != nil {
+		return fmt.Errorf("close open down events after toggle: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE monitor_state
+		SET consecutive_failures = 0,
+		    consecutive_successes = 0,
+		    status_since_ms = CASE WHEN status IN (?, ?) THEN ? ELSE status_since_ms END,
+		    updated_at_ms = ?
+		WHERE monitor_id = ?
+	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
+		return fmt.Errorf("reset monitor counters after toggle: %w", err)
+	}
+	if enabled {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE monitor_state
+			SET status = ?,
+			    status_since_ms = ?,
+			    last_error = '',
+			    consecutive_failures = 0,
+			    consecutive_successes = 0,
+			    warning_context = '',
+			    updated_at_ms = ?
+			WHERE monitor_id = ? AND status IN (?, ?)
+		`, model.StatusPending, now, now, monitorID, model.StatusDown, model.StatusWarning); err != nil {
+			return fmt.Errorf("set monitor pending after resume: %w", err)
+		}
+		if monitorType == model.MonitorTypePush {
+			// Heartbeats are rejected while paused, so the last observation can
+			// be arbitrarily old. Start a fresh grace window on resume instead
+			// of counting the paused interval as an outage.
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE push_tokens SET last_heartbeat_ms = ?
+				WHERE monitor_id = ? AND last_heartbeat_ms IS NOT NULL
+			`, now, monitorID); err != nil {
+				return fmt.Errorf("reset push heartbeat after resume: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit monitor toggle: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) DeleteMonitor(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM monitors WHERE id = ?", id)
 	if err != nil {
@@ -462,6 +537,34 @@ func (s *Store) DeleteMonitor(ctx context.Context, id int64) error {
 }
 
 func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.MonitorState, event *model.Event, closeDownEvent bool) error {
+	return s.recordCheck(ctx, check, state, event, closeDownEvent, nil, nil)
+}
+
+// RecordCheckWithNotifications commits the check, monitor state, event, warning
+// context and notification intents in one transaction. A crash can therefore
+// no longer persist a state transition without its alert, or persist a warning
+// episode without the context that keeps it stable across restarts.
+func (s *Store) RecordCheckWithNotifications(
+	ctx context.Context,
+	check model.Check,
+	state model.MonitorState,
+	event *model.Event,
+	closeDownEvent bool,
+	notifications []model.Notification,
+	warningContext *string,
+) error {
+	return s.recordCheck(ctx, check, state, event, closeDownEvent, notifications, warningContext)
+}
+
+func (s *Store) recordCheck(
+	ctx context.Context,
+	check model.Check,
+	state model.MonitorState,
+	event *model.Event,
+	closeDownEvent bool,
+	notifications []model.Notification,
+	warningContext *string,
+) error {
 	metaJSON := check.MetaJSON
 	if strings.TrimSpace(metaJSON) == "" {
 		metaJSON = "{}"
@@ -530,6 +633,14 @@ func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.
 		return fmt.Errorf("upsert monitor state: %w", err)
 	}
 
+	if warningContext != nil {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE monitor_state SET warning_context = ? WHERE monitor_id = ?
+		`, *warningContext, check.MonitorID); err != nil {
+			return fmt.Errorf("set warning context: %w", err)
+		}
+	}
+
 	if closeDownEvent {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE events SET ended_at_ms = ?
@@ -550,6 +661,19 @@ func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.
 			eventMeta,
 		); err != nil {
 			return fmt.Errorf("insert event: %w", err)
+		}
+	}
+
+	enqueuedAt := check.CheckedAt.UTC()
+	if enqueuedAt.IsZero() {
+		enqueuedAt = state.UpdatedAt.UTC()
+	}
+	if enqueuedAt.IsZero() {
+		enqueuedAt = time.Now().UTC()
+	}
+	for _, notification := range notifications {
+		if err := enqueueNotificationOutbox(ctx, tx, notification, enqueuedAt); err != nil {
+			return err
 		}
 	}
 
@@ -576,6 +700,7 @@ func (s *Store) RecentCheckSummariesByMonitor(ctx context.Context, monitorIDs []
 		}
 		chunk := monitorIDs[start:end]
 		var query strings.Builder
+		query.WriteString("SELECT * FROM (")
 		args := make([]any, 0, len(chunk)*2)
 		for index, monitorID := range chunk {
 			if index > 0 {
@@ -585,11 +710,14 @@ func (s *Store) RecentCheckSummariesByMonitor(ctx context.Context, monitorIDs []
 				SELECT monitor_id, checked_at_ms, status, latency_ms
 				FROM checks
 				WHERE monitor_id = ?
-				ORDER BY checked_at_ms DESC
+				ORDER BY checked_at_ms DESC, id DESC
 				LIMIT ?
 			)`)
 			args = append(args, monitorID, limit)
 		}
+		// Compound SELECTs have no defined order without an outer ORDER BY.
+		// The dashboard assumes checks[0] is the newest sample for each monitor.
+		query.WriteString(") ORDER BY monitor_id ASC, checked_at_ms DESC")
 		rows, err := s.reader().QueryContext(ctx, query.String(), args...)
 		if err != nil {
 			return nil, fmt.Errorf("list recent checks by monitor: %w", err)
@@ -679,39 +807,6 @@ func (s *Store) ResetMonitorCounters(ctx context.Context, monitorID int64, at ti
 		WHERE monitor_id = ?
 	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
 		return fmt.Errorf("reset monitor counters: %w", err)
-	}
-	return nil
-}
-
-// SetMonitorPendingAfterResume turns a previously DOWN/WARNING monitor back
-// into PENDING when it is resumed. Paused time must not reappear as a new
-// outage episode before the first post-resume check has confirmed it.
-func (s *Store) SetMonitorPendingAfterResume(ctx context.Context, monitorID int64, at time.Time) error {
-	now := at.UTC().UnixMilli()
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE monitor_state
-		SET status = ?,
-		    status_since_ms = ?,
-		    last_error = '',
-		    consecutive_failures = 0,
-		    consecutive_successes = 0,
-		    warning_context = '',
-		    updated_at_ms = ?
-		WHERE monitor_id = ? AND status IN (?, ?)
-	`, model.StatusPending, now, now, monitorID, model.StatusDown, model.StatusWarning); err != nil {
-		return fmt.Errorf("set monitor pending after resume: %w", err)
-	}
-	return nil
-}
-
-// SetWarningContext records the current certificate warning episode.
-// Persisting it keeps a restart from resetting status_since and re-notifying.
-func (s *Store) SetWarningContext(ctx context.Context, monitorID int64, value string) error {
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE monitor_state SET warning_context = ?
-		WHERE monitor_id = ?
-	`, value, monitorID); err != nil {
-		return fmt.Errorf("set warning context: %w", err)
 	}
 	return nil
 }
@@ -843,9 +938,7 @@ func (s *Store) uptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		return result, nil
 	}
 	args := make([]any, 0, len(monitorIDs)+2)
-	for _, id := range monitorIDs {
-		args = append(args, id)
-	}
+	args = append(args, int64Args(monitorIDs)...)
 	args = append(args, since.UTC().UnixMilli())
 	window := "checked_at_ms >= ?"
 	if !before.IsZero() {

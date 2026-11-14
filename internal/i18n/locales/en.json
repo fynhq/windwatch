@@ -264,6 +264,7 @@
   "notice.monitorCreated": "Monitor created. Waiting for the first check.",
   "notice.monitorUpdated": "Monitor updated.",
   "notice.monitorDeleted": "Monitor deleted.",
+  "notice.schedulerReloadFailed": "Saved, but the scheduler could not reload this monitor. Save again or restart the service.",
   "notice.monitorPaused": "Monitor paused.",
   "notice.monitorResumed": "Monitor resumed.",
   "notice.pushTokenRegenerated": "Push token regenerated; the old token is no longer valid.",

@@ -40,8 +40,30 @@ func LoadOrCreateKey(path string) ([]byte, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("generate secret key: %w", err)
 	}
-	if err := os.WriteFile(path, key, 0o600); err != nil {
+	dir := filepath.Dir(path)
+	temp, err := os.CreateTemp(dir, ".secret-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("create temporary secret key: %w", err)
+	}
+	tempName := temp.Name()
+	defer os.Remove(tempName)
+	if err := temp.Chmod(0o600); err != nil {
+		temp.Close()
+		return nil, fmt.Errorf("set temporary secret key permissions: %w", err)
+	}
+	if _, err := temp.Write(key); err != nil {
+		temp.Close()
 		return nil, fmt.Errorf("write secret key: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return nil, fmt.Errorf("sync secret key: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return nil, fmt.Errorf("close secret key: %w", err)
+	}
+	if err := os.Rename(tempName, path); err != nil {
+		return nil, fmt.Errorf("install secret key: %w", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		return nil, fmt.Errorf("set secret key permissions: %w", err)

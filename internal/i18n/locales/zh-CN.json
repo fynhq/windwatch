@@ -264,6 +264,7 @@
   "notice.monitorCreated": "监控已创建，正在等待首次检查。",
   "notice.monitorUpdated": "监控已更新。",
   "notice.monitorDeleted": "监控已删除。",
+  "notice.schedulerReloadFailed": "配置已保存，但调度器重载失败；请再次保存或重启服务。",
   "notice.monitorPaused": "监控已暂停。",
   "notice.monitorResumed": "监控已恢复调度。",
   "notice.pushTokenRegenerated": "Push Token 已重新生成，旧 Token 已失效。",

@@ -70,8 +70,5 @@ func classifyError(err error) (string, string) {
 }
 
 func truncateMessage(message string) string {
-	if len(message) <= maxErrorMessageBytes {
-		return message
-	}
-	return message[:maxErrorMessageBytes]
+	return model.TruncateText(message, maxErrorMessageBytes)
 }

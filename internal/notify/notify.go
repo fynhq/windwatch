@@ -113,11 +113,18 @@ func (s *Service) Enqueue(notification model.Notification) bool {
 		s.log.Error("persist notification outbox", "monitor_id", notification.MonitorID, "event", notification.Kind, "error", err)
 		return false
 	}
+	s.Wake()
+	return true
+}
+
+// Wake nudges the outbox worker without writing another row. The scheduler
+// persists notification intents in the same transaction as the check and only
+// needs to wake the dispatcher afterwards.
+func (s *Service) Wake() {
 	select {
 	case s.wake <- struct{}{}:
 	default:
 	}
-	return true
 }
 
 func (s *Service) NotificationsEnabled(ctx context.Context) (bool, error) {
@@ -157,6 +164,9 @@ func (s *Service) dispatch(ctx context.Context, notification model.Notification)
 		}
 		if err := s.sendChannel(ctx, config, channel, notification); err != nil {
 			s.log.Warn("send notification", "channel_id", channel.ID, "monitor_id", notification.MonitorID, "kind", notification.Kind, "error", err)
+			if channelErr == nil {
+				channelErr = err
+			}
 		}
 	}
 	return channelErr
@@ -180,7 +190,7 @@ func (s *Service) Test(ctx context.Context, channelID int64) error {
 		if err != nil {
 			return err
 		}
-		return s.sendTelegramText(ctx, channel, token, translator.T("notify.test"), "", "")
+		return s.sendTelegramText(ctx, channel, token, translator.T("notify.test"))
 	case model.NotificationChannelWebhook:
 		body, err := s.webhookBody(channel, notification, translator.T("notify.test"))
 		if err != nil {
@@ -197,11 +207,7 @@ func (s *Service) sendChannel(ctx context.Context, config Config, channel model.
 	switch channel.Type {
 	case model.NotificationChannelTelegram:
 		text := s.render(language, notification, config.Timezone)
-		token, err := s.channelSecret(channel)
-		if err != nil {
-			return err
-		}
-		return s.sendTelegramText(ctx, channel, token, text, notification.Key, notification.MonitorName)
+		return s.sendTelegramNotification(ctx, channel, text, notification.Key, notification.MonitorName)
 	case model.NotificationChannelWebhook:
 		body, err := s.webhookBody(channel, notification, s.render(language, notification, config.Timezone))
 		if err != nil {
@@ -224,31 +230,26 @@ func (s *Service) channelSecret(channel model.NotificationChannel) (string, erro
 	return value, nil
 }
 
-func (s *Service) sendTelegramText(ctx context.Context, channel model.NotificationChannel, token, text, dedupeKey, monitorName string) error {
-	if strings.TrimSpace(token) == "" {
-		return errors.New("telegram token is not configured")
-	}
+// sendTelegramNotification claims each chat ID before resolving the bot token.
+// A decrypt failure therefore leaves a durable failed notify_log row instead of
+// being dropped by the outbox as a successful expansion.
+func (s *Service) sendTelegramNotification(ctx context.Context, channel model.NotificationChannel, text, dedupeKey, monitorName string) error {
 	chatIDs := channel.ChatIDs()
 	if len(chatIDs) == 0 {
 		return errors.New("telegram chat id is not configured")
 	}
-	var firstErr error
-	for _, chatID := range chatIDs {
-		if dedupeKey == "" {
-			client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
-			if err != nil {
-				return err
-			}
-			sendErr := s.retry(ctx, func() error {
-				return s.postTelegram(ctx, client, token, chatID, text)
-			})
-			cleanup()
-			if sendErr != nil && firstErr == nil {
-				firstErr = sendErr
-			}
-			continue
+	if dedupeKey == "" {
+		token, err := s.channelSecret(channel)
+		if err != nil {
+			return err
 		}
+		return s.sendTelegramText(ctx, channel, token, text)
+	}
 
+	token := ""
+	tokenResolved := false
+	var tokenErr error
+	for _, chatID := range chatIDs {
 		now := time.Now().UTC()
 		claimed, id, err := s.store.ClaimNotificationID(ctx, dedupeKey, string(channel.Type), channel.ID, channel.Name, chatID, text, monitorName, now)
 		if err != nil {
@@ -265,13 +266,22 @@ func (s *Service) sendTelegramText(ctx context.Context, channel model.Notificati
 		if s.deferToEarlierState(ctx, entry) {
 			continue
 		}
+		if !tokenResolved {
+			token, tokenErr = s.channelSecret(channel)
+			tokenResolved = true
+		}
+		if tokenErr != nil {
+			s.recordFailure(ctx, entry, permanentError{err: tokenErr})
+			continue
+		}
+		if strings.TrimSpace(token) == "" {
+			s.recordFailure(ctx, entry, permanentError{err: errors.New("telegram token is not configured")})
+			continue
+		}
 		client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
 		if err != nil {
 			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", err)
 			s.recordFailure(ctx, entry, err)
-			if firstErr == nil {
-				firstErr = err
-			}
 			continue
 		}
 		sendErr := s.retry(ctx, func() error {
@@ -281,12 +291,36 @@ func (s *Service) sendTelegramText(ctx context.Context, channel model.Notificati
 		if sendErr != nil {
 			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", sendErr)
 			s.recordFailure(ctx, entry, sendErr)
-			if firstErr == nil {
-				firstErr = sendErr
-			}
 			continue
 		}
 		s.markSent(ctx, entry)
+	}
+	return nil
+}
+
+// sendTelegramText is the test-send path: no notify_log claim or retry row is
+// created, and the first error is returned to the admin.
+func (s *Service) sendTelegramText(ctx context.Context, channel model.NotificationChannel, token, text string) error {
+	if strings.TrimSpace(token) == "" {
+		return errors.New("telegram token is not configured")
+	}
+	chatIDs := channel.ChatIDs()
+	if len(chatIDs) == 0 {
+		return errors.New("telegram chat id is not configured")
+	}
+	var firstErr error
+	for _, chatID := range chatIDs {
+		client, cleanup, err := s.httpClient(ctx, channel.ProxyID)
+		if err != nil {
+			return err
+		}
+		sendErr := s.retry(ctx, func() error {
+			return s.postTelegram(ctx, client, token, chatID, text)
+		})
+		cleanup()
+		if sendErr != nil && firstErr == nil {
+			firstErr = sendErr
+		}
 	}
 	return firstErr
 }
@@ -371,7 +405,7 @@ func (s *Service) sendWebhook(ctx context.Context, channel model.NotificationCha
 	if sendErr != nil {
 		s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", target, "dedupe_key", dedupeKey, "error", sendErr)
 		s.recordFailure(ctx, entry, sendErr)
-		return sendErr
+		return nil
 	}
 	s.markSent(ctx, entry)
 	return nil
@@ -697,16 +731,13 @@ func (s *Service) resolveProxy(ctx context.Context, proxyID int64) (*outboundpro
 	if err != nil {
 		return nil, fmt.Errorf("load notification proxy: %w", err)
 	}
-	password := ""
-	if stored.PasswordEnc != "" {
-		password, err = s.cipher.Decrypt(stored.PasswordEnc)
-		if err != nil {
-			return nil, permanentError{err: fmt.Errorf("decrypt notification proxy password: %w", err)}
-		}
+	var decrypt func(string) (string, error)
+	if s.cipher != nil {
+		decrypt = s.cipher.Decrypt
 	}
-	config, err := outboundproxy.NewConfig(stored.Type, stored.Address, stored.Username, password)
+	config, err := outboundproxy.FromStored(stored, decrypt)
 	if err != nil {
-		return nil, permanentError{err: fmt.Errorf("invalid notification proxy configuration: %w", err)}
+		return nil, permanentError{err: fmt.Errorf("notification proxy configuration: %w", err)}
 	}
 	return config, nil
 }
@@ -813,8 +844,5 @@ func formatTimeRange(start, end time.Time, location *time.Location) (string, str
 }
 
 func truncateError(value string) string {
-	if len(value) > 512 {
-		return value[:512]
-	}
-	return value
+	return model.TruncateText(value, 512)
 }

@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	maxLoginUsernameLength = 64
-	maxLoginPasswordLength = 256
+	maxLoginUsernameLength = model.MaxUsernameLength
+	maxLoginPasswordLength = model.MaxPasswordLength
 )
 
 func (s *Server) handleSetupGet(w http.ResponseWriter, r *http.Request) {

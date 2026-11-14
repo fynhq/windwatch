@@ -131,16 +131,24 @@ func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version ui
 		s.publicBuildDone = done
 		s.publicMu.Unlock()
 
-		snapshot, err := s.buildPublicSnapshot(ctx, ids, version, now, location, existing)
-
-		s.publicMu.Lock()
-		if err == nil {
+		var snapshot *publicStatusSnapshot
+		var err error
+		func() {
+			defer func() {
+				s.publicMu.Lock()
+				s.publicBuilding = false
+				s.publicBuildDone = nil
+				close(done)
+				s.publicMu.Unlock()
+			}()
+			snapshot, err = s.buildPublicSnapshot(ctx, ids, version, now, location, existing)
+			if err != nil {
+				return
+			}
+			s.publicMu.Lock()
 			s.publicSnapshot = snapshot
-		}
-		s.publicBuilding = false
-		s.publicBuildDone = nil
-		close(done)
-		s.publicMu.Unlock()
+			s.publicMu.Unlock()
+		}()
 		return snapshot, err
 	}
 }
@@ -153,6 +161,14 @@ func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version u
 	monitorsExpired := existing == nil || existing.version != version || !now.Before(existing.monitorsExpires)
 	statsExpired := existing == nil || existing.version != version || !now.Before(existing.statsExpires)
 
+	localNow := now.In(location)
+	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	if existing != nil && existing.version == version && !existing.today.IsZero() && !existing.today.Equal(today) {
+		// The local day rolled over; daily history must shift even if the
+		// five-minute stats cache has not expired yet.
+		statsExpired = true
+	}
+
 	if monitorsExpired {
 		monitors, err := s.store.MonitorsByIDs(ctx, ids)
 		if err != nil {
@@ -160,37 +176,35 @@ func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version u
 		}
 		snapshot.monitors = monitors
 		snapshot.monitorsExpires = now.Add(publicStatusTTL)
+		if !statsExpired && existing != nil && existing.version == version &&
+			!sameMonitorIDSet(existing.monitors, monitors) {
+			// External settings edits can change the whitelist without bumping
+			// the in-process revision; refresh stats when the ID set changes.
+			statsExpired = true
+		}
 	}
 	if statsExpired {
 		monitorIDs := make([]int64, 0, len(snapshot.monitors))
 		for _, monitor := range snapshot.monitors {
 			monitorIDs = append(monitorIDs, monitor.ID)
 		}
-		localNow := now.In(location)
-		today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
 		history, err := s.store.DailyBucketsForMonitors(ctx, monitorIDs, today.AddDate(0, 0, -90), today, location)
 		if err != nil {
 			return nil, err
 		}
-		stats24, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-24*time.Hour), now)
+		combined, err := s.store.UptimeStatsForMonitorsCombinedMany(ctx, monitorIDs, []time.Time{
+			now.Add(-24 * time.Hour),
+			now.Add(-7 * 24 * time.Hour),
+			now.Add(-30 * 24 * time.Hour),
+			now.Add(-90 * 24 * time.Hour),
+		}, now)
 		if err != nil {
 			return nil, err
 		}
-		stats7, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-7*24*time.Hour), now)
-		if err != nil {
-			return nil, err
-		}
-		// Read the full long range through the same bucket-aligned path. The
-		// earlier "7d raw + older rollups" split counted the bucket crossing
-		// the 7-day boundary twice.
-		stats30, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-30*24*time.Hour), now)
-		if err != nil {
-			return nil, err
-		}
-		stats90, err := s.store.UptimeStatsForMonitorsCombined(ctx, monitorIDs, now.Add(-90*24*time.Hour), now)
-		if err != nil {
-			return nil, err
-		}
+		stats24 := combined[0]
+		stats7 := combined[1]
+		stats30 := combined[2]
+		stats90 := combined[3]
 		snapshot.today = today
 		snapshot.history = history
 		snapshot.stats24 = stats24
@@ -201,6 +215,22 @@ func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version u
 	}
 	snapshot.version = version
 	return &snapshot, nil
+}
+
+func sameMonitorIDSet(left, right []model.Monitor) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	ids := make(map[int64]struct{}, len(left))
+	for _, monitor := range left {
+		ids[monitor.ID] = struct{}{}
+	}
+	for _, monitor := range right {
+		if _, ok := ids[monitor.ID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func publicStatusFromSettings(values map[string]string) publicStatusFormValues {
@@ -294,7 +324,7 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
-	values, err := s.settings(r.Context())
+	values, settingsVersion, err := s.settingsSnapshot(r.Context())
 	if err != nil {
 		s.log.Error("load public status settings", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
@@ -311,6 +341,9 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	data.PublicView = true
 	data.Path = "/status"
 	data.AutoRefresh = true
+	// Keep the rendered page and its snapshot on the same settings revision;
+	// newPage may have read a newer timezone between the two cache lookups.
+	data.Location = model.TimezoneFromSettings(values)
 	title := status.Title
 	if title == "" {
 		title = data.I18n.T("public.titleDefault")
@@ -318,7 +351,7 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	data.Title = title
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 
-	snapshot, err := s.loadPublicSnapshot(r.Context(), status.MonitorIDs, s.settingsRevision(), now, data.Location)
+	snapshot, err := s.loadPublicSnapshot(r.Context(), status.MonitorIDs, settingsVersion, now, data.Location)
 	if err != nil {
 		s.log.Error("load public status snapshot", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
@@ -395,6 +428,10 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
+	// Serialize the read-modify-write of the whitelist with deletion pruning;
+	// SQLite serializes individual statements, not this whole workflow.
+	s.settingsWriteMu.Lock()
+	defer s.settingsWriteMu.Unlock()
 	values := publicStatusFormValues{
 		Enabled:     r.PostFormValue("public_status_enabled") == "1",
 		Title:       strings.TrimSpace(r.PostFormValue("public_status_title")),

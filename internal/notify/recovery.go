@@ -178,7 +178,7 @@ func (s *Service) expired(entry model.NotificationLog, now time.Time) bool {
 // channel and target in creation order. A newer state notification must not
 // overtake an older one that is still queued or being retried.
 func (s *Service) blockedByEarlierState(ctx context.Context, entry model.NotificationLog) bool {
-	monitorID, ok := stateMonitorID(entry.DedupeKey)
+	monitorID, ok := model.StateNotificationMonitorID(entry.DedupeKey)
 	if !ok || entry.ID <= 0 {
 		return false
 	}
@@ -208,27 +208,6 @@ func (s *Service) deferToEarlierState(ctx context.Context, entry model.Notificat
 	}
 	s.log.Info("notification deferred behind earlier pending notification", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey)
 	return true
-}
-
-func stateMonitorID(key string) (int64, bool) {
-	kind, rest, ok := strings.Cut(key, ":")
-	if !ok {
-		return 0, false
-	}
-	switch kind {
-	case "down", "up", "remind_down":
-	default:
-		return 0, false
-	}
-	idText, _, ok := strings.Cut(rest, ":")
-	if !ok {
-		return 0, false
-	}
-	id, err := strconv.ParseInt(idText, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, false
-	}
-	return id, true
 }
 
 func (s *Service) attemptEntry(ctx context.Context, entry model.NotificationLog) error {

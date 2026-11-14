@@ -28,7 +28,9 @@ type notificationChannelFormValues struct {
 }
 
 type notificationChannelRow struct {
-	model.NotificationChannel
+	ID            int64
+	Name          string
+	Type          model.NotificationChannelType
 	TypeLabel     string
 	LanguageLabel string
 	Target        string
@@ -50,7 +52,7 @@ type notificationLogRow struct {
 
 type notificationSettingsPage struct {
 	settingsSectionPage
-	Proxies                  []model.Proxy
+	Proxies                  []proxyOption
 	Channels                 []notificationChannelRow
 	ChannelForm              notificationChannelFormValues
 	ChannelFormOpen          bool
@@ -75,16 +77,12 @@ var notificationStatusKeys = map[string]string{
 // dedupe key, whose prefix is the only persisted record of the triggering
 // event kind. Reminder entries keep the reason of the state they repeat.
 func notificationReasonKey(dedupeKey string) string {
-	switch {
-	case strings.HasPrefix(dedupeKey, "up:"):
+	switch model.NotificationReason(dedupeKey) {
+	case model.NotificationReasonRecovery:
 		return "notification.reason.recovery"
-	case strings.HasPrefix(dedupeKey, "down:"), strings.HasPrefix(dedupeKey, "remind_down:"):
+	case model.NotificationReasonDown:
 		return "notification.reason.down"
-	// Historical rows may still use warn_domain from the removed domain expiry
-	// feature; keep them readable until retention expires.
-	case strings.HasPrefix(dedupeKey, "warn_cert:"),
-		strings.HasPrefix(dedupeKey, "warn_domain:"),
-		strings.HasPrefix(dedupeKey, "remind_warning:"):
+	case model.NotificationReasonWarning:
 		return "notification.reason.warning"
 	default:
 		return ""
@@ -112,13 +110,15 @@ func (s *Server) loadNotificationSettingsPage(r *http.Request, auth model.AuthIn
 			proxyName = proxyNames[*channel.ProxyID]
 		}
 		row := notificationChannelRow{
-			NotificationChannel: channel,
-			TypeLabel:           notificationChannelTypeLabel(base.I18n, channel.Type),
-			LanguageLabel:       notificationLanguageLabel(base.I18n, channel.ResolvedLanguage()),
-			Target:              channel.NotificationTarget(),
-			ProxyName:           proxyName,
-			StatusLabel:         base.I18n.T("notification.disabled"),
-			StatusClass:         "status-paused",
+			ID:            channel.ID,
+			Name:          channel.Name,
+			Type:          channel.Type,
+			TypeLabel:     notificationChannelTypeLabel(base.I18n, channel.Type),
+			LanguageLabel: notificationLanguageLabel(base.I18n, channel.ResolvedLanguage()),
+			Target:        channel.NotificationTarget(),
+			ProxyName:     proxyName,
+			StatusLabel:   base.I18n.T("notification.disabled"),
+			StatusClass:   "status-paused",
 		}
 		if channel.Type == model.NotificationChannelWebhook && channel.ResolvedWebhookFormat() != model.WebhookFormatGeneric {
 			row.TypeLabel += " · " + notificationWebhookFormatLabel(base.I18n, channel.ResolvedWebhookFormat())
@@ -131,7 +131,7 @@ func (s *Server) loadNotificationSettingsPage(r *http.Request, auth model.AuthIn
 	}
 	return notificationSettingsPage{
 		settingsSectionPage: base,
-		Proxies:             proxies,
+		Proxies:             proxyOptions(proxies),
 		Channels:            channelRows,
 		ChannelForm: notificationChannelFormValues{
 			Type:          model.NotificationChannelTelegram,

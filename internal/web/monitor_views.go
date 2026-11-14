@@ -160,7 +160,7 @@ type monitorFormPage struct {
 	Action     string
 	CancelURL  string
 	Values     monitorFormValues
-	Proxies    []model.Proxy
+	Proxies    []proxyOption
 	Channels   []notificationChannelOption
 	ShowHTTP   bool
 	ShowTCP    bool
@@ -230,52 +230,38 @@ func monitorTypeLabel(translator *i18n.Translator, monitorType model.MonitorType
 	}
 }
 
-func statusClass(enabled bool, status model.MonitorStatus) string {
+type monitorStatusView struct {
+	Class    string
+	Key      string
+	LabelKey string
+}
+
+func monitorStatusViewFor(enabled bool, status model.MonitorStatus) monitorStatusView {
 	if !enabled {
-		return "status-paused"
+		return monitorStatusView{Class: "status-paused", Key: "paused", LabelKey: "status.paused"}
 	}
 	switch status {
 	case model.StatusUp:
-		return "status-up"
+		return monitorStatusView{Class: "status-up", Key: "up", LabelKey: "status.up"}
 	case model.StatusDown:
-		return "status-down"
+		return monitorStatusView{Class: "status-down", Key: "down", LabelKey: "status.down"}
 	case model.StatusWarning:
-		return "status-warning"
+		return monitorStatusView{Class: "status-warning", Key: "warning", LabelKey: "status.warning"}
 	default:
-		return "status-pending"
+		return monitorStatusView{Class: "status-pending", Key: "pending", LabelKey: "status.pending"}
 	}
+}
+
+func statusClass(enabled bool, status model.MonitorStatus) string {
+	return monitorStatusViewFor(enabled, status).Class
 }
 
 func statusLabel(translator *i18n.Translator, enabled bool, status model.MonitorStatus) string {
-	if !enabled {
-		return translator.T("status.paused")
-	}
-	switch status {
-	case model.StatusUp:
-		return translator.T("status.up")
-	case model.StatusDown:
-		return translator.T("status.down")
-	case model.StatusWarning:
-		return translator.T("status.warning")
-	default:
-		return translator.T("status.pending")
-	}
+	return translator.T(monitorStatusViewFor(enabled, status).LabelKey)
 }
 
 func statusKey(enabled bool, status model.MonitorStatus) string {
-	if !enabled {
-		return "paused"
-	}
-	switch status {
-	case model.StatusUp:
-		return "up"
-	case model.StatusDown:
-		return "down"
-	case model.StatusWarning:
-		return "warning"
-	default:
-		return "pending"
-	}
+	return monitorStatusViewFor(enabled, status).Key
 }
 
 func dashboardOverall(translator *i18n.Translator, total, up, warning, down, pending, paused int) (string, string) {
@@ -777,6 +763,16 @@ func formValuesFromMonitor(monitor model.Monitor) monitorFormValues {
 		values.DockerHealthy = monitor.Docker.RequireHealthy
 	}
 	return values
+}
+
+func bucketsSince(buckets []model.HourBucket, since time.Time) []model.HourBucket {
+	filtered := make([]model.HourBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		if !bucket.Start.Before(since) {
+			filtered = append(filtered, bucket)
+		}
+	}
+	return filtered
 }
 
 func secondsLabel(duration time.Duration) string {

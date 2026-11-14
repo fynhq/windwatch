@@ -13,17 +13,23 @@ import (
 const HalfHourlyResolutionSeconds = 1800
 
 func (s *Store) AggregateHalfHourlyRollups(ctx context.Context, since, before, now time.Time) error {
+	bucket := time.Duration(HalfHourlyResolutionSeconds) * time.Second
+	// Rollup rows always represent complete buckets. Aligning here keeps a
+	// future caller from overwriting an existing bucket with a partial count.
+	since = since.UTC().Truncate(bucket)
+	before = before.UTC().Truncate(bucket)
 	if !before.After(since) {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx, `
+	bucketMS := int64(HalfHourlyResolutionSeconds) * 1000
+	query := fmt.Sprintf(`
 		INSERT INTO rollups (
 			monitor_id, resolution_seconds, bucket_start_ms,
 			total, up, warning, down, latency_sum_ms, updated_at_ms
 		)
 		SELECT monitor_id,
 		       ?,
-		       (checked_at_ms / 1800000) * 1800000,
+		       (checked_at_ms / %d) * %d,
 		       COUNT(*),
 		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END), 0),
@@ -32,7 +38,7 @@ func (s *Store) AggregateHalfHourlyRollups(ctx context.Context, since, before, n
 		       ?
 		FROM checks
 		WHERE checked_at_ms >= ? AND checked_at_ms < ?
-		GROUP BY monitor_id, (checked_at_ms / 1800000) * 1800000
+		GROUP BY monitor_id, (checked_at_ms / %d) * %d
 		ON CONFLICT(monitor_id, resolution_seconds, bucket_start_ms) DO UPDATE SET
 			total = excluded.total,
 			up = excluded.up,
@@ -40,11 +46,11 @@ func (s *Store) AggregateHalfHourlyRollups(ctx context.Context, since, before, n
 			down = excluded.down,
 			latency_sum_ms = excluded.latency_sum_ms,
 			updated_at_ms = excluded.updated_at_ms
-	`,
+	`, bucketMS, bucketMS, bucketMS, bucketMS)
+	if _, err := s.db.ExecContext(ctx, query,
 		HalfHourlyResolutionSeconds, now.UTC().UnixMilli(),
-		since.UTC().UnixMilli(), before.UTC().UnixMilli(),
-	)
-	if err != nil {
+		since.UnixMilli(), before.UnixMilli(),
+	); err != nil {
 		return fmt.Errorf("aggregate half-hourly rollups: %w", err)
 	}
 	return nil
@@ -69,9 +75,7 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		return result, nil
 	}
 	args := make([]any, 0, len(monitorIDs)+3)
-	for _, id := range monitorIDs {
-		args = append(args, id)
-	}
+	args = append(args, int64Args(monitorIDs)...)
 	args = append(args, HalfHourlyResolutionSeconds, since.UTC().UnixMilli(), before.UTC().UnixMilli())
 	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id,
@@ -116,17 +120,49 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 // Maintenance aggregates every five minutes, so the raw tail stays small even
 // at the 500-monitor limit.
 func (s *Store) UptimeStatsForMonitorsCombined(ctx context.Context, monitorIDs []int64, since, now time.Time) (map[int64]model.UptimeStats, error) {
+	if len(monitorIDs) == 0 {
+		return map[int64]model.UptimeStats{}, nil
+	}
+	lastBucket, ok, err := s.LastRollupStart(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.uptimeStatsForMonitorsCombinedWithLast(ctx, monitorIDs, since, now, lastBucket, ok)
+}
+
+// UptimeStatsForMonitorsCombinedMany evaluates several rolling windows with one
+// LastRollupStart lookup. Detail and public status pages request 30d/90d (and
+// 24h/7d) together, so this avoids repeating the same metadata query.
+func (s *Store) UptimeStatsForMonitorsCombinedMany(ctx context.Context, monitorIDs []int64, sinces []time.Time, now time.Time) ([]map[int64]model.UptimeStats, error) {
+	result := make([]map[int64]model.UptimeStats, len(sinces))
+	if len(monitorIDs) == 0 || len(sinces) == 0 {
+		for index := range result {
+			result[index] = map[int64]model.UptimeStats{}
+		}
+		return result, nil
+	}
+	lastBucket, ok, err := s.LastRollupStart(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for index, since := range sinces {
+		stats, err := s.uptimeStatsForMonitorsCombinedWithLast(ctx, monitorIDs, since, now, lastBucket, ok)
+		if err != nil {
+			return nil, err
+		}
+		result[index] = stats
+	}
+	return result, nil
+}
+
+func (s *Store) uptimeStatsForMonitorsCombinedWithLast(ctx context.Context, monitorIDs []int64, since, now, lastBucket time.Time, hasLast bool) (map[int64]model.UptimeStats, error) {
 	result := make(map[int64]model.UptimeStats, len(monitorIDs))
 	if len(monitorIDs) == 0 {
 		return result, nil
 	}
 	bucket := time.Duration(HalfHourlyResolutionSeconds) * time.Second
-	lastBucket, ok, err := s.LastRollupStart(ctx)
-	if err != nil {
-		return nil, err
-	}
 	rollupEnd := since
-	if ok {
+	if hasLast {
 		if next := lastBucket.Add(bucket); next.After(rollupEnd) {
 			rollupEnd = next
 		}
@@ -216,9 +252,7 @@ func (s *Store) DailyBucketsForMonitors(ctx context.Context, monitorIDs []int64,
 		location = time.UTC
 	}
 	args := make([]any, 0, len(monitorIDs)+3)
-	for _, id := range monitorIDs {
-		args = append(args, id)
-	}
+	args = append(args, int64Args(monitorIDs)...)
 	args = append(args, HalfHourlyResolutionSeconds, since.UTC().UnixMilli(), before.UTC().UnixMilli())
 	rows, err := s.reader().QueryContext(ctx, `
 		SELECT monitor_id, bucket_start_ms, total, up, warning, down, latency_sum_ms

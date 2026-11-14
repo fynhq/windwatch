@@ -109,19 +109,19 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 	}
 
 	interval, err := strconv.Atoi(values.Interval)
-	if err != nil || interval < 20 || interval > 86400 {
+	if err != nil || interval < model.MinIntervalSeconds || interval > model.MaxIntervalSeconds {
 		return base, newFormError("error.interval")
 	}
 	timeout, err := strconv.Atoi(values.Timeout)
-	if err != nil || timeout < 1 || timeout > 300 {
+	if err != nil || timeout < model.MinTimeoutSeconds || timeout > model.MaxTimeoutSeconds {
 		return base, newFormError("error.timeout")
 	}
 	failThreshold, err := strconv.Atoi(values.FailThreshold)
-	if err != nil || failThreshold < 1 || failThreshold > 20 {
+	if err != nil || failThreshold < model.MinThreshold || failThreshold > model.MaxThreshold {
 		return base, newFormError("error.threshold")
 	}
 	recoverThreshold, err := strconv.Atoi(values.RecoverThreshold)
-	if err != nil || recoverThreshold < 1 || recoverThreshold > 20 {
+	if err != nil || recoverThreshold < model.MinThreshold || recoverThreshold > model.MaxThreshold {
 		return base, newFormError("error.threshold")
 	}
 	reminders, err := model.ParseNotificationPolicy(
@@ -174,7 +174,7 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		certWarnDays := 14
 		if strings.TrimSpace(values.CertWarnDays) != "" {
 			certWarnDays, err = strconv.Atoi(values.CertWarnDays)
-			if err != nil || certWarnDays < 1 || certWarnDays > 365 {
+			if err != nil || certWarnDays < model.MinCertWarnDays || certWarnDays > model.MaxCertWarnDays {
 				return base, newFormError("error.certCheck")
 			}
 		}
@@ -192,7 +192,7 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		base.Docker = nil
 	case model.MonitorTypeTCP:
 		port, err := strconv.Atoi(values.Port)
-		if err != nil || port < 1 || port > 65535 {
+		if err != nil || port < model.MinPort || port > model.MaxPort {
 			return base, newFormError("error.port")
 		}
 		base.TCP = &model.TCPConfig{Host: strings.TrimSpace(values.Host), Port: port}
@@ -238,7 +238,7 @@ func (s *Server) handleMonitorNew(w http.ResponseWriter, r *http.Request, auth m
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	page.Proxies = proxies
+	page.Proxies = proxyOptions(proxies)
 	if err := s.loadMonitorFormChannels(r, &page, true); err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -268,7 +268,7 @@ func (s *Server) handleMonitorEditForm(w http.ResponseWriter, r *http.Request, a
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	page.Proxies = proxies
+	page.Proxies = proxyOptions(proxies)
 	if err := s.loadMonitorFormChannels(r, &page, false); err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -330,10 +330,12 @@ func (s *Server) handleMonitorCreate(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	notice := "monitor_created"
 	if err := s.scheduler.Reload(id); err != nil {
-		s.log.Warn("reload scheduler after create", "monitor_id", id, "error", err)
+		s.log.Error("reload scheduler after create", "monitor_id", id, "error", err)
+		notice = "scheduler_reload_failed"
 	}
-	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=monitor_created", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=%s", id, notice), http.StatusSeeOther)
 }
 
 func (s *Server) generatePushToken() (string, string, error) {
@@ -381,7 +383,12 @@ func (s *Server) handleMonitorPushToken(w http.ResponseWriter, r *http.Request, 
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=push_token_regenerated", id), http.StatusSeeOther)
+	notice := "push_token_regenerated"
+	if err := s.scheduler.Reload(id); err != nil {
+		s.log.Error("reload scheduler after push token", "monitor_id", id, "error", err)
+		notice = "scheduler_reload_failed"
+	}
+	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=%s", id, notice), http.StatusSeeOther)
 }
 
 func (s *Server) validateProxySelection(r *http.Request, monitor model.Monitor) error {
@@ -414,7 +421,7 @@ func (s *Server) renderMonitorFormError(w http.ResponseWriter, r *http.Request, 
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	page.Proxies = proxies
+	page.Proxies = proxyOptions(proxies)
 	if err := s.loadMonitorFormChannels(r, &page, false); err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -497,10 +504,12 @@ func (s *Server) handleMonitorUpdate(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	notice := "monitor_updated"
 	if err := s.scheduler.Reload(id); err != nil {
-		s.log.Warn("reload scheduler after update", "monitor_id", id, "error", err)
+		s.log.Error("reload scheduler after update", "monitor_id", id, "error", err)
+		notice = "scheduler_reload_failed"
 	}
-	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=monitor_updated", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=%s", id, notice), http.StatusSeeOther)
 }
 
 func (s *Server) handleMonitorCheck(w http.ResponseWriter, r *http.Request, auth model.AuthInfo) {
@@ -588,11 +597,13 @@ func (s *Server) handleMonitorDelete(w http.ResponseWriter, r *http.Request, aut
 	}
 	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelCleanup()
+	s.settingsWriteMu.Lock()
 	if err := s.store.PrunePublicStatusMonitorIDs(cleanupCtx, s.now().UTC()); err != nil {
 		s.log.Warn("prune public status monitor ids after delete", "monitor_id", id, "error", err)
 	} else {
 		s.invalidateSettings()
 	}
+	s.settingsWriteMu.Unlock()
 	s.scheduler.Remove(id)
 	http.Redirect(w, r, "/?notice=monitor_deleted", http.StatusSeeOther)
 }
@@ -627,18 +638,17 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	stats30, err := s.store.UptimeStatsForMonitorCombined(r.Context(), id, now.Add(-30*24*time.Hour), now)
+	combined, err := s.store.UptimeStatsForMonitorsCombinedMany(r.Context(), []int64{id}, []time.Time{
+		now.Add(-30 * 24 * time.Hour),
+		now.Add(-90 * 24 * time.Hour),
+	}, now)
 	if err != nil {
-		s.log.Error("load 30d stats", "monitor_id", id, "error", err)
+		s.log.Error("load long-range stats", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	stats90, err := s.store.UptimeStatsForMonitorCombined(r.Context(), id, now.Add(-90*24*time.Hour), now)
-	if err != nil {
-		s.log.Error("load 90d stats", "monitor_id", id, "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
+	stats30 := combined[0][id]
+	stats90 := combined[1][id]
 	buckets, err := s.store.HourlyBucketsForMonitor(r.Context(), id, now.Add(-24*time.Hour))
 	if err != nil {
 		s.log.Error("load detail buckets", "monitor_id", id, "error", err)
@@ -648,18 +658,14 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 	location := s.timezone(r.Context())
 	localNow := now.In(location)
 	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
-	daily30, err := s.store.DailyBucketsForTimezone(r.Context(), id, today.AddDate(0, 0, -30), today, location)
-	if err != nil {
-		s.log.Error("load 30d daily buckets", "monitor_id", id, "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
-	daily90, err := s.store.DailyBucketsForTimezone(r.Context(), id, today.AddDate(0, 0, -90), today, location)
+	daily, err := s.store.DailyBucketsForMonitors(r.Context(), []int64{id}, today.AddDate(0, 0, -90), today, location)
 	if err != nil {
 		s.log.Error("load 90d daily buckets", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	daily90 := daily[id]
+	daily30 := bucketsSince(daily90, today.AddDate(0, 0, -30))
 	checks, err := s.store.RecentCheckSummaries(r.Context(), id, 50)
 	if err != nil {
 		s.log.Error("load recent checks", "monitor_id", id, "error", err)
@@ -722,10 +728,19 @@ func (s *Server) monitorNotificationLabel(r *http.Request, translator *i18n.Tran
 	if len(monitor.NotificationChannelIDs) == 0 {
 		return translator.T("monitor.notificationsNone")
 	}
+	channels, err := s.store.ListNotificationChannels(r.Context())
+	if err != nil {
+		s.log.Warn("load notification channels for detail", "monitor_id", monitor.ID, "error", err)
+		return translator.T("monitor.notificationsNone")
+	}
+	byID := make(map[int64]model.NotificationChannel, len(channels))
+	for _, channel := range channels {
+		byID[channel.ID] = channel
+	}
 	names := make([]string, 0, len(monitor.NotificationChannelIDs))
 	for _, channelID := range monitor.NotificationChannelIDs {
-		channel, err := s.store.NotificationChannelByID(r.Context(), channelID)
-		if err != nil {
+		channel, ok := byID[channelID]
+		if !ok {
 			continue
 		}
 		name := channel.Name
