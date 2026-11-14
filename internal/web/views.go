@@ -236,7 +236,9 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 		s.log.Error("request failed", "status", status, "path", requestLogPath(r), "message_key", messageKey)
 	}
 	data := s.newPage(r, "error.title")
-	if auth, ok := s.authFromRequest(r); ok {
+	// Only reuse a session that the route already resolved. Public routes and
+	// 404s must not turn an attacker-supplied cookie into a database read.
+	if auth, ok := authFromContext(r); ok {
 		data.Username = auth.Admin.Username
 		data.CSRF = auth.Session.CSRFToken
 		data.Authenticated = true

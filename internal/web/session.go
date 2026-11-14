@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 	"sync"
@@ -98,6 +99,20 @@ func (l *loginLimiter) pruneLocked(now time.Time) {
 	}
 }
 
+type authContextKey struct{}
+
+// withAuthContext reuses an already resolved session for view helpers such as
+// error pages, so a request cannot force a session lookup just by sending an
+// arbitrary cookie to a public path.
+func withAuthContext(r *http.Request, auth model.AuthInfo) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), authContextKey{}, auth))
+}
+
+func authFromContext(r *http.Request) (model.AuthInfo, bool) {
+	auth, ok := r.Context().Value(authContextKey{}).(model.AuthInfo)
+	return auth, ok
+}
+
 func (s *Server) authFromRequest(r *http.Request) (model.AuthInfo, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || cookie.Value == "" {
@@ -126,7 +141,7 @@ func (s *Server) requireAuth(next func(http.ResponseWriter, *http.Request, model
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		next(w, r, auth)
+		next(w, withAuthContext(r, auth), auth)
 	}
 }
 
