@@ -1,6 +1,6 @@
 # Do not pin the builder to BUILDPLATFORM: the fallback GOOS/GOARCH below also
 # works with the legacy Docker builder, which does not provide those ARGs.
-FROM golang:1.27-alpine AS build
+FROM golang:1.27.4-alpine AS build
 
 ARG TARGETOS
 ARG TARGETARCH
