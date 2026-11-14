@@ -117,6 +117,13 @@ func TestDockerChecker(t *testing.T) {
 	}
 }
 
+func TestDockerCheckerDefersTimeoutsToContext(t *testing.T) {
+	checker := newDockerChecker("tcp://127.0.0.1:1")
+	if checker.client.Timeout != 0 {
+		t.Fatalf("client timeout = %v, want context-driven", checker.client.Timeout)
+	}
+}
+
 func TestDockerCheckerUnavailable(t *testing.T) {
 	registry := NewRegistryWithDockerHost("tcp://127.0.0.1:1")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

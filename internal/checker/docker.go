@@ -65,23 +65,23 @@ func newDockerChecker(host string) *dockerChecker {
 	switch {
 	case host == "":
 		transport.DialContext = func(context.Context, string, string) (net.Conn, error) {
-			return nil, errors.New("Docker endpoint is not configured; set DOCKER_HOST")
+			return nil, errors.New("docker endpoint is not configured; set DOCKER_HOST")
 		}
 	case strings.HasPrefix(host, "unix://"):
 		socketPath := strings.TrimPrefix(host, "unix://")
 		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "unix", socketPath)
+			return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 		}
 	case strings.HasPrefix(host, "tcp://"):
 		address := strings.TrimPrefix(host, "tcp://")
 		baseURL = "http://" + address
 		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", address)
+			return (&net.Dialer{}).DialContext(ctx, "tcp", address)
 		}
 	case strings.HasPrefix(host, "/"):
 		socketPath := host
 		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "unix", socketPath)
+			return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 		}
 	default:
 		transport.DialContext = func(context.Context, string, string) (net.Conn, error) {
@@ -92,8 +92,9 @@ func newDockerChecker(host string) *dockerChecker {
 	return &dockerChecker{
 		baseURL: baseURL,
 		client: &http.Client{
+			// The scheduler supplies a context with the monitor timeout; a
+			// fixed client timeout would truncate longer configurations.
 			Transport: transport,
-			Timeout:   10 * time.Second,
 		},
 	}
 }
@@ -267,11 +268,11 @@ func (d *dockerChecker) getJSON(ctx context.Context, path string, output any) (i
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNotFound {
-		io.Copy(io.Discard, response.Body)
+		_, _ = io.Copy(io.Discard, response.Body)
 		return response.StatusCode, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		io.Copy(io.Discard, response.Body)
+		_, _ = io.Copy(io.Discard, response.Body)
 		return response.StatusCode, nil
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(output); err != nil {

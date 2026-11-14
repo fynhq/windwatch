@@ -359,6 +359,18 @@ func TestBodyContainsKeywordLimitSemantics(t *testing.T) {
 	}
 }
 
+// The scheduler owns the monitor timeout. A non-zero transport timeout would
+// silently cap monitors configured above it, so this is part of the contract.
+func TestHTTPCheckerDefersTimeoutsToContext(t *testing.T) {
+	checker := newHTTPChecker()
+	if checker.base.TLSHandshakeTimeout != 0 {
+		t.Fatalf("TLSHandshakeTimeout = %v, want context-driven", checker.base.TLSHandshakeTimeout)
+	}
+	if checker.base.ResponseHeaderTimeout != 0 {
+		t.Fatalf("ResponseHeaderTimeout = %v, want context-driven", checker.base.ResponseHeaderTimeout)
+	}
+}
+
 func TestHTTPCheckerKeywordBodyLimit(t *testing.T) {
 	largePrefix := "needle" + strings.Repeat("x", maxKeywordBodyBytes+100)
 	largeSuffix := strings.Repeat("x", maxKeywordBodyBytes+100) + "needle"

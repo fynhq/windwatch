@@ -31,12 +31,17 @@ const (
 	maxTransportEntries  = 32
 )
 
+type keywordBuffer struct {
+	data []byte
+}
+
 // Keyword checks scan a bounded stream instead of buffering the response body.
 // The pool keeps the steady-state scan buffer small while the carry window
-// preserves matches that cross a chunk boundary.
+// preserves matches that cross a chunk boundary. The pointer wrapper avoids
+// the allocation that sync.Pool would otherwise charge for a byte slice.
 var keywordBufferPool = sync.Pool{
 	New: func() any {
-		return make([]byte, keywordChunkBytes+maxKeywordCarryBytes)
+		return &keywordBuffer{data: make([]byte, keywordChunkBytes+maxKeywordCarryBytes)}
 	},
 }
 
@@ -60,8 +65,10 @@ type httpMeta struct {
 
 func newHTTPChecker() *httpChecker {
 	transport := &http.Transport{
+		// Dial, TLS handshake, and response waits are bounded by the request
+		// context from the scheduler. A fixed transport timeout would shorten
+		// monitors configured with a longer timeout.
 		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		ForceAttemptHTTP2: true,
@@ -72,7 +79,6 @@ func newHTTPChecker() *httpChecker {
 		MaxIdleConns:           16,
 		MaxIdleConnsPerHost:    4,
 		IdleConnTimeout:        90 * time.Second,
-		TLSHandshakeTimeout:    10 * time.Second,
 		ExpectContinueTimeout:  1 * time.Second,
 		MaxResponseHeaderBytes: 64 << 10,
 	}
@@ -276,12 +282,13 @@ func bodyContainsKeyword(body io.Reader, keyword string) (found, truncated bool,
 	}
 	carryLimit := len(needle) - 1
 	bufferLen := keywordChunkBytes + carryLimit
-	buf, _ := keywordBufferPool.Get().([]byte)
+	buffer := keywordBufferPool.Get().(*keywordBuffer)
+	buf := buffer.data
 	if len(buf) < bufferLen {
-		keywordBufferPool.Put(buf)
 		buf = make([]byte, bufferLen)
+		buffer.data = buf
 	}
-	defer keywordBufferPool.Put(buf)
+	defer keywordBufferPool.Put(buffer)
 
 	limited := &io.LimitedReader{R: body, N: maxKeywordBodyBytes + 1}
 	total := 0

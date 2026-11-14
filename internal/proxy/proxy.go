@@ -93,7 +93,9 @@ func ApplyHTTPTransport(cfg *Config, transport *http.Transport) error {
 		transport.Proxy = http.ProxyURL(proxyURL)
 		baseDial := transport.DialContext
 		if baseDial == nil {
-			baseDial = (&net.Dialer{Timeout: 10 * time.Second}).DialContext
+			// The check context owns the timeout; a fixed dial timeout would
+			// truncate monitors configured above it.
+			baseDial = (&net.Dialer{}).DialContext
 		}
 		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 			connection, err := baseDial(ctx, network, address)
@@ -118,7 +120,7 @@ func ApplyHTTPTransport(cfg *Config, transport *http.Transport) error {
 
 func DialContext(cfg *Config) (func(context.Context, string, string) (net.Conn, error), error) {
 	if cfg == nil {
-		dialer := &net.Dialer{Timeout: 10 * time.Second}
+		dialer := &net.Dialer{}
 		return dialer.DialContext, nil
 	}
 	if err := cfg.Validate(); err != nil {
@@ -130,7 +132,7 @@ func DialContext(cfg *Config) (func(context.Context, string, string) (net.Conn, 
 		if cfg.Username != "" {
 			auth = &netproxy.Auth{User: cfg.Username, Password: cfg.Password}
 		}
-		dialer, err := netproxy.SOCKS5("tcp", cfg.Address, auth, &net.Dialer{Timeout: 10 * time.Second})
+		dialer, err := netproxy.SOCKS5("tcp", cfg.Address, auth, &net.Dialer{})
 		if err != nil {
 			return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
 		}
@@ -175,7 +177,7 @@ func CheckConnectivity(ctx context.Context, cfg *Config, target string, timeout 
 }
 
 func dialHTTPConnect(ctx context.Context, cfg *Config, network, address string) (net.Conn, error) {
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	dialer := &net.Dialer{}
 	connection, err := dialer.DialContext(ctx, "tcp", cfg.Address)
 	if err != nil {
 		return nil, fmt.Errorf("connect to proxy: %w", err)
@@ -183,7 +185,7 @@ func dialHTTPConnect(ctx context.Context, cfg *Config, network, address string) 
 	success := false
 	defer func() {
 		if !success {
-			connection.Close()
+			_ = connection.Close()
 		}
 	}()
 
