@@ -108,6 +108,10 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		return model.Monitor{}, newFormError("error.invalidRequest")
 	}
 
+	// Interval and timeout are range-checked before converting to
+	// time.Duration: a large integer would overflow the multiplication and
+	// could land back inside the valid range. Thresholds have no conversion,
+	// so model.Validate below is the single range check for them.
 	interval, err := strconv.Atoi(values.Interval)
 	if err != nil || interval < model.MinIntervalSeconds || interval > model.MaxIntervalSeconds {
 		return base, newFormError("error.interval")
@@ -117,11 +121,11 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		return base, newFormError("error.timeout")
 	}
 	failThreshold, err := strconv.Atoi(values.FailThreshold)
-	if err != nil || failThreshold < model.MinThreshold || failThreshold > model.MaxThreshold {
+	if err != nil {
 		return base, newFormError("error.threshold")
 	}
 	recoverThreshold, err := strconv.Atoi(values.RecoverThreshold)
-	if err != nil || recoverThreshold < model.MinThreshold || recoverThreshold > model.MaxThreshold {
+	if err != nil {
 		return base, newFormError("error.threshold")
 	}
 	reminders, err := model.ParseNotificationPolicy(
@@ -192,7 +196,7 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		base.Docker = nil
 	case model.MonitorTypeTCP:
 		port, err := strconv.Atoi(values.Port)
-		if err != nil || port < model.MinPort || port > model.MaxPort {
+		if err != nil {
 			return base, newFormError("error.port")
 		}
 		base.TCP = &model.TCPConfig{Host: strings.TrimSpace(values.Host), Port: port}
@@ -767,7 +771,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, auth model
 		return
 	}
 	data := s.authenticatedPage(r, auth, "events.title")
-	rows := buildEventRows(data.I18n, events, true, data.Location)
+	rows := buildEventRows(data.I18n, events, true, data.Location, s.now())
 	page := eventsPage{
 		pageData:  data,
 		Events:    rows,
@@ -867,7 +871,7 @@ func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, mo
 		Chart24:           buildHourlyChart(translator, now, buckets, data.Location),
 		Chart30:           buildDailyChart(translator, now, daily30, 30, data.Location, "monitor.uptime30dChart"),
 		Chart90:           buildDailyChart(translator, now, daily90, 90, data.Location, "monitor.uptime90dChart"),
-		Events:            buildEventRows(translator, events, false, data.Location),
+		Events:            buildEventRows(translator, events, false, data.Location, now),
 	}
 	if monitor.HTTP != nil {
 		view.Method = monitor.HTTP.Method

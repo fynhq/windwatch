@@ -672,7 +672,7 @@ func formatChartMoment(translator *i18n.Translator, value time.Time, location *t
 	return value.Format("Jan 2 15:04")
 }
 
-func buildEventRows(translator *i18n.Translator, events []model.Event, includeMonitor bool, location *time.Location) []eventRow {
+func buildEventRows(translator *i18n.Translator, events []model.Event, includeMonitor bool, location *time.Location, now time.Time) []eventRow {
 	rows := make([]eventRow, 0, len(events))
 	for _, event := range events {
 		row := eventRow{
@@ -690,7 +690,7 @@ func buildEventRows(translator *i18n.Translator, events []model.Event, includeMo
 			row.Duration = i18n.FormatDuration(translator, event.EndedAt.Sub(event.StartedAt))
 		} else if event.Type == model.EventDown {
 			row.Ended = translator.T("events.ongoing")
-			row.Duration = i18n.FormatDuration(translator, time.Since(event.StartedAt))
+			row.Duration = i18n.FormatDuration(translator, now.Sub(event.StartedAt))
 			row.Ongoing = true
 		}
 		row.SearchText = strings.ToLower(row.MonitorName + " " + row.TypeLabel + " " + row.Message + " " + row.Started + " " + row.Duration)

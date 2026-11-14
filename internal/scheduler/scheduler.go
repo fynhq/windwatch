@@ -907,7 +907,7 @@ func (s *Scheduler) auxiliaryWarning(_ context.Context, monitor model.Monitor, r
 	}
 	cfg := monitor.HTTP
 	if cfg.CertCheck && result.Certificate != nil && !result.Certificate.NotAfter.IsZero() {
-		days := int(time.Until(result.Certificate.NotAfter).Hours() / 24)
+		days := int(result.Certificate.NotAfter.Sub(s.now()).Hours() / 24)
 		if days <= cfg.CertWarnDays {
 			return auxWarning{active: true}
 		}
