@@ -1465,12 +1465,21 @@
 }
 
 /* Detail page */
-.detail-head {
+.detail-head-row {
   align-items: flex-start;
 }
 
 .detail-heading {
+  flex: 1 1 0;
   min-width: 0;
+}
+
+.detail-head-row .page-actions {
+  flex: 0 0 auto;
+}
+
+.detail-alert {
+  margin: 16px 0 0;
 }
 
 .detail-heading .target {

@@ -1,35 +1,37 @@
 {{define "content" -}}
-<section class="page-head page-head-row detail-head">
-  <div class="detail-heading">
-    <p class="eyebrow">{{.Monitor.TypeLabel}}</p>
-    <h1>{{.Monitor.Name}}</h1>
-    <p class="monitor-meta">
-      <span class="target" title="{{.Monitor.Target}}">{{.Monitor.Target}}</span>
-      {{if .Monitor.Method}}<span aria-hidden="true">·</span><span>{{.Monitor.Method}}</span>{{end}}
-    </p>
-    <p class="detail-status-line">
-      <span class="status-pill {{.Monitor.StatusClass}}">{{.Monitor.StatusLabel}}</span>
-      <span class="hint" title="{{.Monitor.StatusSince}}">{{.I18n.T "monitor.statusSince"}} {{.Monitor.StatusSinceAgo}}</span>
-      <span class="hint" aria-hidden="true">·</span>
-      <span class="hint" title="{{.Monitor.LastCheckTitle}}">{{.I18n.T "monitor.lastCheck"}} {{.Monitor.LastCheckAgo}}</span>
-    </p>
-    {{if .Monitor.LastError}}<p class="alert alert-error">{{.I18n.T "monitor.lastError"}}<br>{{.Monitor.LastError}}</p>{{end}}
+<section class="page-head">
+  <div class="page-head-row detail-head-row">
+    <div class="detail-heading">
+      <p class="eyebrow">{{.Monitor.TypeLabel}}</p>
+      <h1>{{.Monitor.Name}}</h1>
+      <p class="monitor-meta">
+        <span class="target" title="{{.Monitor.Target}}">{{.Monitor.Target}}</span>
+        {{if .Monitor.Method}}<span aria-hidden="true">·</span><span>{{.Monitor.Method}}</span>{{end}}
+      </p>
+      <p class="detail-status-line">
+        <span class="status-pill {{.Monitor.StatusClass}}">{{.Monitor.StatusLabel}}</span>
+        <span class="hint" title="{{.Monitor.StatusSince}}">{{.I18n.T "monitor.statusSince"}} {{.Monitor.StatusSinceAgo}}</span>
+        <span class="hint" aria-hidden="true">·</span>
+        <span class="hint" title="{{.Monitor.LastCheckTitle}}">{{.I18n.T "monitor.lastCheck"}} {{.Monitor.LastCheckAgo}}</span>
+      </p>
+    </div>
+    <div class="page-actions">
+      {{if .IsAdmin}}
+      <a class="button button-secondary" href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>
+      {{if .Monitor.Enabled}}
+      <form method="post" action="/monitors/{{.Monitor.ID}}/check" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="button button-secondary" type="submit">{{.I18n.T "monitor.checkNow"}}</button>
+      </form>
+      {{end}}
+      <form method="post" action="/monitors/{{.Monitor.ID}}/toggle" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="button button-secondary" type="submit">{{if .Monitor.Enabled}}{{.I18n.T "monitor.pause"}}{{else}}{{.I18n.T "monitor.resume"}}{{end}}</button>
+      </form>
+      {{end}}
+    </div>
   </div>
-  <div class="page-actions">
-    {{if .IsAdmin}}
-    <a class="button button-secondary" href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>
-    {{if .Monitor.Enabled}}
-    <form method="post" action="/monitors/{{.Monitor.ID}}/check" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-      <button class="button button-secondary" type="submit">{{.I18n.T "monitor.checkNow"}}</button>
-    </form>
-    {{end}}
-    <form method="post" action="/monitors/{{.Monitor.ID}}/toggle" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-      <button class="button button-secondary" type="submit">{{if .Monitor.Enabled}}{{.I18n.T "monitor.pause"}}{{else}}{{.I18n.T "monitor.resume"}}{{end}}</button>
-    </form>
-    {{end}}
-  </div>
+  {{if .Monitor.LastError}}<p class="alert alert-error detail-alert">{{.I18n.T "monitor.lastError"}}<br>{{.Monitor.LastError}}</p>{{end}}
 </section>
 
 <section class="detail-metrics" aria-label="{{.I18n.T "monitor.uptimeSummary"}}">
