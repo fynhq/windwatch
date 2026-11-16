@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// FormatDuration renders a duration with localized unit labels.
 func FormatDuration(translator *Translator, value time.Duration) string {
 	if value <= 0 {
 		return "—"

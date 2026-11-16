@@ -359,8 +359,6 @@ func TestBodyContainsKeywordLimitSemantics(t *testing.T) {
 	}
 }
 
-// The scheduler owns the monitor timeout. A non-zero transport timeout would
-// silently cap monitors configured above it, so this is part of the contract.
 func TestHTTPCheckerDefersTimeoutsToContext(t *testing.T) {
 	checker := newHTTPChecker()
 	if checker.base.TLSHandshakeTimeout != 0 {

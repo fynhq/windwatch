@@ -252,8 +252,6 @@ func TestBlockedRetryYieldsBatchToDueRows(t *testing.T) {
 	channel := createTestChannel(t, service, st, "Starvation hook", model.NotificationChannelWebhook, "", server.URL, "", true)
 	monitorID := createTestMonitor(t, st, channel.ID)
 	target := "https://example.com/hook"
-	// Claim with an old timestamp so the two-minute claim lease has already
-	// elapsed and both rows are due for retry.
 	claimedAt := time.Now().UTC().Add(-3 * time.Minute)
 	downKey := fmt.Sprintf("down:%d:100", monitorID)
 	upKey := fmt.Sprintf("up:%d:200", monitorID)

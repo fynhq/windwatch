@@ -71,7 +71,8 @@ func VerifyPassword(encoded, password string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 	const (
-		maxArgonMemory      = 128 * 1024 // KiB
+		maxArgonMemory = 128 * 1024
+
 		maxArgonIterations  = 10
 		maxArgonParallelism = 16
 	)
@@ -98,8 +99,6 @@ func VerifyPassword(encoded, password string) (bool, error) {
 	return subtle.ConstantTimeCompare(expected, actual) == 1, nil
 }
 
-// VerifyDummyPassword burns the same Argon2id cost as a real credential check
-// so an unknown username does not reveal itself through a fast response.
 func VerifyDummyPassword(password string) {
 	dummyHashOnce.Do(func() {
 		dummyHash, _ = HashPassword("windwatch-dummy-password")

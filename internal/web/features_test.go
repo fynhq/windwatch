@@ -260,7 +260,6 @@ func TestPublicStatusMonitorGroupsAndBulkSelect(t *testing.T) {
 		t.Fatalf("public settings groups = %d, want 4", strings.Count(body, `class="checkbox-group"`))
 	}
 
-	// A validation error must keep the grouped layout and the submitted selection.
 	response, err = adminClient.PostForm(testServer.URL+"/settings/public-status", url.Values{
 		"csrf_token":                {csrf},
 		"public_status_enabled":     {"1"},
@@ -524,8 +523,6 @@ func TestLongRangeChartRendering(t *testing.T) {
 
 	now := time.Now().UTC()
 	day := now.Truncate(24 * time.Hour)
-	// Keep the older check outside the 24h hourly window at any time of day;
-	// anchoring it to midnight would pull it into the window between 00:00 and 02:00.
 	checkAt := now.Add(-24*time.Hour - 5*time.Minute)
 	recent := now.Add(-10 * time.Minute)
 	for _, checkedAt := range []time.Time{checkAt, recent} {
@@ -579,9 +576,6 @@ func TestMonitorDetailLongRangeBoundaryNoDoubleCount(t *testing.T) {
 			t.Fatalf("RecordCheck: %v", err)
 		}
 	}
-	// The 7d raw window starts at 12:15, so only the down check is inside it.
-	// Both checks belong to the same rollup bucket. The old split summed the
-	// raw down check and the full rollup bucket, showing 33.33% instead of 50%.
 	record(sevenDaysAgo.Add(-10*time.Minute), model.CheckUp)
 	record(sevenDaysAgo.Add(5*time.Minute), model.CheckDown)
 	if err := srv.store.AggregateHalfHourlyRollups(t.Context(), now.Add(-30*24*time.Hour), now, now); err != nil {

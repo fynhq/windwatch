@@ -40,9 +40,6 @@ func (s *Store) SaveReminderState(ctx context.Context, state model.NotificationR
 	return saveReminderState(ctx, s.db, state, now)
 }
 
-// SaveReminderStateWithNotification persists the reminder counter and its
-// outbox intent in one transaction, so a crash cannot duplicate a reminder or
-// advance the counter without a queued notification.
 func (s *Store) SaveReminderStateWithNotification(
 	ctx context.Context,
 	state model.NotificationReminder,

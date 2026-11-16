@@ -258,8 +258,6 @@ func (s *Store) CreateMonitor(ctx context.Context, monitor model.Monitor, now ti
 	return s.createMonitor(ctx, monitor, now, "", "")
 }
 
-// CreateMonitorWithPushToken creates a Push monitor and its token in one
-// transaction. A crash can no longer leave a Push monitor without a token.
 func (s *Store) CreateMonitorWithPushToken(ctx context.Context, monitor model.Monitor, now time.Time, tokenHash, tokenEnc string) (int64, error) {
 	if monitor.Type != model.MonitorTypePush || tokenHash == "" || tokenEnc == "" {
 		return 0, errors.New("push token is required for a Push monitor")
@@ -446,10 +444,6 @@ func (s *Store) SetMonitorEnabled(ctx context.Context, id int64, enabled bool) e
 	return nil
 }
 
-// SetMonitorEnabledWithReset applies the complete pause/resume state change in
-// one transaction: enabled flag, reminder cleanup, open DOWN event, threshold
-// counters, PENDING reset and the passive heartbeat baseline. Leaving any of
-// these behind would let paused time leak into the next outage episode.
 func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64, enabled bool, at time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -504,9 +498,6 @@ func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64,
 			return fmt.Errorf("set monitor pending after resume: %w", err)
 		}
 		if monitorType == model.MonitorTypePush {
-			// Heartbeats are rejected while paused, so the last observation can
-			// be arbitrarily old. Start a fresh grace window on resume instead
-			// of counting the paused interval as an outage.
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE push_tokens SET last_heartbeat_ms = ?
 				WHERE monitor_id = ? AND last_heartbeat_ms IS NOT NULL
@@ -540,10 +531,6 @@ func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.
 	return s.recordCheck(ctx, check, state, event, closeDownEvent, nil, nil)
 }
 
-// RecordCheckWithNotifications commits the check, monitor state, event, warning
-// context and notification intents in one transaction. A crash can therefore
-// no longer persist a state transition without its alert, or persist a warning
-// episode without the context that keeps it stable across restarts.
 func (s *Store) RecordCheckWithNotifications(
 	ctx context.Context,
 	check model.Check,
@@ -683,10 +670,6 @@ func (s *Store) recordCheck(
 	return nil
 }
 
-// RecentCheckSummariesByMonitor batches indexed top-N subqueries into one
-// statement per chunk. A window function would scan all retained checks, while
-// one statement per monitor adds a prepared statement and rows allocation for
-// every card on each dashboard refresh.
 func (s *Store) RecentCheckSummariesByMonitor(ctx context.Context, monitorIDs []int64, limit int) (map[int64][]model.CheckSummary, error) {
 	result := make(map[int64][]model.CheckSummary, len(monitorIDs))
 	if limit <= 0 {
@@ -715,8 +698,6 @@ func (s *Store) RecentCheckSummariesByMonitor(ctx context.Context, monitorIDs []
 			)`)
 			args = append(args, monitorID, limit)
 		}
-		// Compound SELECTs have no defined order without an outer ORDER BY.
-		// The dashboard assumes checks[0] is the newest sample for each monitor.
 		query.WriteString(") ORDER BY monitor_id ASC, checked_at_ms DESC")
 		rows, err := s.reader().QueryContext(ctx, query.String(), args...)
 		if err != nil {
@@ -793,9 +774,6 @@ func (s *Store) CloseOpenDownEvents(ctx context.Context, monitorID int64, at tim
 	return nil
 }
 
-// ResetMonitorCounters clears consecutive failure/success counters and starts
-// warning/down duration from at. A pause must not let a pre-pause failure
-// satisfy the threshold after resume, nor count paused time as outage time.
 func (s *Store) ResetMonitorCounters(ctx context.Context, monitorID int64, at time.Time) error {
 	now := at.UTC().UnixMilli()
 	if _, err := s.db.ExecContext(ctx, `
@@ -840,9 +818,6 @@ func (s *Store) EnsureOpenDownEvent(ctx context.Context, monitorID int64, at tim
 	return nil
 }
 
-// OpenDownEventStart returns the start of the open DOWN event. The scheduler
-// uses it to measure an outage from the first failed check rather than from
-// the later threshold confirmation.
 func (s *Store) OpenDownEventStart(ctx context.Context, monitorID int64) (time.Time, bool, error) {
 	var startedAt int64
 	err := s.reader().QueryRowContext(ctx, `

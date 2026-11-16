@@ -206,8 +206,6 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// staticAssetVersion fingerprints the embedded assets so template URLs change
-// whenever a file changes; browsers otherwise keep stale CSS after upgrades.
 func staticAssetVersion(staticFS fs.FS) (string, error) {
 	hash := sha256.New()
 	err := fs.WalkDir(staticFS, ".", func(name string, entry fs.DirEntry, err error) error {

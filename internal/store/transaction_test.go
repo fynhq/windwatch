@@ -114,8 +114,6 @@ func TestAggregateHalfHourlyRollupsDoesNotOverwritePartialBuckets(t *testing.T) 
 	if err != nil || stats[monitorID].Total != 2 {
 		t.Fatalf("full rollup total=%d err=%v", stats[monitorID].Total, err)
 	}
-	// A mid-bucket call must normalize to a complete bucket (here a no-op)
-	// instead of replacing the existing count with a partial count.
 	if err := st.AggregateHalfHourlyRollups(t.Context(), bucket.Add(7*time.Minute), bucket.Add(20*time.Minute), now); err != nil {
 		t.Fatalf("partial aggregate: %v", err)
 	}

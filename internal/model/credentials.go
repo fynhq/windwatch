@@ -19,8 +19,6 @@ var (
 	ErrPasswordTooLong  = errors.New("password must be at most 256 characters")
 )
 
-// ValidateUsername enforces the shared account name policy so web and CLI
-// entry points cannot drift apart.
 func ValidateUsername(username string) error {
 	switch count := utf8.RuneCountInString(username); {
 	case count < MinUsernameLength:
@@ -32,8 +30,6 @@ func ValidateUsername(username string) error {
 	}
 }
 
-// ValidatePassword enforces the shared password length policy. Confirmation
-// matching stays with the caller because it is form-specific.
 func ValidatePassword(password string) error {
 	switch count := utf8.RuneCountInString(password); {
 	case count < MinPasswordLength:

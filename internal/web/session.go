@@ -101,9 +101,6 @@ func (l *loginLimiter) pruneLocked(now time.Time) {
 
 type authContextKey struct{}
 
-// withAuthContext reuses an already resolved session for view helpers such as
-// error pages, so a request cannot force a session lookup just by sending an
-// arbitrary cookie to a public path.
 func withAuthContext(r *http.Request, auth model.AuthInfo) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), authContextKey{}, auth))
 }

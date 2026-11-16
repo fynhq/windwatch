@@ -17,11 +17,8 @@ const (
 	pendingMaxAge         = 24 * time.Hour
 	pendingRecoveryCap    = 200
 	pendingRecoveryBudget = 2 * time.Minute
-	// A blocked row is pushed out of the current retry batch so a chain of
-	// ordered state notifications on one broken target cannot keep refilling
-	// the batch and starve due rows for other monitors and channels.
-	blockedRetryDefer = 30 * time.Second
-	retryConcurrency  = 4
+	blockedRetryDefer     = 30 * time.Second
+	retryConcurrency      = 4
 )
 
 func defaultRetryDelay(completed int) time.Duration {
@@ -55,10 +52,6 @@ func (s *Service) recoverPendingEntries(ctx context.Context, entries []model.Not
 			continue
 		}
 		if entry.Attempts > 0 && !entry.NextAttemptAt.IsZero() && entry.NextAttemptAt.After(time.Now().UTC()) {
-			// A restart must not bypass a 429/backoff already scheduled for
-			// this row. The retry loop owns it once it becomes due. An initial
-			// claim (attempts == 0) still uses the lease only to avoid a
-			// concurrent sender, so startup recovery may resume it.
 			continue
 		}
 		s.log.Info("resending pending notification", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "created_at", entry.CreatedAt.UTC().Format(time.RFC3339))
@@ -79,8 +72,6 @@ func (s *Service) recoverPendingEntries(ctx context.Context, entries []model.Not
 	}
 }
 
-// retryLoop runs after startup recovery so the two paths never send the same
-// pending row concurrently. Each tick only processes rows that are due.
 func (s *Service) retryLoop(ctx context.Context) {
 	interval := s.retryInterval
 	if interval <= 0 {
@@ -112,8 +103,6 @@ func (s *Service) retryDue(ctx context.Context) {
 		s.log.Error("load due notifications", "error", err)
 		return
 	}
-	// Preserve creation order per channel/target, but let unrelated targets make
-	// progress while one slow channel is waiting on its own timeout.
 	groups := make(map[string][]model.NotificationLog)
 	order := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -174,9 +163,6 @@ func (s *Service) expired(entry model.NotificationLog, now time.Time) bool {
 	return entry.Attempts > 0 && age >= maxAge
 }
 
-// blockedByEarlierState keeps DOWN, UP, and DOWN reminders for one monitor,
-// channel and target in creation order. A newer state notification must not
-// overtake an older one that is still queued or being retried.
 func (s *Service) blockedByEarlierState(ctx context.Context, entry model.NotificationLog) bool {
 	monitorID, ok := model.StateNotificationMonitorID(entry.DedupeKey)
 	if !ok || entry.ID <= 0 {
@@ -201,8 +187,6 @@ func (s *Service) deferToEarlierState(ctx context.Context, entry model.Notificat
 	if !s.blockedByEarlierState(ctx, entry) {
 		return false
 	}
-	// The claim lease is meant to protect a send in progress. This row will not
-	// be sent now, so make it due immediately after the earlier row clears.
 	if err := s.store.DeferNotification(ctx, entry.DedupeKey, entry.Channel, entry.ChannelID, entry.Target, time.Now().UTC()); err != nil {
 		s.log.Error("defer notification", "channel", entry.Channel, "target", entry.Target, "dedupe_key", entry.DedupeKey, "error", err)
 	}
@@ -267,7 +251,6 @@ func (s *Service) failExpired(ctx context.Context, entry model.NotificationLog, 
 
 func (s *Service) recordFailure(ctx context.Context, entry model.NotificationLog, sendErr error) {
 	if ctx.Err() != nil {
-		// Keep the row pending so startup recovery can resume it.
 		s.log.Warn("notification retry interrupted", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey)
 		return
 	}

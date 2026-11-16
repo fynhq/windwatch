@@ -254,7 +254,6 @@ func TestWarningIsNotRepeatedAfterRestart(t *testing.T) {
 		t.Fatalf("MonitorByID: %v", err)
 	}
 
-	// A restarted process builds a fresh scheduler over the same database.
 	second := New(st, checker.NewRegistry(), logger)
 	secondSink := &fakeNotificationSink{enabled: true}
 	second.SetNotifier(secondSink)

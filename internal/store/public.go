@@ -9,8 +9,6 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
-// PrunePublicStatusMonitorIDs removes whitelist entries that no longer refer to
-// an existing monitor. It also repairs duplicate or malformed ID lists.
 func (s *Store) PrunePublicStatusMonitorIDs(ctx context.Context, now time.Time) error {
 	values, err := s.Settings(ctx)
 	if err != nil {

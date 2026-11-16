@@ -32,8 +32,6 @@ type publicMonitorGroup struct {
 	Options   []publicMonitorOption
 }
 
-// groupPublicMonitorOptions buckets options by monitor type in the fixed
-// product order so the public page whitelist renders one section per type.
 func groupPublicMonitorOptions(translator *i18n.Translator, options []publicMonitorOption) []publicMonitorGroup {
 	order := []model.MonitorType{model.MonitorTypeHTTP, model.MonitorTypeTCP, model.MonitorTypeDocker, model.MonitorTypePush}
 	byType := make(map[model.MonitorType][]publicMonitorOption, len(order))
@@ -100,10 +98,6 @@ const (
 	publicStatsTTL  = 5 * time.Minute
 )
 
-// loadPublicSnapshot keeps live monitor status fresh while caching the
-// expensive uptime and history aggregates for longer. A settings revision
-// change invalidates the whole snapshot. Only one request builds a snapshot;
-// other requests wait for it instead of holding the mutex during DB queries.
 func (s *Server) loadPublicSnapshot(ctx context.Context, ids []int64, version uint64, now time.Time, location *time.Location) (*publicStatusSnapshot, error) {
 	if location == nil {
 		location = time.UTC
@@ -164,8 +158,6 @@ func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version u
 	localNow := now.In(location)
 	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
 	if existing != nil && existing.version == version && !existing.today.IsZero() && !existing.today.Equal(today) {
-		// The local day rolled over; daily history must shift even if the
-		// five-minute stats cache has not expired yet.
 		statsExpired = true
 	}
 
@@ -178,8 +170,6 @@ func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version u
 		snapshot.monitorsExpires = now.Add(publicStatusTTL)
 		if !statsExpired && existing != nil && existing.version == version &&
 			!sameMonitorIDSet(existing.monitors, monitors) {
-			// External settings edits can change the whitelist without bumping
-			// the in-process revision; refresh stats when the ID set changes.
 			statsExpired = true
 		}
 	}
@@ -341,8 +331,6 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	data.PublicView = true
 	data.Path = "/status"
 	data.AutoRefresh = true
-	// Keep the rendered page and its snapshot on the same settings revision;
-	// newPage may have read a newer timezone between the two cache lookups.
 	data.Location = model.TimezoneFromSettings(values)
 	title := status.Title
 	if title == "" {
@@ -428,8 +416,6 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
-	// Serialize the read-modify-write of the whitelist with deletion pruning;
-	// SQLite serializes individual statements, not this whole workflow.
 	s.settingsWriteMu.Lock()
 	defer s.settingsWriteMu.Unlock()
 	values := publicStatusFormValues{
@@ -445,13 +431,9 @@ func (s *Server) handlePublicStatusSave(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		existing := publicStatusFromSettings(settings)
-		// The monitor selector is disabled on the settings page while the
-		// public page is off, but title and description stay editable.
 		values.MonitorIDs = existing.MonitorIDs
 	}
 
-	// Parse the monitor selection before field validation so a rejected title
-	// or description re-renders with the submitted checkboxes intact.
 	monitors, err := s.store.ListMonitors(r.Context())
 	if err != nil {
 		s.log.Error("load monitors for public status save", "error", err)

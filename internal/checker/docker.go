@@ -92,8 +92,6 @@ func newDockerChecker(host string) *dockerChecker {
 	return &dockerChecker{
 		baseURL: baseURL,
 		client: &http.Client{
-			// The scheduler supplies a context with the monitor timeout; a
-			// fixed client timeout would truncate longer configurations.
 			Transport: transport,
 		},
 	}
@@ -126,8 +124,6 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 	var inspect dockerInspect
 	statusCode, err := d.getJSON(ctx, path, &inspect)
 	if statusCode == http.StatusBadRequest {
-		// Docker returns 400 when the cached API version is below the daemon's
-		// minimum supported version (for example after a daemon upgrade).
 		d.invalidateAPIVersion()
 		if refreshed, refreshErr := d.getAPIVersion(ctx); refreshErr == nil {
 			version = refreshed
@@ -188,9 +184,6 @@ func (d *dockerChecker) Check(ctx context.Context, request Request) (model.Check
 	if monitor.Docker.RequireHealthy && inspect.State.Health != nil {
 		switch inspect.State.Health.Status {
 		case "starting":
-			// Docker reports starting during the healthcheck start period;
-			// it is not a failure yet. Docker will move the container to
-			// healthy or unhealthy when that period ends.
 		case "healthy":
 		default:
 			return model.CheckResult{

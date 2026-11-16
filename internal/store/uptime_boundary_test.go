@@ -40,10 +40,9 @@ func TestUptimeStatsForMonitorCombinedSevenDayBoundary(t *testing.T) {
 			t.Fatalf("RecordCheck: %v", err)
 		}
 	}
-	// Both checks are in the 12:00-12:30 bucket seven days ago. The raw 7d
-	// window starts at 12:15, so only the second check is inside it.
-	record(sevenDaysAgo.Add(-10 * time.Minute)) // 12:05
-	record(sevenDaysAgo.Add(5 * time.Minute))   // 12:20
+	record(sevenDaysAgo.Add(-10 * time.Minute))
+
+	record(sevenDaysAgo.Add(5 * time.Minute))
 
 	if err := st.AggregateHalfHourlyRollups(t.Context(), now.Add(-30*24*time.Hour), now, now); err != nil {
 		t.Fatalf("AggregateHalfHourlyRollups: %v", err)

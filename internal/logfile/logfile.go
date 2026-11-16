@@ -1,4 +1,3 @@
-// Package logfile provides a daily-rotating log file writer with fixed retention.
 package logfile
 
 import (
@@ -11,15 +10,12 @@ import (
 )
 
 const (
-	filePrefix = "windwatch-"
-	fileSuffix = ".log"
-	dateFormat = "2006-01-02"
-	// RetentionDays is how many daily log files are kept, including today's.
+	filePrefix    = "windwatch-"
+	fileSuffix    = ".log"
+	dateFormat    = "2006-01-02"
 	RetentionDays = 30
 )
 
-// Writer appends to one log file per local day and deletes files older than
-// the retention window. It is safe for concurrent use.
 type Writer struct {
 	dir string
 	now func() time.Time
@@ -29,9 +25,6 @@ type Writer struct {
 	current string
 }
 
-// New opens (or creates) the log directory and today's log file, and prunes
-// expired files. The directory is created with mode 0700 and files with 0600,
-// matching the sensitivity of the data directory.
 func New(dir string) (*Writer, error) {
 	if strings.TrimSpace(dir) == "" {
 		return nil, fmt.Errorf("log directory must not be empty")
@@ -67,9 +60,6 @@ func (w *Writer) Close() error {
 	return err
 }
 
-// rotate ensures the file for now's local day is open. If opening the new
-// day's file fails mid-run, the previous file stays open so log lines are not
-// lost; the rotation is retried on the next write.
 func (w *Writer) rotate(now time.Time) error {
 	date := now.Format(dateFormat)
 	if w.file != nil && date == w.current {
@@ -91,8 +81,6 @@ func (w *Writer) rotate(now time.Time) error {
 	return nil
 }
 
-// prune deletes rotated log files strictly older than the retention window.
-// Only files matching the exact naming scheme are touched.
 func (w *Writer) prune(now time.Time) {
 	cutoff := now.AddDate(0, 0, -(RetentionDays - 1)).Format(dateFormat)
 	entries, err := os.ReadDir(w.dir)

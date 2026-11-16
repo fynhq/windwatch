@@ -69,8 +69,6 @@ func New(st *store.Store, cipher *secret.Cipher, catalogs *i18n.Catalogs, logger
 }
 
 func (s *Service) Start(ctx context.Context) {
-	// Capture the pending list before the dispatch goroutine starts. Notifications
-	// claimed afterwards are handled only by dispatch/retry, never by recovery.
 	pending, err := s.store.PendingNotifications(ctx, pendingRecoveryCap)
 	if err != nil {
 		s.log.Error("load pending notifications", "error", err)
@@ -117,9 +115,6 @@ func (s *Service) Enqueue(notification model.Notification) bool {
 	return true
 }
 
-// Wake nudges the outbox worker without writing another row. The scheduler
-// persists notification intents in the same transaction as the check and only
-// needs to wake the dispatcher afterwards.
 func (s *Service) Wake() {
 	select {
 	case s.wake <- struct{}{}:
@@ -230,9 +225,6 @@ func (s *Service) channelSecret(channel model.NotificationChannel) (string, erro
 	return value, nil
 }
 
-// sendTelegramNotification claims each chat ID before resolving the bot token.
-// A decrypt failure therefore leaves a durable failed notify_log row instead of
-// being dropped by the outbox as a successful expansion.
 func (s *Service) sendTelegramNotification(ctx context.Context, channel model.NotificationChannel, text, dedupeKey, monitorName string) error {
 	chatIDs := channel.ChatIDs()
 	if len(chatIDs) == 0 {
@@ -298,8 +290,6 @@ func (s *Service) sendTelegramNotification(ctx context.Context, channel model.No
 	return nil
 }
 
-// sendTelegramText is the test-send path: no notify_log claim or retry row is
-// created, and the first error is returned to the admin.
 func (s *Service) sendTelegramText(ctx context.Context, channel model.NotificationChannel, token, text string) error {
 	if strings.TrimSpace(token) == "" {
 		return errors.New("telegram token is not configured")
@@ -701,8 +691,6 @@ func (s *Service) renderBase(language string, location *time.Location, notificat
 
 func (s *Service) httpClient(ctx context.Context, proxyID *int64) (*http.Client, func(), error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// "Direct" must mean the same thing for notifications as it does for
-	// monitor checks; do not inherit HTTP_PROXY/HTTPS_PROXY from the environment.
 	transport.Proxy = nil
 	transport.MaxResponseHeaderBytes = 64 << 10
 	if proxyID != nil {
@@ -750,8 +738,6 @@ func (e permanentError) Error() string {
 	return e.err.Error()
 }
 
-// transportError keeps the underlying network or TLS cause while omitting the
-// request URL, which can contain Telegram bot tokens or webhook query secrets.
 func transportError(prefix string, err error) error {
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) && urlErr.Err != nil {
@@ -806,8 +792,6 @@ func (s *Service) retry(ctx context.Context, operation func() error) error {
 				delay = maxRetryAfter
 			}
 		}
-		// A timed-out send may still have been delivered; logged so duplicate
-		// deliveries can be correlated with retry attempts.
 		s.log.Warn("notification send retry", "attempt", attempt+2, "delay", delay.String(), "error", last)
 		select {
 		case <-ctx.Done():
@@ -828,8 +812,6 @@ func formatTime(value time.Time, location *time.Location) string {
 	return value.In(location).Format("01-02 15:04:05")
 }
 
-// formatTimeRange keeps the date on the start and drops it from the end when
-// both checks fall on the same local day.
 func formatTimeRange(start, end time.Time, location *time.Location) (string, string) {
 	if location == nil {
 		location = time.UTC

@@ -35,9 +35,6 @@ type Store struct {
 }
 
 var (
-	// Each pooled connection keeps its own page cache. One MiB is enough for
-	// the small hot index working set of this schema and bounds the three
-	// expected connections at 3 MiB instead of 12 MiB.
 	sqlitePragmas = []string{
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA busy_timeout = 5000",
@@ -47,9 +44,6 @@ var (
 	sqliteHookOnce sync.Once
 )
 
-// registerSQLiteHook installs the pragmas on every physical connection. Setting
-// them once after Open is not enough: database/sql may discard a connection and
-// replace it without re-running connection-scoped pragmas.
 func registerSQLiteHook() {
 	sqliteHookOnce.Do(func() {
 		sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, _ string) error {
@@ -75,12 +69,8 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
-	// Writes stay serialized on one connection. Read queries use a separate
-	// pool so the public status page and dashboard cannot block the collector.
 	db.SetMaxOpenConns(1)
 
-	// journal_mode is persistent in the database file, so set it once on the
-	// writer connection instead of trying to switch modes from read connections.
 	if _, err := db.ExecContext(context.Background(), "PRAGMA journal_mode = WAL"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("enable sqlite wal: %w", err)
@@ -133,9 +123,6 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.reader().PingContext(ctx)
 }
 
-// CheckpointWAL runs a passive checkpoint on the writer connection. SQLite
-// checkpoints automatically, but an explicit low-frequency call keeps the WAL
-// bounded after large maintenance deletions.
 func (s *Store) CheckpointWAL(ctx context.Context) error {
 	var busy, logFrames, checkpointed int
 	if err := s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(PASSIVE)").Scan(&busy, &logFrames, &checkpointed); err != nil {

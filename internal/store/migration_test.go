@@ -13,8 +13,6 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
-// expectedMigrationCount keeps the migration assertions in step with the
-// embedded migration set instead of a hardcoded version number.
 func expectedMigrationCount(t *testing.T) int {
 	t.Helper()
 	entries, err := fs.ReadDir(migrationFS, "migrations")

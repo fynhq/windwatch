@@ -15,9 +15,6 @@ const (
 	outboxMaxAttempts  = 24
 )
 
-// outboxLoop is the durable half of notification delivery. Enqueue writes the
-// notification to notification_outbox before waking this loop; a crash or a
-// slow channel therefore cannot lose an event before it reaches notify_log.
 func (s *Service) outboxLoop(ctx context.Context) {
 	lastCleanup := time.Time{}
 	s.processOutbox(ctx)

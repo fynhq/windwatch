@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	_ "time/tzdata" // keep the binary self-contained in shell-less container images
+	_ "time/tzdata"
 
 	"golang.org/x/term"
 
@@ -240,8 +240,6 @@ func printVersion() {
 	fmt.Println(versionLine())
 }
 
-// versionLine keeps build metadata out of the version label itself; local
-// builds already carry the commit as a "+<hash>" suffix.
 func versionLine() string {
 	line := "windwatch " + version.Version
 	var details []string

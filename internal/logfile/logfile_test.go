@@ -78,13 +78,17 @@ func TestRotatesOnDateChange(t *testing.T) {
 func TestPruneKeepsRetentionWindow(t *testing.T) {
 	dir := t.TempDir()
 	keep := []string{
-		"windwatch-2026-10-28.log", // today
-		"windwatch-2026-09-29.log", // oldest retained day (30th)
-		"notes.txt",                // not a rotated log
-		"windwatch-bad-date.log",   // unparseable date
+		"windwatch-2026-10-28.log",
+
+		"windwatch-2026-09-29.log",
+
+		"notes.txt",
+
+		"windwatch-bad-date.log",
 	}
 	drop := []string{
-		"windwatch-2026-09-28.log", // 31 days old
+		"windwatch-2026-09-28.log",
+
 		"windwatch-2026-08-01.log",
 	}
 	for _, name := range append(append([]string{}, keep...), drop...) {

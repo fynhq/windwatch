@@ -73,9 +73,6 @@ var notificationStatusKeys = map[string]string{
 	"failed":  "notification.status.failed",
 }
 
-// notificationReasonKey derives the delivery reason from the notification
-// dedupe key, whose prefix is the only persisted record of the triggering
-// event kind. Reminder entries keep the reason of the state they repeat.
 func notificationReasonKey(dedupeKey string) string {
 	switch model.NotificationReason(dedupeKey) {
 	case model.NotificationReasonRecovery:
@@ -227,12 +224,10 @@ func channelFormValues(channel model.NotificationChannel) notificationChannelFor
 		Type:            channel.Type,
 		Language:        channel.ResolvedLanguage(),
 		TelegramChatIDs: channel.TelegramChatIDs,
-		// Webhook paths and query strings can carry bearer tokens. Never echo
-		// the full URL; an empty value keeps the stored URL on update.
-		WebhookURL:    "",
-		WebhookFormat: channel.ResolvedWebhookFormat(),
-		Enabled:       channel.Enabled,
-		ProxyID:       channel.ProxyIDString(),
+		WebhookURL:      "",
+		WebhookFormat:   channel.ResolvedWebhookFormat(),
+		Enabled:         channel.Enabled,
+		ProxyID:         channel.ProxyIDString(),
 	}
 }
 
@@ -261,8 +256,6 @@ func (s *Server) handleNotificationChannelCreate(w http.ResponseWriter, r *http.
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	// The first channel adopts monitors that still have no explicit selection,
-	// preserving the previous global-channel behavior for upgraded installs.
 	if len(existingChannels) == 0 {
 		linked, linkErr := s.store.LinkNotificationChannelToUnlinkedMonitors(r.Context(), createdID)
 		if linkErr != nil {
@@ -363,8 +356,6 @@ func (s *Server) notificationChannelFromValues(r *http.Request, values notificat
 				channel.SecretEnc = existing.SecretEnc
 			}
 			if channel.Type == model.NotificationChannelWebhook && strings.TrimSpace(channel.WebhookURL) == "" {
-				// The edit form intentionally does not echo the URL because its
-				// path/query may contain a bearer token.
 				channel.WebhookURL = existing.WebhookURL
 			}
 		}
@@ -434,8 +425,6 @@ func (s *Server) renderChannelSettingsError(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	page.ChannelFormOpen = true
-	// Never put a webhook URL back into HTML after a validation error; its
-	// path or query may contain a bearer token.
 	values.WebhookURL = ""
 	page.ChannelForm = values
 	page.ChannelFormEdit = editingID > 0

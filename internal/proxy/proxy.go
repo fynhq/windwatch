@@ -50,8 +50,6 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// NewConfig builds a validated outbound proxy configuration. Callers that load
-// stored proxies share it so validation cannot drift between subsystems.
 func NewConfig(proxyType model.ProxyType, address, username, password string) (*Config, error) {
 	cfg := &Config{Type: proxyType, Address: address, Username: username, Password: password}
 	if err := cfg.Validate(); err != nil {
@@ -60,8 +58,6 @@ func NewConfig(proxyType model.ProxyType, address, username, password string) (*
 	return cfg, nil
 }
 
-// FromStored converts a persisted proxy row into a runtime configuration. The
-// decrypt callback is nil when the caller has no secret cipher available.
 func FromStored(stored model.Proxy, decrypt func(string) (string, error)) (*Config, error) {
 	password := ""
 	if stored.PasswordEnc != "" {
@@ -93,8 +89,6 @@ func ApplyHTTPTransport(cfg *Config, transport *http.Transport) error {
 		transport.Proxy = http.ProxyURL(proxyURL)
 		baseDial := transport.DialContext
 		if baseDial == nil {
-			// The check context owns the timeout; a fixed dial timeout would
-			// truncate monitors configured above it.
 			baseDial = (&net.Dialer{}).DialContext
 		}
 		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {

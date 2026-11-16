@@ -177,7 +177,6 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	admin, err := s.store.AdminByUsername(r.Context(), username)
 	if errors.Is(err, store.ErrNotFound) {
 		s.limiter.failure(key, now)
-		// Keep unknown-user timing close to a real password verification.
 		secret.VerifyDummyPassword(password)
 		s.log.Warn("login failed", "username", truncateLoginValue(username), "reason", "unknown user", "client", key)
 		s.renderLoginPage(w, r, http.StatusUnauthorized, csrf, username, "error.invalidCredentials")

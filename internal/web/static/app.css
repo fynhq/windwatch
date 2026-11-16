@@ -169,7 +169,6 @@ button {
   flex: 0 0 auto;
 }
 
-/* Application shell */
 .app-shell {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -532,7 +531,6 @@ button {
   font-size: 12px;
 }
 
-/* Auth shell */
 .auth-body {
   display: flex;
   flex-direction: column;
@@ -601,7 +599,6 @@ button {
   margin-top: 24px;
 }
 
-/* Headings and text */
 .eyebrow {
   margin: 0 0 7px;
   color: var(--accent);
@@ -670,7 +667,6 @@ h2 {
   gap: 16px;
 }
 
-/* Forms */
 .stack {
   display: grid;
   gap: 16px;
@@ -771,7 +767,6 @@ fieldset:disabled {
   accent-color: var(--accent);
 }
 
-/* Buttons */
 .button {
   display: inline-flex;
   align-items: center;
@@ -862,7 +857,6 @@ fieldset:disabled {
   }
 }
 
-/* Alerts and empty states */
 .alert {
   margin: 0 0 20px;
   padding: 12px 14px;
@@ -878,7 +872,6 @@ fieldset:disabled {
   color: var(--danger);
 }
 
-/* Toasts */
 .toast-region {
   position: fixed;
   top: calc(18px + env(safe-area-inset-top));
@@ -948,7 +941,6 @@ fieldset:disabled {
   }
 }
 
-/* Dialogs */
 .dialog {
   width: min(540px, calc(100vw - 32px));
   max-height: min(90vh, 880px);
@@ -1100,9 +1092,6 @@ body:has(dialog[open]) {
   }
 }
 
-/* Cross-document view transitions keep navigation continuous without
-   turning the server-rendered app into a client-side router. The sidebar
-   and top bars stay in the root snapshot; only the main content animates. */
 @view-transition {
   navigation: auto;
 }
@@ -1173,14 +1162,11 @@ body:has(dialog[open]) {
   margin-top: 18px;
 }
 
-/* Tables */
 .table-scroll {
   overflow-x: auto;
   margin-top: 14px;
 }
 
-/* Panels whose only content is a table keep the panel's own top padding
-   instead of adding a second gap above the header row. */
 .panel > .table-scroll:first-child {
   margin-top: 0;
 }
@@ -1219,13 +1205,10 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
-/* Center single-line cell content (text, pills, buttons) vertically; the
-   users table re-applies top alignment for its multi-line action cells. */
 .responsive-table td {
   vertical-align: middle;
 }
 
-/* Switches */
 .switch-field {
   display: inline-flex;
   align-items: center;
@@ -1289,7 +1272,6 @@ tbody tr:last-child td {
   cursor: not-allowed;
 }
 
-/* Settings */
 .settings-section {
   margin-top: 0;
 }
@@ -1416,7 +1398,6 @@ tbody tr:last-child td {
   color: var(--accent);
 }
 
-/* Mobile top bar and bottom dock */
 .mobile-topbar {
   display: none;
 }

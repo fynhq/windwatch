@@ -15,8 +15,6 @@ func TestWindowLimiterResetsLateKeyWithoutGlobalPrune(t *testing.T) {
 	if !limiter.allow("late", late) || !limiter.allow("late", late.Add(time.Second)) {
 		t.Fatal("late key should reach its limit")
 	}
-	// A request for another key just after a-minute prevents the global prune,
-	// but the late key's own window has elapsed and must reset.
 	if !limiter.allow("other", start.Add(61*time.Second)) {
 		t.Fatal("other key should still be allowed")
 	}

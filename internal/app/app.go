@@ -89,9 +89,7 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
-			// The default 1 MiB per connection is far above what these pages
-			// and cookies need; bound header memory under concurrent clients.
-			MaxHeaderBytes: 64 << 10,
+			MaxHeaderBytes:    64 << 10,
 		},
 	}
 	closeOnError = false

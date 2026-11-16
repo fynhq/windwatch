@@ -92,7 +92,6 @@
         window.history.replaceState(null, "", currentURL.pathname + currentURL.search + currentURL.hash);
       }
     } catch (_) {
-      // Keeping the URL is harmless when history is unavailable.
     }
     region.addEventListener("click", function (event) {
       var button = event.target.closest("[data-toast-close]");
@@ -314,7 +313,6 @@
     try {
       window.sessionStorage.setItem(key, value);
     } catch (_) {
-      // Filter state is optional; storage can be unavailable in private modes.
     }
   }
 
@@ -618,16 +616,12 @@
       }
       var nodes = region.querySelectorAll(monitorSelector(target));
       if (target === "status" && previous.length !== nodes.length) {
-        // A whitelist change can reorder the public list; skip that refresh
-        // instead of highlighting cards that only shifted position.
         return;
       }
       for (var i = 0; i < nodes.length; i++) {
         var node = nodes[i];
         var status = node.getAttribute("data-status") || "";
         if (target === "status") {
-          // The public page must not expose monitor IDs, so its cards are
-          // compared by their stable server-rendered order.
           if (previous[i] && previous[i] !== status) {
             markStatusChanged(node);
           }
@@ -699,7 +693,6 @@
         }
         replaceFragment(html);
       }).catch(function () {
-        // Keep the last good fragment and retry on the next interval.
       }).then(function () {
         refreshing = false;
       });
@@ -966,8 +959,6 @@
     initCopyFields();
     initAutoSubmitForms();
     initConfirmForms();
-    // Register after confirm forms so a cancelled confirm is already
-    // defaultPrevented when the pending handler runs.
     initPendingForms();
     initEventDialog();
     initNotificationContentDialog();

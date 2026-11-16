@@ -211,16 +211,10 @@ func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ResetUserPassword sets a new hash and invalidates all sessions. It does not
-// re-enable a disabled account; use RecoverUserPassword for the offline
-// recovery path, which intentionally re-enables the account.
 func (s *Store) ResetUserPassword(ctx context.Context, id int64, passwordHash string, now time.Time) error {
 	return s.resetUserPassword(ctx, id, passwordHash, now, false)
 }
 
-// RecoverUserPassword is the recovery-CLI form of ResetUserPassword. It also
-// re-enables the account so an operator locked out by a disabled account can
-// sign in again.
 func (s *Store) RecoverUserPassword(ctx context.Context, id int64, passwordHash string, now time.Time) error {
 	return s.resetUserPassword(ctx, id, passwordHash, now, true)
 }

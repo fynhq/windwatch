@@ -14,8 +14,6 @@ const HalfHourlyResolutionSeconds = 1800
 
 func (s *Store) AggregateHalfHourlyRollups(ctx context.Context, since, before, now time.Time) error {
 	bucket := time.Duration(HalfHourlyResolutionSeconds) * time.Second
-	// Rollup rows always represent complete buckets. Aligning here keeps a
-	// future caller from overwriting an existing bucket with a partial count.
 	since = since.UTC().Truncate(bucket)
 	before = before.UTC().Truncate(bucket)
 	if !before.After(since) {
@@ -114,11 +112,6 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 	return result, nil
 }
 
-// UptimeStatsForMonitorsCombined reads complete half-hour buckets from rollups
-// and only the raw checks outside that range. Windows are not necessarily
-// bucket-aligned, so the partial bucket at each edge stays on raw checks.
-// Maintenance aggregates every five minutes, so the raw tail stays small even
-// at the 500-monitor limit.
 func (s *Store) UptimeStatsForMonitorsCombined(ctx context.Context, monitorIDs []int64, since, now time.Time) (map[int64]model.UptimeStats, error) {
 	if len(monitorIDs) == 0 {
 		return map[int64]model.UptimeStats{}, nil
@@ -130,9 +123,6 @@ func (s *Store) UptimeStatsForMonitorsCombined(ctx context.Context, monitorIDs [
 	return s.uptimeStatsForMonitorsCombinedWithLast(ctx, monitorIDs, since, now, lastBucket, ok)
 }
 
-// UptimeStatsForMonitorsCombinedMany evaluates several rolling windows with one
-// LastRollupStart lookup. Detail and public status pages request 30d/90d (and
-// 24h/7d) together, so this avoids repeating the same metadata query.
 func (s *Store) UptimeStatsForMonitorsCombinedMany(ctx context.Context, monitorIDs []int64, sinces []time.Time, now time.Time) ([]map[int64]model.UptimeStats, error) {
 	result := make([]map[int64]model.UptimeStats, len(sinces))
 	if len(monitorIDs) == 0 || len(sinces) == 0 {
@@ -176,7 +166,6 @@ func (s *Store) uptimeStatsForMonitorsCombinedWithLast(ctx context.Context, moni
 	}
 
 	if !rollupStart.Before(rollupEnd) {
-		// No complete bucket fits in the window; read everything from raw checks.
 		return s.uptimeStatsForMonitors(ctx, monitorIDs, since, now)
 	}
 
@@ -208,9 +197,6 @@ func (s *Store) uptimeStatsForMonitorsCombinedWithLast(ctx context.Context, moni
 	return result, nil
 }
 
-// UptimeStatsForMonitorCombined is the single-monitor form used by the detail
-// page. Long ranges must use the same bucket-aligned path as the dashboard so
-// a raw/rollup split cannot count a boundary bucket twice.
 func (s *Store) UptimeStatsForMonitorCombined(ctx context.Context, monitorID int64, since, now time.Time) (model.UptimeStats, error) {
 	stats, err := s.UptimeStatsForMonitorsCombined(ctx, []int64{monitorID}, since, now)
 	if err != nil {
@@ -234,8 +220,6 @@ func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, sourc
 }
 
 func (s *Store) DailyBucketsForTimezone(ctx context.Context, monitorID int64, since, before time.Time, location *time.Location) ([]model.HourBucket, error) {
-	// Reuse the batch implementation so latency sums are accumulated from
-	// latency_sum_ms instead of being reconstructed from truncated averages.
 	result, err := s.DailyBucketsForMonitors(ctx, []int64{monitorID}, since, before, location)
 	if err != nil {
 		return nil, err

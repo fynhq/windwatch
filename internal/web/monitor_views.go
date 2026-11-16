@@ -370,8 +370,6 @@ func buildCheckBars(translator *i18n.Translator, checks []model.CheckSummary, li
 	for index := 0; index < limit-len(checks); index++ {
 		bars[index] = empty
 	}
-	// checks[0] is the newest sample; bars grow oldest to newest from left to
-	// right, so fill the tail backwards without repeated prepend allocations.
 	for index, check := range checks {
 		class := "bar-down"
 		switch check.Status {
@@ -441,8 +439,6 @@ func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, 
 		if check.Latency > 0 {
 			title += " · " + formatLatency(check.Latency)
 		}
-		// Failed probes carry a real latency, but a failure must create a gap
-		// rather than connect the latency line through the outage.
 		chartLatency := check.Latency
 		if check.Status == model.CheckDown {
 			chartLatency = 0

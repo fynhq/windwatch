@@ -21,11 +21,9 @@ import (
 )
 
 const (
-	maxDiscardBodyBytes = 64 << 10
-	maxKeywordBodyBytes = 1 << 20
-	keywordChunkBytes   = 32 << 10
-	// model.Monitor.Validate limits keywords to 500 runes; four UTF-8 bytes
-	// per rune gives the largest carry window that validation can produce.
+	maxDiscardBodyBytes  = 64 << 10
+	maxKeywordBodyBytes  = 1 << 20
+	keywordChunkBytes    = 32 << 10
 	maxKeywordCarryBytes = 4 * 500
 	maxRedirects         = 5
 	maxTransportEntries  = 32
@@ -35,10 +33,6 @@ type keywordBuffer struct {
 	data []byte
 }
 
-// Keyword checks scan a bounded stream instead of buffering the response body.
-// The pool keeps the steady-state scan buffer small while the carry window
-// preserves matches that cross a chunk boundary. The pointer wrapper avoids
-// the allocation that sync.Pool would otherwise charge for a byte slice.
 var keywordBufferPool = sync.Pool{
 	New: func() any {
 		return &keywordBuffer{data: make([]byte, keywordChunkBytes+maxKeywordCarryBytes)}
@@ -65,17 +59,10 @@ type httpMeta struct {
 
 func newHTTPChecker() *httpChecker {
 	transport := &http.Transport{
-		// Dial, TLS handshake, and response waits are bounded by the request
-		// context from the scheduler. A fixed transport timeout would shorten
-		// monitors configured with a longer timeout.
 		DialContext: (&net.Dialer{
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		ForceAttemptHTTP2: true,
-		// Idle keep-alive connections retain TLS and bufio buffers, and the
-		// transport cache can hold several TLS/proxy variants. A small pool
-		// still covers concurrent checks without letting idle connections
-		// become a large fixed memory cost.
+		ForceAttemptHTTP2:      true,
 		MaxIdleConns:           16,
 		MaxIdleConnsPerHost:    4,
 		IdleConnTimeout:        90 * time.Second,
@@ -89,9 +76,6 @@ func (c *httpChecker) Type() model.MonitorType {
 	return model.MonitorTypeHTTP
 }
 
-// transportFor reuses one transport per TLS/proxy configuration. Cloning and
-// closing a transport for every check forced a new TCP/TLS handshake and
-// discarded the idle connection pool.
 func (c *httpChecker) transportFor(monitor model.Monitor, egress *proxy.Config) (*http.Transport, error) {
 	key := transportKey{
 		tlsSkipVerify: monitor.HTTP != nil && monitor.HTTP.TLSSkipVerify,
@@ -246,8 +230,6 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 				}, nil
 			}
 		} else {
-			// Read a bounded prefix so the connection can be reused without
-			// letting large responses consume memory.
 			if _, err := io.CopyN(io.Discard, response.Body, maxDiscardBodyBytes); err != nil && !errors.Is(err, io.EOF) {
 				kind, message := classifyError(err)
 				return model.CheckResult{
@@ -272,9 +254,6 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 	}, nil
 }
 
-// bodyContainsKeyword scans at most maxKeywordBodyBytes+1 bytes while keeping
-// only the last keyword-sized carry window between reads. The extra byte keeps
-// the existing distinction between an exact-limit body and a truncated one.
 func bodyContainsKeyword(body io.Reader, keyword string) (found, truncated bool, err error) {
 	needle := []byte(keyword)
 	if len(needle) == 0 {

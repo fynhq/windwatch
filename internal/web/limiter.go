@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// windowLimiter is a small per-key fixed-window counter used for inexpensive
-// public endpoints. It is intentionally in-memory: a single WindWatch instance
-// is the supported deployment model, and restart resets the window.
 type windowLimiter struct {
 	mu       sync.Mutex
 	limit    int

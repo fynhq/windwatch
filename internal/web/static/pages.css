@@ -1,7 +1,4 @@
-/* Page components: dashboard, monitors, detail, events, public status and settings index.
-   Rules are ordered; later sections intentionally refine earlier components. */
 
-/* Dashboard and monitor components */
 .page-actions {
   display: flex;
   align-items: center;
@@ -585,7 +582,6 @@
   margin-top: 0;
 }
 
-/* Events table */
 .events-table th,
 .events-table td {
   white-space: nowrap;
@@ -1036,9 +1032,7 @@
 }
 
 
-/* Second-pass refinements for the components above. */
 
-/* Dashboard overview and monitor rows */
 .page-updated {
   margin: 2px 0 0;
   color: var(--muted);
@@ -1112,9 +1106,6 @@
   background: var(--faint);
 }
 
-/* The polling refresh replaces the live region wholesale. Only cards whose
-   status actually changed get this one-shot cue; a steady animation would
-   replay every 30 seconds and pull attention away from the page. */
 .monitor-card.is-status-changed,
 .public-monitor.is-status-changed {
   animation: status-changed var(--motion-attention) var(--motion-ease);
@@ -1451,7 +1442,6 @@
   margin-top: 0;
 }
 
-/* Status semantics */
 .status-pill.status-pending {
   border-color: var(--pending-border);
   background: var(--pending-bg);
@@ -1464,7 +1454,6 @@
   color: var(--faint);
 }
 
-/* Detail page */
 .detail-head-row {
   align-items: flex-start;
 }
@@ -1756,7 +1745,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Public status page */
 .public-hero {
   margin-bottom: 16px;
   padding: 26px 28px;
@@ -1917,7 +1905,6 @@
   display: none;
 }
 
-/* Mobile shows the latest 30 of the 90 server-rendered daily bars. */
 @media (max-width: 640px) {
   .public-history-range-wide {
     display: none;
@@ -1947,7 +1934,6 @@
   color: var(--accent);
 }
 
-/* Events overview and filters */
 .events-overview {
   display: flex;
   align-items: center;
@@ -2000,8 +1986,6 @@
   font-weight: 600;
 }
 
-/* The toolbar owns the gap above the list; the panel's global margin-top
-   would double it in the desktop flex layout where margins do not collapse. */
 .events-toolbar + .panel {
   margin-top: 0;
 }
@@ -2065,13 +2049,10 @@
   margin-top: 16px;
 }
 
-/* The events page is a flex column on desktop where margins do not collapse;
-   keep the empty state flush with the page head's own bottom margin. */
 .page-head + .empty-state {
   margin-top: 0;
 }
 
-/* Settings index */
 .settings-index-link {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2108,7 +2089,6 @@
   transform: translateX(2px);
 }
 
-/* Form actions */
 .form-panel .form-actions {
   margin-top: 2px;
   padding-top: 12px;

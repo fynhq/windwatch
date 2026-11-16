@@ -8,8 +8,6 @@ import (
 	"github.com/fynhq/windwatch/internal/store"
 )
 
-// Config holds settings shared by every delivery. Channel-specific settings,
-// including the notification language, live on model.NotificationChannel.
 type Config struct {
 	Timezone *time.Location
 }

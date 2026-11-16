@@ -23,8 +23,6 @@ type proxyFormValues struct {
 	Password string
 }
 
-// proxyOption is the template-facing view of a proxy. It deliberately omits
-// PasswordEnc so page models cannot accidentally render a stored secret.
 type proxyOption struct {
 	ID      int64
 	Name    string

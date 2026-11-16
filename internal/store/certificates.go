@@ -75,8 +75,6 @@ func (s *Store) LatestCertificate(ctx context.Context, monitorID int64) (model.C
 }
 
 func (s *Store) DeleteUnreferencedCertificates(ctx context.Context, before time.Time) error {
-	// NOT EXISTS probes checks_cert_fingerprint per old certificate and stops
-	// at the first match; NOT IN would build the full fingerprint set first.
 	if _, err := s.db.ExecContext(ctx, `
 		DELETE FROM cert_info
 		WHERE updated_at_ms < ?

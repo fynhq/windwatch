@@ -37,8 +37,6 @@ func DefaultNotificationPolicy() NotificationPolicy {
 	}
 }
 
-// Normalized fills unset intervals with defaults so zero-value policies remain
-// valid for monitors created before reminder settings existed.
 func (p NotificationPolicy) Normalized() NotificationPolicy {
 	defaults := DefaultNotificationPolicy()
 	if p.WarningReminderInterval <= 0 {
@@ -104,19 +102,16 @@ func parseReminderInt(value string, fallback, maxValue int, sentinel error) (int
 }
 
 type Notification struct {
-	Key           string
-	Kind          EventType
-	MonitorID     int64
-	MonitorName   string
-	MonitorTarget string
-	MonitorType   MonitorType
-	Status        MonitorStatus
-	Message       string
-	OccurredAt    time.Time
-	Downtime      time.Duration
-	// DowntimeStart is the first failed check of an outage. Downtime runs to
-	// OccurredAt, so both the notification text and webhook expose the same
-	// observed window instead of only the state transition time.
+	Key            string
+	Kind           EventType
+	MonitorID      int64
+	MonitorName    string
+	MonitorTarget  string
+	MonitorType    MonitorType
+	Status         MonitorStatus
+	Message        string
+	OccurredAt     time.Time
+	Downtime       time.Duration
 	DowntimeStart  time.Time
 	DowntimeCycles int
 	Reminder       int
@@ -125,21 +120,19 @@ type Notification struct {
 }
 
 type NotificationLog struct {
-	ID          int64
-	DedupeKey   string
-	Channel     string
-	ChannelID   int64
-	ChannelName string
-	MonitorName string
-	Target      string
-	Status      string
-	Error       string
-	Payload     string
-	CreatedAt   time.Time
-	SentAt      time.Time
-	// Attempts counts completed delivery cycles; the initial send counts as one.
-	Attempts int
-	// NextAttemptAt is when a pending retry becomes due.
+	ID            int64
+	DedupeKey     string
+	Channel       string
+	ChannelID     int64
+	ChannelName   string
+	MonitorName   string
+	Target        string
+	Status        string
+	Error         string
+	Payload       string
+	CreatedAt     time.Time
+	SentAt        time.Time
+	Attempts      int
 	NextAttemptAt time.Time
 }
 

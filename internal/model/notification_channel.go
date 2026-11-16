@@ -123,9 +123,6 @@ func splitChannelChatIDs(value string) []string {
 	return result
 }
 
-// NotificationTarget returns a short, non-secret summary for lists and logs.
-// Webhook paths and query strings can both carry bearer tokens, so only the
-// origin is retained. Dedupe uniqueness still includes channel_id.
 func (c NotificationChannel) NotificationTarget() string {
 	switch c.Type {
 	case NotificationChannelTelegram:

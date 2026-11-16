@@ -218,9 +218,6 @@ func (s *Server) render(w http.ResponseWriter, page string, status int, data any
 	}
 }
 
-// renderFragment returns only the live region for a page that supports
-// in-place polling. It shares the page template so server-rendered content
-// cannot drift from the full-page output.
 func (s *Server) renderFragment(w http.ResponseWriter, page string, status int, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -236,8 +233,6 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 		s.log.Error("request failed", "status", status, "path", requestLogPath(r), "message_key", messageKey)
 	}
 	data := s.newPage(r, "error.title")
-	// Only reuse a session that the route already resolved. Public routes and
-	// 404s must not turn an attacker-supplied cookie into a database read.
 	if auth, ok := authFromContext(r); ok {
 		data.Username = auth.Admin.Username
 		data.CSRF = auth.Session.CSRFToken
@@ -248,7 +243,6 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 	s.render(w, "error", status, data)
 }
 
-// requestLogPath keeps notification/Push secrets out of application logs.
 func requestLogPath(r *http.Request) string {
 	if strings.HasPrefix(r.URL.Path, "/api/push/") {
 		return "/api/push/[redacted]"

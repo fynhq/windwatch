@@ -14,8 +14,6 @@ import (
 )
 
 const (
-	// MaxMonitors is a safety ceiling rather than a product promise. The
-	// documented performance targets assume a much smaller number.
 	MaxMonitors = 500
 
 	MinIntervalSeconds = 20
@@ -76,9 +74,6 @@ type TCPConfig struct {
 	Port int    `json:"port"`
 }
 
-// NormalizedHost accepts both "::1" and "[::1]" input forms. Docker/Go URL
-// conventions often show IPv6 literals in brackets, while net.JoinHostPort
-// adds brackets itself.
 func (c TCPConfig) NormalizedHost() string {
 	return strings.Trim(strings.TrimSpace(c.Host), "[]")
 }
@@ -118,9 +113,7 @@ type MonitorState struct {
 	ConsecutiveFailures  int
 	ConsecutiveSuccesses int
 	UpdatedAt            time.Time
-	// WarningContext identifies the certificate warning episode. It is
-	// persisted so a restart does not turn an ongoing warning into a new one.
-	WarningContext string
+	WarningContext       string
 }
 
 type CertificateInfo struct {
@@ -154,8 +147,6 @@ type Check struct {
 	CertFingerprint string
 }
 
-// CheckSummary carries only the fields used by status bars, charts, and outage
-// lookback. Avoid loading diagnostic strings when rendering history.
 type CheckSummary struct {
 	MonitorID int64
 	CheckedAt time.Time
@@ -282,8 +273,6 @@ func (m Monitor) Validate() error {
 			return ErrDockerContainer
 		}
 	case MonitorTypePush:
-		// Push monitors use Interval as the expected heartbeat interval and
-		// Timeout as the grace period.
 	default:
 		return ErrMonitorType
 	}

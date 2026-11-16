@@ -45,21 +45,13 @@ type notificationAvailability interface {
 }
 
 type outcome struct {
-	monitorID int64
-	result    model.CheckResult
-	checkedAt time.Time
-	// failureStartedAt is the first failed probe of a recheck cycle. The DOWN
-	// event must start there even though the failure is confirmed later.
+	monitorID        int64
+	result           model.CheckResult
+	checkedAt        time.Time
 	failureStartedAt time.Time
-	// manual results may be applied even for a paused monitor: the web layer
-	// rejects such requests, but the scheduler API keeps its historical
-	// behavior for tests and internal callers.
-	manual bool
-	// generation identifies the monitor configuration that produced this
-	// result. A reload or pause/resume invalidates in-flight outcomes so a
-	// stale probe cannot advance state after the user changed the monitor.
-	generation uint64
-	versioned  bool
+	manual           bool
+	generation       uint64
+	versioned        bool
 }
 
 type runnerHandle struct {
@@ -176,9 +168,6 @@ func (s *Scheduler) Wait() {
 	s.wg.Wait()
 }
 
-// recoverTask keeps a panic in one monitor or maintenance cycle from taking
-// down the whole process. Long-lived loops wrap each iteration, not just the
-// goroutine, so the task can continue after one bad cycle.
 func (s *Scheduler) recoverTask(task string) {
 	if recovered := recover(); recovered != nil {
 		s.log.Error("background task panic", "task", task, "panic", recovered, "stack", string(debug.Stack()))
@@ -200,8 +189,6 @@ func (s *Scheduler) Reload(monitorID int64) error {
 	if err != nil {
 		return err
 	}
-	// Load before stopping the old runner. A transient read failure must not
-	// leave an otherwise healthy monitor unscheduled.
 	monitor, err := s.store.MonitorByID(runCtx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
 		s.stopRunner(monitorID)
@@ -228,21 +215,13 @@ func (s *Scheduler) Remove(monitorID int64) {
 	s.mu.Unlock()
 }
 
-// SetMonitorEnabled applies pause/resume semantics in one place so the web layer
-// does not orchestrate state transitions. It stops or starts the runner, clears
-// reminder state on pause, closes any open DOWN event, and resets threshold
-// counters so paused time does not count toward warnings or outages.
 func (s *Scheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enabled bool) error {
-	// Invalidate in-flight results before the state change so a probe that
-	// started before the user pressed pause cannot advance the monitor later.
 	s.bumpGeneration(monitorID)
 	now := s.now().UTC()
 	if err := s.store.SetMonitorEnabledWithReset(ctx, monitorID, enabled, now); err != nil {
 		return fmt.Errorf("set monitor enabled: %w", err)
 	}
 	if err := s.Reload(monitorID); err != nil {
-		// Reload is no longer destructive on failure: the old runner remains
-		// active and execute() re-reads the enabled flag every cycle.
 		s.log.Warn("reload scheduler after toggle", "monitor_id", monitorID, "error", err)
 	}
 	return nil
@@ -415,9 +394,6 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 
 	failureStartedAt := time.Time{}
 	if !result.Success {
-		// The collector may have applied an earlier result while this probe was
-		// running. Reload the state before deciding whether the failure would
-		// cross the threshold.
 		if latest, loadErr := s.store.MonitorByID(ctx, monitorID); loadErr == nil {
 			monitor.State = latest.State
 		}
@@ -455,9 +431,6 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 	})
 }
 
-// probe runs one check attempt under the global concurrency limit. Each
-// attempt acquires and releases the semaphore separately so the delay before a
-// recheck does not hold a slot.
 func (s *Scheduler) probe(ctx context.Context, monitor model.Monitor, egress *outboundproxy.Config, timeout time.Duration) (model.CheckResult, bool) {
 	select {
 	case s.semaphore <- struct{}{}:
@@ -482,9 +455,6 @@ func (s *Scheduler) probe(ctx context.Context, monitor model.Monitor, egress *ou
 	return result, true
 }
 
-// shouldRecheck reports whether a failed probe is about to cross the failure
-// threshold. Configuration and internal errors cannot be fixed by probing
-// again, so they keep the original immediate behavior.
 func (s *Scheduler) shouldRecheck(monitor model.Monitor, result model.CheckResult) bool {
 	if result.Success || monitor.Type == model.MonitorTypePush {
 		return false
@@ -502,11 +472,6 @@ func (s *Scheduler) shouldRecheck(monitor model.Monitor, result model.CheckResul
 	return true
 }
 
-// recheckFailure probes one more time before a monitor enters DOWN. A single
-// transient network or TLS hiccup is common, so a successful recheck clears
-// the failure for this cycle; if the recheck also fails the first failure
-// remains the canonical result. The recheck uses a shorter timeout because the
-// first full-timeout probe already established that the target is failing.
 func (s *Scheduler) recheckFailure(ctx context.Context, monitor model.Monitor, egress *outboundproxy.Config, first model.CheckResult) (model.CheckResult, bool) {
 	if delay := s.recheckDelay; delay > 0 {
 		timer := time.NewTimer(delay)
@@ -590,8 +555,6 @@ func (s *Scheduler) sendOutcome(ctx context.Context, job outcome) {
 	case s.results <- job:
 		return
 	case <-ctx.Done():
-		// The probe may have completed just before cancellation. Try once more
-		// so the collector drain can still persist it.
 		select {
 		case s.results <- job:
 		default:
@@ -619,9 +582,6 @@ func (s *Scheduler) collect(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// Drain results already queued before cancellation. Probes that
-			// are still in flight observe the canceled context and are not
-			// recorded; this only guarantees completed work is not lost.
 			for {
 				select {
 				case job := <-s.results:
@@ -650,11 +610,6 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		return
 	}
 	if !monitor.Enabled && !job.manual {
-		// A scheduled result can finish after the user pauses a monitor. Do not
-		// let that late result reopen a DOWN event or advance state while paused.
-		// Manual/internal results are still applied for compatibility; the web
-		// layer rejects manual checks on paused monitors, and versioned outcomes
-		// are discarded above when the pause changed the generation.
 		s.log.Debug("discarding result for paused monitor", "monitor_id", monitor.ID)
 		return
 	}
@@ -760,9 +715,6 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		notifications = append(notifications, s.warningNotification(monitor, job.result, nextState, job.checkedAt))
 	}
 
-	// Persist the warning episode independently of whether a notification
-	// channel is currently available. Otherwise status_since would advance on
-	// every successful check while notifications are disabled.
 	var warningContext *string
 	if nextState.Status == model.StatusWarning && warning {
 		value := warningKey
@@ -797,8 +749,6 @@ func (s *Scheduler) wakeNotifications(notifications []model.Notification) {
 		waker.Wake()
 		return
 	}
-	// Test sinks implement only Enqueue; the outbox insert is idempotent for
-	// production but keeps the fake sink observable in tests.
 	for _, notification := range notifications {
 		if !s.notifier.Enqueue(notification) {
 			s.log.Warn("wake notification outbox", "monitor_id", notification.MonitorID, "kind", notification.Kind)
@@ -818,10 +768,6 @@ func failedThreshold(monitor model.Monitor) int {
 	return threshold
 }
 
-// firstFailureStart walks back through the failures that lead to the DOWN
-// transition so the outage starts at the first failed check, not at the later
-// threshold confirmation. ConsecutiveFailures is bounded by fail_threshold
-// here, so the query reads at most 19 rows.
 func (s *Scheduler) firstFailureStart(ctx context.Context, monitor model.Monitor, at time.Time) time.Time {
 	prior := monitor.State.ConsecutiveFailures
 	if prior <= 0 {
@@ -929,9 +875,7 @@ func (s *Scheduler) warningNotification(monitor model.Monitor, result model.Chec
 		Status:        nextState.Status,
 		OccurredAt:    at,
 		Cert:          result.Certificate,
-		// Include the episode start so a warning that clears and later recurs
-		// with the same certificate context is treated as a new event.
-		Key: model.WarnCertNotificationKey(monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince),
+		Key:           model.WarnCertNotificationKey(monitor.ID, fingerprint, monitor.HTTP.CertWarnDays, nextState.StatusSince),
 	}
 }
 
@@ -986,10 +930,6 @@ func (s *Scheduler) maintain(ctx context.Context) {
 		if err := s.store.CheckpointWAL(ctx); err != nil {
 			s.log.Warn("checkpoint wal", "error", err)
 		}
-		// Large deletes and aggregate scans leave enough garbage that the Go
-		// scavenger can keep the process well above its live set for hours.
-		// Reclaim once per maintenance cycle; this is far too expensive to do
-		// after ordinary requests.
 		debug.FreeOSMemory()
 	}
 	cleanupSafely := func() {

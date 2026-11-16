@@ -7,9 +7,6 @@ import (
 	"time"
 )
 
-// Notification key prefixes are persisted in notify_log and parsed by the
-// outbox ordering guard, the retry worker and the delivery log page. Keeping
-// the grammar here prevents those consumers from drifting apart.
 const (
 	NotificationKindDown          = "down"
 	NotificationKindUp            = "up"
@@ -41,8 +38,6 @@ func WarningReminderKey(monitorID int64, contextKey string, statusSince time.Tim
 	return fmt.Sprintf("%s:%d:%s:%d:%d", NotificationKindRemindWarning, monitorID, contextKey, statusSince.UnixMilli(), sequence)
 }
 
-// NotificationReason returns the stable reason category encoded in a dedupe
-// key. Reminder entries keep the reason of the state they repeat.
 func NotificationReason(key string) string {
 	switch {
 	case strings.HasPrefix(key, NotificationKindUp+":"):
@@ -59,8 +54,6 @@ func NotificationReason(key string) string {
 	}
 }
 
-// StateNotificationMonitorID parses only the ordered state-notification kinds.
-// Warning notifications are intentionally not ordered.
 func StateNotificationMonitorID(key string) (int64, bool) {
 	kind, rest, ok := strings.Cut(key, ":")
 	if !ok {
@@ -82,8 +75,6 @@ func StateNotificationMonitorID(key string) (int64, bool) {
 	return id, true
 }
 
-// StateNotificationLikePatterns returns the SQL LIKE patterns used to find
-// earlier pending state notifications for one monitor.
 func StateNotificationLikePatterns(monitorID int64) []string {
 	id := strconv.FormatInt(monitorID, 10)
 	return []string{

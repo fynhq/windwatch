@@ -18,10 +18,6 @@ import (
 
 var templateTranslationKey = regexp.MustCompile("\\.I18n\\.Tf?\\s+(?:\"([^\"]*)\"|`([^`]*)`)")
 
-// TestTranslationKeyUsage keeps the locale catalogs and the code that renders
-// them in sync. Dynamic key selection is common (error, notice, and status keys
-// are passed through variables), so Go string literals count as references and
-// key-shaped literals are validated wherever they appear.
 func TestTranslationKeyUsage(t *testing.T) {
 	catalogs, err := Load()
 	if err != nil {
@@ -208,8 +204,6 @@ func repositoryRoot(t *testing.T) string {
 			return root
 		}
 	}
-	// -trimpath rewrites runtime.Caller paths; go test always starts in the
-	// package directory, so fall back to it.
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)

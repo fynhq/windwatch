@@ -54,8 +54,6 @@ func (s *Store) SetSettings(ctx context.Context, values map[string]string, now t
 	return nil
 }
 
-// notificationClaimLease keeps a freshly claimed row out of the retry worker
-// while the dispatching goroutine is still making its immediate attempts.
 const notificationClaimLease = 2 * time.Minute
 
 func (s *Store) ClaimNotificationID(ctx context.Context, dedupeKey, channel string, channelID int64, channelName, target, payload, monitorName string, now time.Time) (bool, int64, error) {

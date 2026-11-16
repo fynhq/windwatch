@@ -82,8 +82,6 @@ func BenchmarkPublicSnapshot(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// A new revision forces the expensive aggregate rebuild instead of a
-		// cache hit.
 		if _, err := srv.loadPublicSnapshot(ctx, ids, uint64(i+1), now, time.UTC); err != nil {
 			b.Fatalf("loadPublicSnapshot: %v", err)
 		}

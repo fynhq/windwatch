@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// clientIP returns the effective client address. Forwarded headers are only
-// honored when the direct peer is one of the configured trusted proxies.
 func clientIP(r *http.Request, trusted []netip.Prefix) string {
 	remote, ok := parseRemoteAddress(r.RemoteAddr)
 	if !ok {
@@ -46,8 +44,6 @@ func requestScheme(r *http.Request, trusted []netip.Prefix) string {
 				tokens = append(tokens, strings.ToLower(strings.TrimSpace(part)))
 			}
 		}
-		// The closest hop is the rightmost value. Appending proxies must not let
-		// a client-supplied first value decide cookie security.
 		for index := len(tokens) - 1; index >= 0; index-- {
 			switch tokens[index] {
 			case "http":
@@ -111,9 +107,6 @@ func forwardedChain(r *http.Request) ([]netip.Addr, bool) {
 			}
 			addr, ok := parseForwardedAddress(part)
 			if !ok {
-				// Ignore malformed entries instead of failing the whole chain.
-				// A client can otherwise force every request behind an appending
-				// proxy onto the proxy IP's login-rate-limit bucket.
 				continue
 			}
 			chain = append(chain, addr)

@@ -108,10 +108,6 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 		return model.Monitor{}, newFormError("error.invalidRequest")
 	}
 
-	// Interval and timeout are range-checked before converting to
-	// time.Duration: a large integer would overflow the multiplication and
-	// could land back inside the valid range. Thresholds have no conversion,
-	// so model.Validate below is the single range check for them.
 	interval, err := strconv.Atoi(values.Interval)
 	if err != nil || interval < model.MinIntervalSeconds || interval > model.MaxIntervalSeconds {
 		return base, newFormError("error.interval")
