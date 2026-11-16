@@ -906,6 +906,22 @@ fieldset:disabled {
   pointer-events: none;
 }
 
+.chart-tooltip {
+  position: fixed;
+  z-index: 900;
+  max-width: 320px;
+  padding: 5px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 .toast {
   display: flex;
   align-items: flex-start;

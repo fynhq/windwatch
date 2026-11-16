@@ -964,6 +964,144 @@
     sync();
   }
 
+  function initChartTooltips() {
+    var SVG_NS = "http://www.w3.org/2000/svg";
+    var scope = ".long-range-chart, .latency-chart, .bars, .heatmap-table";
+    var tip = document.createElement("div");
+    tip.className = "chart-tooltip";
+    tip.setAttribute("role", "tooltip");
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    var active = null;
+    var saved = null;
+
+    function source(el) {
+      if (!el || el.nodeType !== 1 || !el.closest(scope)) {
+        return null;
+      }
+      var group = el.closest("g.latency-hover");
+      if (group) {
+        return group;
+      }
+      if (el.namespaceURI === SVG_NS) {
+        return el.matches("rect, circle, path") ? el : null;
+      }
+      return el.matches(".bars span, .heatmap-table td") ? el : null;
+    }
+
+    function textOf(node) {
+      if (node.namespaceURI === SVG_NS) {
+        var title = node.querySelector(":scope > title");
+        return title ? title.textContent : "";
+      }
+      return node.getAttribute("title") || "";
+    }
+
+    function restore() {
+      if (!active) {
+        return;
+      }
+      if (saved !== null) {
+        if (active.namespaceURI === SVG_NS) {
+          active.appendChild(saved);
+        } else {
+          active.setAttribute("title", saved);
+        }
+      }
+      active = null;
+      saved = null;
+    }
+
+    function hide() {
+      restore();
+      tip.hidden = true;
+    }
+
+    function place(x, y) {
+      var pad = 8;
+      var width = tip.offsetWidth;
+      var height = tip.offsetHeight;
+      var left = x + 14;
+      if (left + width > window.innerWidth - pad) {
+        left = x - width - 14;
+      }
+      if (left < pad) {
+        left = pad;
+      }
+      var top = y + 18;
+      if (top + height > window.innerHeight - pad) {
+        top = y - height - 12;
+      }
+      if (top < pad) {
+        top = pad;
+      }
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+    }
+
+    function show(node, x, y) {
+      var text = textOf(node);
+      if (!text) {
+        hide();
+        return;
+      }
+      if (active !== node) {
+        restore();
+        active = node;
+        if (node.namespaceURI === SVG_NS) {
+          saved = node.querySelector(":scope > title");
+          if (saved) {
+            node.removeChild(saved);
+          }
+        } else {
+          saved = node.getAttribute("title");
+          node.removeAttribute("title");
+        }
+        tip.textContent = text;
+        tip.hidden = false;
+      }
+      place(x, y);
+    }
+
+    document.addEventListener("pointerover", function (event) {
+      if (event.pointerType === "touch") {
+        hide();
+        return;
+      }
+      var node = source(event.target);
+      if (!node) {
+        hide();
+        return;
+      }
+      show(node, event.clientX, event.clientY);
+    });
+
+    document.addEventListener("pointermove", function (event) {
+      if (event.pointerType === "touch" || !active) {
+        return;
+      }
+      var node = source(event.target);
+      if (node !== active) {
+        if (node) {
+          show(node, event.clientX, event.clientY);
+        } else {
+          hide();
+        }
+        return;
+      }
+      place(event.clientX, event.clientY);
+    }, { passive: true });
+
+    document.addEventListener("pointerout", function (event) {
+      if (!event.relatedTarget) {
+        hide();
+      }
+    });
+
+    window.addEventListener("scroll", hide, { passive: true, capture: true });
+    window.addEventListener("blur", hide);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     refreshToggles();
     var toggles = document.querySelectorAll("[data-toggle-target]");
@@ -990,5 +1128,6 @@
     initPendingForms();
     initEventDialog();
     initNotificationContentDialog();
+    initChartTooltips();
   });
 })();
