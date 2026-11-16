@@ -1,44 +1,30 @@
 {{define "content" -}}
 <section class="page-head">
-  <p class="eyebrow">{{.I18n.T "nav.events"}}</p>
-  <h1>{{.I18n.T "events.title"}}</h1>
-  <p class="muted">{{.I18n.T "events.intro"}}</p>
+  <div class="page-head-copy">
+    <h1>{{.I18n.T "events.title"}}</h1>
+    {{if .OngoingCount}}<p class="page-meta"><span class="meta-state"><span class="status-dot status-down" aria-hidden="true"></span><strong>{{.I18n.Tf "events.ongoingSummary" .OngoingCount}}</strong></span></p>{{end}}
+  </div>
 </section>
 
 {{if .HasEvents}}
-<section class="events-overview" aria-label="{{.I18n.T "events.summary"}}">
-  <div class="event-summary">
-    <div class="event-summary-item"><span>{{.I18n.T "events.total"}}</span><strong>{{.Total}}</strong></div>
-    <div class="event-summary-item {{if .OngoingCount}}is-attention{{end}}"><span>{{.I18n.T "events.ongoingCount"}}</span><strong>{{.OngoingCount}}</strong></div>
-    <div class="event-summary-item"><span>{{.I18n.T "events.downCount"}}</span><strong>{{.DownCount}}</strong></div>
-    <div class="event-summary-item"><span>{{.I18n.T "events.upCount"}}</span><strong>{{.UpCount}}</strong></div>
-  </div>
-  <span class="hint">{{.I18n.T "events.limitHint"}}</span>
-</section>
-
-{{if .OngoingCount}}
-<div class="event-banner" role="status">
-  <span class="status-dot status-down" aria-hidden="true"></span>
-  <span>{{.I18n.T "events.ongoingBanner"}}</span>
-</div>
-{{end}}
-
-<div class="events-toolbar" data-events-toolbar>
-  <label class="search-field">
-    <span class="visually-hidden">{{.I18n.T "events.searchLabel"}}</span>
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
-      <circle cx="11" cy="11" r="6.5"></circle>
-      <path d="M16 16l4 4"></path>
-    </svg>
-    <input type="search" data-event-search placeholder="{{.I18n.T "events.searchPlaceholder"}}" autocomplete="off" disabled>
-  </label>
-  <div class="events-filters" role="group" aria-label="{{.I18n.T "events.filterLabel"}}">
+<div class="toolbar" data-events-toolbar>
+  <div class="filters" role="group" aria-label="{{.I18n.T "events.filterLabel"}}">
     <button class="filter-chip is-active" type="button" data-event-filter="all" aria-pressed="true" disabled>{{.I18n.T "events.filterAll"}}</button>
-    <button class="filter-chip" type="button" data-event-filter="down" aria-pressed="false" disabled>{{.I18n.T "events.filterDown"}}</button>
-    <button class="filter-chip" type="button" data-event-filter="up" aria-pressed="false" disabled>{{.I18n.T "events.filterUp"}}</button>
-    <button class="filter-chip" type="button" data-event-filter="ongoing" aria-pressed="false" disabled>{{.I18n.T "events.filterOngoing"}}</button>
+    <button class="filter-chip" type="button" data-event-filter="down" aria-pressed="false" disabled><span class="status-dot status-down" aria-hidden="true"></span>{{.I18n.T "events.filterDown"}}</button>
+    <button class="filter-chip" type="button" data-event-filter="up" aria-pressed="false" disabled><span class="status-dot status-up" aria-hidden="true"></span>{{.I18n.T "events.filterUp"}}</button>
+    <button class="filter-chip" type="button" data-event-filter="ongoing" aria-pressed="false" disabled><span class="status-dot status-down" aria-hidden="true"></span>{{.I18n.T "events.filterOngoing"}}</button>
   </div>
-  <span class="filter-result hint" data-events-result data-result-template="{{.I18n.T "events.showing"}}" role="status" aria-live="polite">{{.I18n.Tf "events.showing" .Total .Total}}</span>
+  <div class="toolbar-side">
+    <span class="filter-result hint" data-events-result data-result-template="{{.I18n.T "events.showing"}}" role="status" aria-live="polite" hidden></span>
+    <label class="search-field">
+      <span class="visually-hidden">{{.I18n.T "events.searchLabel"}}</span>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+        <circle cx="11" cy="11" r="6.5"></circle>
+        <path d="M16 16l4 4"></path>
+      </svg>
+      <input type="search" data-event-search placeholder="{{.I18n.T "events.searchPlaceholder"}}" autocomplete="off" disabled>
+    </label>
+  </div>
 </div>
 
 <section class="panel">
@@ -46,22 +32,19 @@
     <table class="responsive-table events-table">
       <thead>
         <tr>
-          <th>{{.I18n.T "events.monitor"}}</th>
-          <th>{{.I18n.T "events.type"}}</th>
           <th>{{.I18n.T "events.started"}}</th>
-          <th>{{.I18n.T "events.ended"}}</th>
-          <th>{{.I18n.T "events.duration"}}</th>
+          <th>{{.I18n.T "events.status"}}</th>
+          <th>{{.I18n.T "events.monitor"}}</th>
           <th>{{.I18n.T "events.message"}}</th>
+          <th>{{.I18n.T "events.duration"}}</th>
         </tr>
       </thead>
       <tbody>
         {{range .Events}}
         <tr data-event-row data-event-type="{{.TypeClass}}" data-event-ongoing="{{if .Ongoing}}true{{else}}false{{end}}" data-search="{{.SearchText}}">
-          <td data-label="{{$.I18n.T "events.monitor"}}"><a href="/monitors/{{.MonitorID}}">{{.MonitorName}}</a></td>
-          <td data-label="{{$.I18n.T "events.type"}}"><span class="status-pill {{.TypeClass}}">{{.TypeLabel}}</span></td>
           <td data-label="{{$.I18n.T "events.started"}}">{{.Started}}</td>
-          <td data-label="{{$.I18n.T "events.ended"}}">{{.Ended}}</td>
-          <td data-label="{{$.I18n.T "events.duration"}}">{{.Duration}}</td>
+          <td data-label="{{$.I18n.T "events.status"}}"><span class="status-pill {{.TypeClass}}">{{.TypeLabel}}</span></td>
+          <td data-label="{{$.I18n.T "events.monitor"}}"><a href="/monitors/{{.MonitorID}}">{{.MonitorName}}</a></td>
           <td class="is-wide event-message-cell" data-label="{{$.I18n.T "events.message"}}">
             {{if .Message}}
             <button class="event-message-button" type="button" data-event-detail
@@ -78,6 +61,7 @@
             </button>
             {{else}}—{{end}}
           </td>
+          <td data-label="{{$.I18n.T "events.duration"}}">{{if .Ongoing}}{{$.I18n.T "events.ongoing"}} · {{end}}{{.Duration}}</td>
         </tr>
         {{end}}
       </tbody>

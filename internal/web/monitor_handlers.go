@@ -658,14 +658,15 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 	location := s.timezone(r.Context())
 	localNow := now.In(location)
 	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
-	daily, err := s.store.DailyBucketsForMonitors(r.Context(), []int64{id}, today.AddDate(0, 0, -90), today, location)
+	daily, err := s.store.DailyBucketsForMonitors(r.Context(), []int64{id}, today.AddDate(0, 0, -365), today.AddDate(0, 0, 1), location)
 	if err != nil {
-		s.log.Error("load 90d daily buckets", "monitor_id", id, "error", err)
+		s.log.Error("load daily buckets", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
-	daily90 := daily[id]
-	daily30 := bucketsSince(daily90, today.AddDate(0, 0, -30))
+	dailyAll := daily[id]
+	daily90 := bucketsSince(dailyAll, today.AddDate(0, 0, -90))
+	daily30 := bucketsSince(dailyAll, today.AddDate(0, 0, -30))
 	checks, err := s.store.RecentCheckSummaries(r.Context(), id, 50)
 	if err != nil {
 		s.log.Error("load recent checks", "monitor_id", id, "error", err)
@@ -679,7 +680,7 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 		return
 	}
 
-	page := s.buildMonitorDetailPage(r, auth, monitor, checks, events, stats24, stats7d, stats30, stats90, buckets, daily30, daily90, now)
+	page := s.buildMonitorDetailPage(r, auth, monitor, checks, events, stats24, stats7d, stats30, stats90, buckets, dailyAll, daily30, daily90, now)
 	s.populateMonitorExtras(r, &page.Monitor, page.I18n, page.Location, monitor, now, auth.Admin.IsAdmin())
 	s.render(w, "monitor_detail", http.StatusOK, page)
 }
@@ -820,6 +821,7 @@ func (s *Server) buildMonitorFormPage(r *http.Request, auth model.AuthInfo, moni
 		IsEdit:     monitorID > 0,
 		Type:       monitorType,
 		TypeLabel:  s.typeLabel(data.I18n, monitorType),
+		TypeShort:  monitorTypeShortLabel(data.I18n, monitorType),
 		Action:     action,
 		CancelURL:  cancelURL,
 		Values:     values,
@@ -831,16 +833,22 @@ func (s *Server) buildMonitorFormPage(r *http.Request, auth model.AuthInfo, moni
 	}
 }
 
-func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, monitor model.Monitor, checks []model.CheckSummary, events []model.Event, stats24, stats7d, stats30, stats90 model.UptimeStats, buckets, daily30, daily90 []model.HourBucket, now time.Time) monitorDetailPage {
+func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, monitor model.Monitor, checks []model.CheckSummary, events []model.Event, stats24, stats7d, stats30, stats90 model.UptimeStats, buckets, daily365, daily30, daily90 []model.HourBucket, now time.Time) monitorDetailPage {
 	data := s.authenticatedPage(r, auth, "monitor.title")
 	data.Title = monitor.Name
 	data.BackURL = "/"
 	translator := data.I18n
 
+	chartRecent, latencyRecent := buildRecentChart(translator, checks, 24, data.Location)
+	chart24, latency24 := buildHourlyChart(translator, now, buckets, data.Location)
+	chart30, latency30 := buildDailyChart(translator, now, daily30, 30, data.Location, "monitor.uptime30dChart")
+	chart90, latency90 := buildDailyChart(translator, now, daily90, 90, data.Location, "monitor.uptime90dChart")
+
 	view := monitorDetailView{
 		ID:                monitor.ID,
 		Name:              monitor.Name,
 		TypeLabel:         s.typeLabel(translator, monitor.Type),
+		TypeShort:         monitorTypeShortLabel(translator, monitor.Type),
 		Target:            s.monitorTarget(translator, monitor),
 		IsPush:            monitor.Type == model.MonitorTypePush,
 		Enabled:           monitor.Enabled,
@@ -863,10 +871,15 @@ func (s *Server) buildMonitorDetailPage(r *http.Request, auth model.AuthInfo, mo
 		LastLatency:       "—",
 		RecentBarsSummary: summarizeChecks(translator, checks, 24),
 		BarsSummary:       summarizeHourBuckets(translator, now, buckets),
-		ChartRecent:       buildRecentChart(translator, checks, 24, data.Location),
-		Chart24:           buildHourlyChart(translator, now, buckets, data.Location),
-		Chart30:           buildDailyChart(translator, now, daily30, 30, data.Location, "monitor.uptime30dChart"),
-		Chart90:           buildDailyChart(translator, now, daily90, 90, data.Location, "monitor.uptime90dChart"),
+		ChartRecent:       chartRecent,
+		Chart24:           chart24,
+		Chart30:           chart30,
+		Chart90:           chart90,
+		LatencyRecent:     latencyRecent,
+		Latency24:         latency24,
+		Latency30:         latency30,
+		Latency90:         latency90,
+		YearHeatmap:       buildYearHeatmap(translator, now, daily365, data.Location),
 		Events:            buildEventRows(translator, events, false, data.Location, now),
 	}
 	if monitor.HTTP != nil {

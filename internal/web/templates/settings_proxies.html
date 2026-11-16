@@ -1,9 +1,8 @@
 {{define "content" -}}
-<section class="page-head page-head-row">
-  <div>
-    <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
-    <h1>{{.SectionTitle}}</h1>
-    <p class="muted">{{.SectionIntro}}</p>
+<section class="page-head page-head-row settings-section-head">
+  <div class="page-head-copy">
+    <h2>{{.I18n.T "settings.navProxies"}}</h2>
+    <p class="page-meta"><span>{{if eq (len .Proxies) 1}}{{.I18n.T "proxy.countOne"}}{{else}}{{.I18n.Tf "proxy.count" (len .Proxies)}}{{end}}</span></p>
   </div>
   <div class="page-actions">
     {{if .ProxyFormEdit}}
@@ -21,30 +20,25 @@
 </section>
 
 <section class="panel settings-section">
+  <p class="hint">{{.I18n.T "proxy.listHint"}}</p>
   {{if .Proxies}}
-  <div class="table-scroll">
-    <table class="responsive-table">
-      <thead><tr><th>{{.I18n.T "proxy.name"}}</th><th>{{.I18n.T "proxy.type"}}</th><th>{{.I18n.T "proxy.address"}}</th><th>{{.I18n.T "common.actions"}}</th></tr></thead>
-      <tbody>
-        {{range .Proxies}}
-        <tr>
-          <td data-label="{{$.I18n.T "proxy.name"}}"><strong>{{.Name}}</strong></td>
-          <td data-label="{{$.I18n.T "proxy.type"}}">{{.Type}}</td>
-          <td data-label="{{$.I18n.T "proxy.address"}}"><span class="target">{{.Address}}</span></td>
-          <td class="is-wide" data-label="{{$.I18n.T "common.actions"}}">
-            <div class="user-actions">
-              <a class="button button-secondary button-small" href="/settings/proxies?edit={{.ID}}">{{$.I18n.T "common.edit"}}</a>
-              <form class="inline-form" method="post" action="/settings/proxies/{{.ID}}/delete"
-                data-confirm="{{$.I18n.T "proxy.deleteConfirm"}}">
-                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-                <button class="button button-danger-outline button-small" type="submit">{{$.I18n.T "common.delete"}}</button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
+  <div class="entity-list">
+    {{range .Proxies}}
+    <div class="entity-row">
+      <div class="entity-main">
+        <div class="entity-title"><span class="entity-name">{{.Name}}</span><span class="type">{{.Type}}</span></div>
+        <p class="entity-desc">{{.Address}}</p>
+      </div>
+      <div class="entity-actions">
+        <a class="text-button" href="/settings/proxies?edit={{.ID}}">{{$.I18n.T "common.edit"}}</a>
+        <form class="inline-form" method="post" action="/settings/proxies/{{.ID}}/delete"
+          data-confirm="{{$.I18n.T "proxy.deleteConfirm"}}">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="text-button is-danger" type="submit">{{$.I18n.T "common.delete"}}</button>
+        </form>
+      </div>
+    </div>
+    {{end}}
   </div>
   {{else}}
   <p class="muted">{{.I18n.T "proxy.empty"}}</p>

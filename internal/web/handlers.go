@@ -264,10 +264,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 			lastLatency = formatLatency(checks[0].Latency)
 		}
 		barsStart, barsEnd := checkBarRange(translator, now, checks, 24)
+		status := monitor.State.Status
+		inactive := !monitor.Enabled || status == model.StatusPending
+		showLastCheck := !monitor.Enabled || status == model.StatusWarning || status == model.StatusDown
 		card := monitorCard{
 			ID:             monitor.ID,
 			Name:           monitor.Name,
 			TypeLabel:      s.typeLabel(translator, monitor.Type),
+			TypeShort:      monitorTypeShortLabel(translator, monitor.Type),
 			Target:         s.monitorTarget(translator, monitor),
 			StatusClass:    statusClass(monitor.Enabled, monitor.State.Status),
 			StatusKey:      statusKey(monitor.Enabled, monitor.State.Status),
@@ -282,6 +286,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 			BarsSummary:    summarizeChecks(translator, checks, 24),
 			BarsStart:      barsStart,
 			BarsEnd:        barsEnd,
+			Inactive:       inactive,
+			ShowInterval:   monitor.Type == model.MonitorTypePush,
+			ShowLatency:    !inactive && monitor.Type != model.MonitorTypePush,
+			ShowLastCheck:  showLastCheck,
+			RowTitle:       translator.T("monitor.lastCheck") + " " + formatRelativeTime(translator, now, monitor.State.LastCheck),
 		}
 		page.Monitors = append(page.Monitors, card)
 
@@ -301,6 +310,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 		}
 	}
 	page.OverallClass, page.OverallLabel = dashboardOverall(translator, page.Total, page.Up, page.Warning, page.Down, page.Pending, page.Paused)
+	page.SummaryLabel = page.OverallLabel
+	if attention := page.Warning + page.Down; attention > 0 {
+		page.SummaryLabel = translator.Tf("dashboard.attentionCount", attention)
+	}
 	page.AutoRefresh = true
 	if r.Header.Get(partialRefreshHeader) == "dashboard" {
 		s.renderFragment(w, "dashboard", http.StatusOK, page)

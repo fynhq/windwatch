@@ -470,8 +470,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 	}
 	body := readResponseBody(t, response)
 	for _, want := range []string{
-		"Primary hook", "Webhook", "Monitor", "Example site", ">Sent</td>",
-		"Reason", "Down alert",
+		"Primary hook", "Webhook", "Example site", ">Sent<", "Down alert",
 		`data-notification-content`, `data-notification-content-dialog`,
 		`data-notification-content-field="payload"`, "delivery-body",
 	} {
@@ -496,7 +495,7 @@ func TestNotificationDeliveryLogIsLocalized(t *testing.T) {
 		t.Fatalf("GET settings logs in Chinese: %v", err)
 	}
 	body = readResponseBody(t, response)
-	for _, want := range []string{"Primary hook", "Webhook", "监控项", "Example site", ">已发送</td>", "查看内容", "原因", "异常通知"} {
+	for _, want := range []string{"Primary hook", "Webhook", "Example site", ">已发送<", "查看内容", "异常通知"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Chinese delivery log missing %q: %s", want, body)
 		}

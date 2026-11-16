@@ -18,6 +18,7 @@ type userFormValues struct {
 type userRow struct {
 	ID        int64
 	Username  string
+	Initial   string
 	Role      string
 	RoleLabel string
 	Disabled  bool
@@ -58,9 +59,15 @@ func (s *Server) loadUsersPage(r *http.Request, auth model.AuthInfo, values user
 	data.ActiveNav = "users"
 	rows := make([]userRow, 0, len(users))
 	for _, user := range users {
+		initial := ""
+		for _, runeValue := range user.Username {
+			initial = string(runeValue)
+			break
+		}
 		rows = append(rows, userRow{
 			ID:        user.ID,
 			Username:  user.Username,
+			Initial:   initial,
 			Role:      user.Role,
 			RoleLabel: s.roleLabel(data.I18n, user.Role),
 			Disabled:  user.Disabled,

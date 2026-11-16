@@ -36,80 +36,20 @@
   {{end}}
 </div>
 {{if .Authenticated}}
-<header class="mobile-topbar">
-  <a class="mobile-brand" href="/" title="{{.I18n.T "app.name"}}">
-    <img class="brand-mark" src="/static/windwatch-icon.svg?v={{.AssetVersion}}" alt="" width="26" height="26">
-    <strong>{{.I18n.T "app.name"}}</strong>
-  </a>
-  <div class="mobile-topbar-actions">
-    <a class="mobile-lang" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}" title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}EN{{else}}中{{end}}</a>
-    <form class="inline-form" method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-      <button class="icon-button" type="submit" title="{{.I18n.T "nav.signout"}}" aria-label="{{.I18n.T "nav.signout"}}">
-        {{template "icon-logout"}}
-      </button>
-    </form>
-  </div>
-</header>
-<div class="app-shell">
-  <aside class="sidebar mobile-dock">
-    <div class="sidebar-head">
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="topbar-main">
       <a class="brand" href="/" title="{{.I18n.T "app.name"}}">
-        <img class="brand-mark" src="/static/windwatch-icon.svg?v={{.AssetVersion}}" alt="" width="30" height="30">
-        <span class="brand-copy">
-          <strong>{{.I18n.T "app.name"}}</strong>
-          <small>{{.I18n.T "app.tagline"}}</small>
-        </span>
+        <img class="brand-mark" src="/static/windwatch-icon.svg?v={{.AssetVersion}}" alt="" width="26" height="26">
+        <span class="brand-name">{{.I18n.T "app.name"}}</span>
       </a>
-    </div>
-
-    <nav class="sidebar-nav" aria-label="{{.I18n.T "nav.main"}}">
-      <div class="nav-section">
-        <p class="nav-section-label">{{.I18n.T "nav.monitoring"}}</p>
-        <a class="nav-item {{if eq .ActiveNav "dashboard"}}is-active{{end}}" href="/" title="{{.I18n.T "nav.dashboard"}}">
-          {{template "icon-dashboard"}}
-          <span class="nav-label">{{.I18n.T "nav.dashboard"}}</span>
-        </a>
-        <a class="nav-item {{if eq .ActiveNav "events"}}is-active{{end}}" href="/events" title="{{.I18n.T "nav.events"}}">
-          {{template "icon-events"}}
-          <span class="nav-label">{{.I18n.T "nav.events"}}</span>
-        </a>
-      </div>
-      {{if .IsAdmin}}
-      <div class="nav-section">
-        <p class="nav-section-label">{{.I18n.T "nav.administration"}}</p>
-        <a class="nav-item {{if eq .ActiveNav "users"}}is-active{{end}}" href="/settings/users" title="{{.I18n.T "nav.users"}}">
-          {{template "icon-users"}}
-          <span class="nav-label">{{.I18n.T "nav.users"}}</span>
-        </a>
-        <div class="nav-group {{if eq .ActiveNav "settings"}}is-open{{end}}">
-          <a class="nav-item {{if eq .ActiveNav "settings"}}is-active{{end}}" href="/settings" title="{{.I18n.T "nav.settings"}}">
-            {{template "icon-settings"}}
-            <span class="nav-label">{{.I18n.T "nav.settings"}}</span>
-          </a>
-          <div class="nav-subnav" role="group" aria-label="{{.I18n.T "settings.navLabel"}}">
-            <a class="nav-subitem {{if eq .SettingsSection "general"}}is-active{{end}}" href="/settings/general">{{.I18n.T "settings.navGeneral"}}</a>
-            <a class="nav-subitem {{if eq .SettingsSection "public"}}is-active{{end}}" href="/settings/public">{{.I18n.T "settings.navPublic"}}</a>
-            <a class="nav-subitem {{if eq .SettingsSection "notifications"}}is-active{{end}}" href="/settings/notifications">{{.I18n.T "settings.navNotifications"}}</a>
-            <a class="nav-subitem {{if eq .SettingsSection "logs"}}is-active{{end}}" href="/settings/logs">{{.I18n.T "settings.navLogs"}}</a>
-            <a class="nav-subitem {{if eq .SettingsSection "proxies"}}is-active{{end}}" href="/settings/proxies">{{.I18n.T "settings.navProxies"}}</a>
-          </div>
-        </div>
-      </div>
-      {{end}}
-    </nav>
-
-    <div class="sidebar-footer">
-      <div class="sidebar-tools">
-        <a class="sidebar-control" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}" title="{{.I18n.T "language.switch"}}">
-          {{template "icon-language"}}
-          <span class="control-label">{{.I18n.T "language.switch"}}</span>
-          <span class="control-short">{{if eq .I18n.Lang "zh-CN"}}EN{{else}}中{{end}}</span>
-        </a>
-      </div>
-      <div class="sidebar-user">
-        <span class="avatar" aria-hidden="true">{{template "icon-user"}}</span>
-        <span class="user-name">{{.Username}}</span>
+      <div class="topbar-actions">
+        <a class="lang-button" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}"
+          title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}{{.I18n.T "language.short.en"}}{{else}}{{.I18n.T "language.short.zhCN"}}{{end}}</a>
+        <span class="user-chip">
+          <span class="avatar" aria-hidden="true">{{template "icon-user"}}</span>
+          <span class="user-name">{{.Username}}</span>
+        </span>
         <form class="inline-form" method="post" action="/logout">
           <input type="hidden" name="csrf_token" value="{{.CSRF}}">
           <button class="icon-button" type="submit" title="{{.I18n.T "nav.signout"}}" aria-label="{{.I18n.T "nav.signout"}}">
@@ -117,22 +57,39 @@
           </button>
         </form>
       </div>
-      <a class="sidebar-version" href="https://github.com/fynhq/windwatch" target="_blank" rel="noopener noreferrer"
-        title="{{.I18n.T "footer.project"}}">{{.I18n.Tf "footer.version" .Version}}</a>
     </div>
-  </aside>
 
-  <div class="main-shell">
-    <main id="main" class="main-content">
-      {{if .BackURL}}<a class="page-back" href="{{.BackURL}}">{{template "icon-back"}}<span>{{.I18n.T "common.back"}}</span></a>{{end}}
-      {{template "content" .}}
-      {{if .SettingsSection}}
-      <footer class="settings-version">
-        <a href="https://github.com/fynhq/windwatch" target="_blank" rel="noopener noreferrer">{{.I18n.Tf "footer.version" .Version}}</a>
-      </footer>
+    <nav class="mainnav" aria-label="{{.I18n.T "nav.main"}}">
+      <a href="/" data-nav="dashboard" {{if eq .ActiveNav "dashboard"}}class="is-active" aria-current="page"{{end}}>{{.I18n.T "nav.dashboard"}}</a>
+      <a href="/events" data-nav="events" {{if eq .ActiveNav "events"}}class="is-active" aria-current="page"{{end}}>{{.I18n.T "nav.events"}}</a>
+      {{if .IsAdmin}}
+      <a href="/settings/general" data-nav="settings" {{if eq .ActiveNav "settings"}}class="is-active" aria-current="page"{{end}}>{{.I18n.T "nav.settings"}}</a>
+      <a href="/settings/users" data-nav="users" {{if eq .ActiveNav "users"}}class="is-active" aria-current="page"{{end}}>{{.I18n.T "nav.users"}}</a>
       {{end}}
-    </main>
+    </nav>
   </div>
+</header>
+<div class="app-shell">
+  <main id="main" class="main-content">
+    {{if .BackURL}}<a class="page-back" href="{{.BackURL}}">{{template "icon-back"}}<span>{{if eq .BackURL "/"}}{{.I18n.T "nav.dashboard"}}{{else}}{{.I18n.T "common.back"}}{{end}}</span></a>{{end}}
+    {{if eq .ActiveNav "settings"}}
+    <section class="page-head settings-page-head">
+      <div class="page-head-copy"><h1>{{.I18n.T "nav.settings"}}</h1></div>
+    </section>
+    <nav class="subnav" aria-label="{{.I18n.T "settings.navLabel"}}">
+      <a class="subnav-link {{if eq .SettingsSection "general"}}is-active{{end}}" href="/settings/general" {{if eq .SettingsSection "general"}}aria-current="page"{{end}}>{{.I18n.T "settings.navGeneral"}}</a>
+      <a class="subnav-link {{if eq .SettingsSection "public"}}is-active{{end}}" href="/settings/public" {{if eq .SettingsSection "public"}}aria-current="page"{{end}}>{{.I18n.T "settings.navPublic"}}</a>
+      <a class="subnav-link {{if eq .SettingsSection "notifications"}}is-active{{end}}" href="/settings/notifications" {{if eq .SettingsSection "notifications"}}aria-current="page"{{end}}>{{.I18n.T "settings.navNotifications"}}</a>
+      <a class="subnav-link {{if eq .SettingsSection "logs"}}is-active{{end}}" href="/settings/logs" {{if eq .SettingsSection "logs"}}aria-current="page"{{end}}>{{.I18n.T "settings.navLogs"}}</a>
+      <a class="subnav-link {{if eq .SettingsSection "proxies"}}is-active{{end}}" href="/settings/proxies" {{if eq .SettingsSection "proxies"}}aria-current="page"{{end}}>{{.I18n.T "settings.navProxies"}}</a>
+    </nav>
+    {{end}}
+    {{template "content" .}}
+    <footer class="site-footer">
+      <a href="https://github.com/fynhq/windwatch" target="_blank" rel="noopener noreferrer"
+        title="{{.I18n.T "footer.project"}}">{{.I18n.Tf "footer.version" .Version}}</a>
+    </footer>
+  </main>
 </div>
 {{else}}
 <header class="auth-header">
@@ -144,7 +101,8 @@
     </span>
   </a>
   <div class="auth-controls">
-    <a class="sidebar-control" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}">{{.I18n.T "language.switch"}}</a>
+    <a class="lang-button" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}"
+      title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}{{.I18n.T "language.short.en"}}{{else}}{{.I18n.T "language.short.zhCN"}}{{end}}</a>
   </div>
 </header>
 <main id="main" class="main-content auth-main">

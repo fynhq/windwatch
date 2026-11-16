@@ -2,8 +2,10 @@
 <section class="page-head">
   <div class="page-head-row detail-head-row">
     <div class="detail-heading">
-      <p class="eyebrow">{{.Monitor.TypeLabel}}</p>
-      <h1>{{.Monitor.Name}}</h1>
+      <div class="detail-title-line">
+        <h1>{{.Monitor.Name}}</h1>
+        <span class="type-badge">{{.Monitor.TypeShort}}</span>
+      </div>
       <p class="monitor-meta">
         <span class="target" title="{{.Monitor.Target}}">{{.Monitor.Target}}</span>
         {{if .Monitor.Method}}<span aria-hidden="true">·</span><span>{{.Monitor.Method}}</span>{{end}}
@@ -40,7 +42,6 @@
   <div class="detail-metric"><span>{{.I18n.T "monitor.uptime30d"}}</span><strong>{{.Monitor.Uptime30d}}</strong></div>
   <div class="detail-metric"><span>{{.I18n.T "monitor.uptime90d"}}</span><strong>{{.Monitor.Uptime90d}}</strong></div>
   <div class="detail-metric"><span>{{.I18n.T "monitor.avgLatency24h"}}</span><strong>{{.Monitor.AvgLatency24}}</strong></div>
-  <div class="detail-metric"><span>{{.I18n.T "monitor.lastCheck"}}</span><strong title="{{.Monitor.LastCheckTitle}}">{{.Monitor.LastCheckAgo}}</strong></div>
 </section>
 
 <section class="panel history-card" data-history-card>
@@ -54,6 +55,7 @@
       <button type="button" class="history-tab" id="history-tab-24h" role="tab" aria-selected="false" aria-controls="history-24h" data-history-tab="history-24h" tabindex="-1">{{.I18n.T "monitor.tab24h"}}</button>
       <button type="button" class="history-tab" id="history-tab-30d" role="tab" aria-selected="false" aria-controls="history-30d" data-history-tab="history-30d" tabindex="-1">{{.I18n.T "monitor.tab30d"}}</button>
       <button type="button" class="history-tab" id="history-tab-90d" role="tab" aria-selected="false" aria-controls="history-90d" data-history-tab="history-90d" tabindex="-1">{{.I18n.T "monitor.tab90d"}}</button>
+      <button type="button" class="history-tab" id="history-tab-1y" role="tab" aria-selected="false" aria-controls="history-1y" data-history-tab="history-1y" tabindex="-1">{{.I18n.T "monitor.tab1y"}}</button>
     </div>
   </div>
 
@@ -64,6 +66,7 @@
     </div>
     {{if .Monitor.ChartRecent.HasData}}
     {{template "history-chart" .Monitor.ChartRecent}}
+    {{if .Monitor.LatencyRecent.HasData}}{{template "latency-chart" .Monitor.LatencyRecent}}{{else}}<p class="muted latency-empty">{{.I18n.T "monitor.noLatencyData"}}</p>{{end}}
     {{else}}
     <p class="muted">{{.I18n.T "monitor.noChecks"}}</p>
     {{end}}
@@ -76,6 +79,7 @@
     </div>
     {{if .Monitor.Chart24.HasData}}
     {{template "history-chart" .Monitor.Chart24}}
+    {{if .Monitor.Latency24.HasData}}{{template "latency-chart" .Monitor.Latency24}}{{else}}<p class="muted latency-empty">{{.I18n.T "monitor.noLatencyData"}}</p>{{end}}
     {{else}}
     <p class="muted">{{.I18n.T "monitor.noHourlyData"}}</p>
     {{end}}
@@ -88,6 +92,7 @@
     </div>
     {{if .Monitor.Chart30.HasData}}
     {{template "history-chart" .Monitor.Chart30}}
+    {{if .Monitor.Latency30.HasData}}{{template "latency-chart" .Monitor.Latency30}}{{else}}<p class="muted latency-empty">{{.I18n.T "monitor.noLatencyData"}}</p>{{end}}
     {{else}}
     <p class="muted">{{.I18n.T "monitor.noLongRangeData"}}</p>
     {{end}}
@@ -100,10 +105,19 @@
     </div>
     {{if .Monitor.Chart90.HasData}}
     {{template "history-chart" .Monitor.Chart90}}
+    {{if .Monitor.Latency90.HasData}}{{template "latency-chart" .Monitor.Latency90}}{{else}}<p class="muted latency-empty">{{.I18n.T "monitor.noLatencyData"}}</p>{{end}}
     {{else}}
     <p class="muted">{{.I18n.T "monitor.noLongRangeData"}}</p>
     {{end}}
   </div>
+  <div class="history-panel" id="history-1y" role="tabpanel" aria-labelledby="history-tab-1y" data-history-panel hidden>
+    <div class="history-subhead">
+      <h3>{{.I18n.T "monitor.uptime1yChart"}}</h3>
+      <span class="hint">{{.Monitor.YearHeatmap.Summary}}</span>
+    </div>
+    {{template "year-heatmap" .}}
+  </div>
+
 </section>
 
 <div class="detail-layout">
@@ -190,7 +204,7 @@
     {{end}}
 
     <section class="panel detail-panel">
-      <div class="panel-head"><h2>{{.I18n.T "monitor.config"}}</h2>{{if .IsAdmin}}<a href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>{{end}}</div>
+      <div class="panel-head"><h2>{{.I18n.T "monitor.config"}}</h2></div>
       <dl class="config-list">
         <div><dt>{{if .Monitor.IsPush}}{{.I18n.T "monitor.heartbeatInterval"}}{{else}}{{.I18n.T "monitor.interval"}}{{end}}</dt><dd>{{.Monitor.Interval}}</dd></div>
         <div><dt>{{if .Monitor.IsPush}}{{.I18n.T "monitor.gracePeriod"}}{{else}}{{.I18n.T "monitor.timeout"}}{{end}}</dt><dd>{{.Monitor.Timeout}}</dd></div>
@@ -217,14 +231,66 @@
 </div>
 {{- end}}
 
+{{define "year-heatmap" -}}
+{{$heat := .Monitor.YearHeatmap}}
+<div class="heatmap">
+  <div class="heatmap-scroll">
+    <table class="heatmap-table" aria-label="{{$heat.AriaLabel}}">
+      <thead>
+        <tr>
+          <th class="heatmap-corner" aria-hidden="true"></th>
+          {{range $heat.Months}}<th class="heatmap-month" colspan="{{.Span}}">{{.Label}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range $heat.Rows}}
+        <tr>
+          <th class="heatmap-weekday" scope="row">{{.Label}}</th>
+          {{range .Cells}}<td class="{{.Class}}"{{if .Title}} title="{{.Title}}"{{end}}></td>{{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="heatmap-foot">
+    <span>{{$heat.RangeLabel}}</span>
+    <div class="heatmap-legend">
+      <span>{{.I18n.T "monitor.chartUptime"}}</span>
+      <i class="heat-1" aria-hidden="true"></i><i class="heat-2" aria-hidden="true"></i><i class="heat-3" aria-hidden="true"></i><i class="heat-4" aria-hidden="true"></i>
+      <span>{{.I18n.T "monitor.heatmapLow"}} → {{.I18n.T "monitor.heatmapHigh"}}</span>
+      <span class="heatmap-legend-sep" aria-hidden="true"></span>
+      <i class="heat-warn" aria-hidden="true"></i><span>{{.I18n.T "status.warning"}}</span>
+      <i class="heat-down" aria-hidden="true"></i><span>{{.I18n.T "status.down"}}</span>
+      <i class="heat-empty" aria-hidden="true"></i><span>{{.I18n.T "common.noData"}}</span>
+    </div>
+  </div>
+</div>
+{{- end}}
+
 {{define "history-chart" -}}
 <div class="chart-frame">
   <div class="chart-legend" aria-hidden="true">
     <span><i class="legend-dot bar-up"></i>{{.BarLabel}}</span>
-    {{if .HasLine}}<span><i class="legend-dot legend-line"></i>{{.LineLabel}}</span>{{end}}
   </div>
   <svg class="long-range-chart" viewBox="0 0 720 160" role="img" aria-label="{{.AriaLabel}}">
     {{range .Bars}}<rect class="{{.Class}}" x="{{.X}}" y="{{.Y}}" width="{{.Width}}" height="{{.Height}}" rx="2"><title>{{.Title}}</title></rect>{{end}}
+  </svg>
+  <div class="bar-range" aria-hidden="true">
+    <span>{{.StartLabel}}</span>
+    <span>{{.EndLabel}}</span>
+  </div>
+  <p class="hint">{{.Hint}}</p>
+</div>
+{{- end}}
+
+{{define "latency-chart" -}}
+<div class="chart-frame latency-frame">
+  <div class="chart-legend" aria-hidden="true">
+    <span><i class="legend-dot legend-line"></i>{{.Label}}</span>
+  </div>
+  <svg class="latency-chart" viewBox="0 0 720 160" role="img" aria-label="{{.AriaLabel}}">
+    <text class="chart-axis-label" x="8" y="16">{{.MaxLabel}}</text>
+    <line class="latency-baseline" x1="8" y1="140" x2="712" y2="140"></line>
     {{range .LinePaths}}<path class="latency-line" d="{{.}}"></path>{{end}}
   </svg>
   <div class="bar-range" aria-hidden="true">

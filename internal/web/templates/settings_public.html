@@ -1,10 +1,4 @@
 {{define "content" -}}
-<section class="page-head">
-  <p class="eyebrow">{{.I18n.T "nav.settings"}}</p>
-  <h1>{{.SectionTitle}}</h1>
-  <p class="muted">{{.SectionIntro}}</p>
-</section>
-
 <section class="panel settings-section">
   <form method="post" action="/settings/public-status" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">

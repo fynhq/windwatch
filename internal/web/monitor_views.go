@@ -26,12 +26,20 @@ type historyBar struct {
 type historyChart struct {
 	HasData    bool
 	Bars       []historyBar
-	LinePaths  []string
-	HasLine    bool
 	StartLabel string
 	EndLabel   string
 	BarLabel   string
-	LineLabel  string
+	Hint       string
+	AriaLabel  string
+}
+
+type latencyChart struct {
+	HasData    bool
+	LinePaths  []string
+	StartLabel string
+	EndLabel   string
+	Label      string
+	MaxLabel   string
 	Hint       string
 	AriaLabel  string
 }
@@ -53,6 +61,7 @@ type monitorCard struct {
 	ID             int64
 	Name           string
 	TypeLabel      string
+	TypeShort      string
 	Target         string
 	StatusClass    string
 	StatusKey      string
@@ -67,6 +76,11 @@ type monitorCard struct {
 	BarsSummary    string
 	BarsStart      string
 	BarsEnd        string
+	Inactive       bool
+	ShowInterval   bool
+	ShowLatency    bool
+	ShowLastCheck  bool
+	RowTitle       string
 }
 
 type dashboardPage struct {
@@ -80,6 +94,7 @@ type dashboardPage struct {
 	Paused       int
 	OverallClass string
 	OverallLabel string
+	SummaryLabel string
 	HasMonitors  bool
 }
 
@@ -92,6 +107,7 @@ type monitorDetailView struct {
 	ID                int64
 	Name              string
 	TypeLabel         string
+	TypeShort         string
 	Target            string
 	Method            string
 	IsPush            bool
@@ -119,6 +135,11 @@ type monitorDetailView struct {
 	Chart24           historyChart
 	Chart30           historyChart
 	Chart90           historyChart
+	LatencyRecent     latencyChart
+	Latency24         latencyChart
+	Latency30         latencyChart
+	Latency90         latencyChart
+	YearHeatmap       yearHeatmapView
 	Events            []eventRow
 	ProxyName         string
 	NotificationLabel string
@@ -127,6 +148,30 @@ type monitorDetailView struct {
 	PushURL           string
 	PushToken         string
 	PushLastHeartbeat string
+}
+
+type yearHeatmapView struct {
+	HasData    bool
+	Months     []yearHeatmapMonth
+	Rows       []yearHeatmapRow
+	RangeLabel string
+	Summary    string
+	AriaLabel  string
+}
+
+type yearHeatmapMonth struct {
+	Label string
+	Span  int
+}
+
+type yearHeatmapRow struct {
+	Label string
+	Cells []yearHeatmapCell
+}
+
+type yearHeatmapCell struct {
+	Class string
+	Title string
 }
 
 type certificateDetailView struct {
@@ -157,6 +202,7 @@ type monitorFormPage struct {
 	IsEdit     bool
 	Type       model.MonitorType
 	TypeLabel  string
+	TypeShort  string
 	Action     string
 	CancelURL  string
 	Values     monitorFormValues
@@ -225,6 +271,21 @@ func monitorTypeLabel(translator *i18n.Translator, monitorType model.MonitorType
 		return translator.T("monitor.type.docker")
 	case model.MonitorTypePush:
 		return translator.T("monitor.type.push")
+	default:
+		return string(monitorType)
+	}
+}
+
+func monitorTypeShortLabel(translator *i18n.Translator, monitorType model.MonitorType) string {
+	switch monitorType {
+	case model.MonitorTypeHTTP:
+		return translator.T("monitor.typeShort.http")
+	case model.MonitorTypeTCP:
+		return translator.T("monitor.typeShort.tcp")
+	case model.MonitorTypeDocker:
+		return translator.T("monitor.typeShort.docker")
+	case model.MonitorTypePush:
+		return translator.T("monitor.typeShort.push")
 	default:
 		return string(monitorType)
 	}
@@ -412,7 +473,7 @@ func summarizeHourBuckets(translator *i18n.Translator, now time.Time, buckets []
 	return translator.Tf("monitor.hourlySummary", upHours, warningHours, downHours)
 }
 
-func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, limit int, location *time.Location) historyChart {
+func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, limit int, location *time.Location) (historyChart, latencyChart) {
 	if limit <= 0 {
 		limit = 24
 	}
@@ -420,7 +481,7 @@ func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, 
 		checks = checks[:limit]
 	}
 	if len(checks) == 0 {
-		return historyChart{}
+		return historyChart{}, latencyChart{}
 	}
 	data := make([]chartDatum, 0, len(checks))
 	for index := len(checks) - 1; index >= 0; index-- {
@@ -447,18 +508,20 @@ func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, 
 			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: chartLatency,
 		})
 	}
-	chart := buildHistoryChart(data,
-		formatChartMoment(translator, checks[len(checks)-1].CheckedAt, location),
-		formatChartMoment(translator, checks[0].CheckedAt, location),
-	)
-	chart.BarLabel = translator.T("monitor.chartUptime")
-	chart.LineLabel = translator.T("monitor.chartLatency")
-	chart.Hint = translator.T("monitor.rangeChartHint")
-	chart.AriaLabel = translator.T("monitor.recentStatus")
-	return chart
+	startLabel := formatChartMoment(translator, checks[len(checks)-1].CheckedAt, location)
+	endLabel := formatChartMoment(translator, checks[0].CheckedAt, location)
+	bars := buildHistoryChart(data, startLabel, endLabel)
+	bars.BarLabel = translator.T("monitor.chartUptime")
+	bars.Hint = translator.T("monitor.rangeChartHint")
+	bars.AriaLabel = translator.T("monitor.recentStatus")
+	latency := buildLatencyChart(data, startLabel, endLabel)
+	latency.Label = translator.T("monitor.chartLatency")
+	latency.Hint = translator.T("monitor.latencyChartHint")
+	latency.AriaLabel = translator.T("monitor.recentStatus") + " · " + translator.T("monitor.chartLatency")
+	return bars, latency
 }
 
-func buildHourlyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, location *time.Location) historyChart {
+func buildHourlyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, location *time.Location) (historyChart, latencyChart) {
 	if location == nil {
 		location = time.UTC
 	}
@@ -498,20 +561,22 @@ func buildHourlyChart(translator *i18n.Translator, now time.Time, buckets []mode
 			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: chartLatency,
 		})
 	}
-	chart := buildHistoryChart(data,
-		firstHour.In(location).Format("15:04"),
-		currentHour.In(location).Format("15:04"),
-	)
-	chart.BarLabel = translator.T("monitor.chartUptime")
-	chart.LineLabel = translator.T("monitor.chartLatency")
-	chart.Hint = translator.T("monitor.rangeChartHint")
-	chart.AriaLabel = translator.T("monitor.history24h")
-	return chart
+	startLabel := firstHour.In(location).Format("15:04")
+	endLabel := currentHour.In(location).Format("15:04")
+	bars := buildHistoryChart(data, startLabel, endLabel)
+	bars.BarLabel = translator.T("monitor.chartUptime")
+	bars.Hint = translator.T("monitor.rangeChartHint")
+	bars.AriaLabel = translator.T("monitor.history24h")
+	latency := buildLatencyChart(data, startLabel, endLabel)
+	latency.Label = translator.T("monitor.chartLatency")
+	latency.Hint = translator.T("monitor.latencyChartHint")
+	latency.AriaLabel = translator.T("monitor.history24h") + " · " + translator.T("monitor.chartLatency")
+	return bars, latency
 }
 
-func buildDailyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, days int, location *time.Location, ariaKey string) historyChart {
+func buildDailyChart(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, days int, location *time.Location, ariaKey string) (historyChart, latencyChart) {
 	if days <= 0 {
-		return historyChart{}
+		return historyChart{}, latencyChart{}
 	}
 	if location == nil {
 		location = time.UTC
@@ -554,15 +619,152 @@ func buildDailyChart(translator *i18n.Translator, now time.Time, buckets []model
 			Title: title, Class: class, HasData: true, Ratio: ratio, Latency: chartLatency,
 		})
 	}
-	chart := buildHistoryChart(data,
-		formatChartDate(translator, start, location),
-		formatChartDate(translator, end.AddDate(0, 0, -1), location),
+	startLabel := formatChartDate(translator, start, location)
+	endLabel := formatChartDate(translator, end.AddDate(0, 0, -1), location)
+	bars := buildHistoryChart(data, startLabel, endLabel)
+	bars.BarLabel = translator.T("monitor.chartUptime")
+	bars.Hint = translator.T("monitor.dailyChartHint")
+	bars.AriaLabel = translator.T(ariaKey)
+	latency := buildLatencyChart(data, startLabel, endLabel)
+	latency.Label = translator.T("monitor.chartLatency")
+	latency.Hint = translator.T("monitor.latencyChartHint")
+	latency.AriaLabel = translator.T(ariaKey) + " · " + translator.T("monitor.chartLatency")
+	return bars, latency
+}
+
+func buildYearHeatmap(translator *i18n.Translator, now time.Time, buckets []model.HourBucket, location *time.Location) yearHeatmapView {
+	const weeks = 53
+	if location == nil {
+		location = time.UTC
+	}
+	localNow := now.In(location)
+	today := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	weekdayOffset := (int(today.Weekday()) + 6) % 7
+	start := today.AddDate(0, 0, -weekdayOffset-weeks*7+7)
+
+	byDay := make(map[int64]model.HourBucket, len(buckets))
+	for _, bucket := range buckets {
+		local := bucket.Start.In(location)
+		dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+		byDay[dayStart.UnixMilli()] = bucket
+	}
+
+	weekdayLabels := make([]string, 7)
+	weekdayLabels[0] = translator.T("monitor.weekdayMonday")
+	weekdayLabels[2] = translator.T("monitor.weekdayWednesday")
+	weekdayLabels[4] = translator.T("monitor.weekdayFriday")
+	rows := make([]yearHeatmapRow, 7)
+	for index := range rows {
+		rows[index].Label = weekdayLabels[index]
+	}
+
+	var (
+		months       []yearHeatmapMonth
+		currentMonth time.Month
+		monthStart   int
+		monthLabel   string
+		hasData      bool
+		dataDays     int
+		downDays     int
+		warnDays     int
+		totalChecks  int
+		goodChecks   int
 	)
-	chart.BarLabel = translator.T("monitor.chartUptime")
-	chart.LineLabel = translator.T("monitor.chartLatency")
-	chart.Hint = translator.T("monitor.dailyChartHint")
-	chart.AriaLabel = translator.T(ariaKey)
-	return chart
+
+	for week := 0; week < weeks; week++ {
+		weekStart := start.AddDate(0, 0, week*7)
+		if week == 0 {
+			currentMonth = weekStart.Month()
+			monthLabel = shortMonthLabel(translator, weekStart)
+			monthStart = week
+		} else if weekStart.Month() != currentMonth {
+			months = append(months, yearHeatmapMonth{Label: monthLabel, Span: week - monthStart})
+			currentMonth = weekStart.Month()
+			monthLabel = shortMonthLabel(translator, weekStart)
+			monthStart = week
+		}
+
+		for day := 0; day < 7; day++ {
+			date := weekStart.AddDate(0, 0, day)
+			cell := yearHeatmapCell{Class: "heat-empty"}
+			if date.After(today) {
+				cell.Class = "heat-future"
+				rows[day].Cells = append(rows[day].Cells, cell)
+				continue
+			}
+
+			bucket, ok := byDay[date.UnixMilli()]
+			if !ok || bucket.Total == 0 {
+				cell.Title = formatChartDate(translator, date, location) + " · " + translator.T("common.noData")
+				rows[day].Cells = append(rows[day].Cells, cell)
+				continue
+			}
+
+			good := bucket.Up + bucket.Warning
+			ratio := float64(good) / float64(bucket.Total)
+			dateLabel := formatChartDate(translator, date, location)
+			percent := formatPercent(good, bucket.Total)
+			switch {
+			case ratio < 0.95:
+				cell.Class = "heat-down"
+				cell.Title = dateLabel + " · " + translator.T("status.down") + " · " + percent
+				downDays++
+			case bucket.Warning > 0 && bucket.Down == 0:
+				cell.Class = "heat-warn"
+				cell.Title = dateLabel + " · " + translator.T("status.warning") + " · " + percent
+				warnDays++
+			case ratio < 0.99:
+				cell.Class = "heat-1"
+				cell.Title = dateLabel + " · " + percent
+			case ratio < 0.995:
+				cell.Class = "heat-2"
+				cell.Title = dateLabel + " · " + percent
+			case ratio < 0.999:
+				cell.Class = "heat-3"
+				cell.Title = dateLabel + " · " + percent
+			default:
+				cell.Class = "heat-4"
+				cell.Title = dateLabel + " · " + percent
+			}
+			hasData = true
+			dataDays++
+			totalChecks += bucket.Total
+			goodChecks += good
+			rows[day].Cells = append(rows[day].Cells, cell)
+		}
+	}
+	months = append(months, yearHeatmapMonth{Label: monthLabel, Span: weeks - monthStart})
+
+	view := yearHeatmapView{
+		HasData:    hasData,
+		Months:     months,
+		Rows:       rows,
+		RangeLabel: start.Format("2006-01") + " — " + today.Format("2006-01"),
+	}
+	if !hasData || dataDays == 0 {
+		view.Summary = translator.T("monitor.noLongRangeData")
+		view.AriaLabel = translator.T("monitor.uptime1yChart")
+		return view
+	}
+
+	parts := []string{translator.Tf("monitor.yearAvailable", formatPercent(goodChecks, totalChecks))}
+	if downDays == 1 {
+		parts = append(parts, translator.T("monitor.yearDownDay"))
+	} else if downDays > 1 {
+		parts = append(parts, translator.Tf("monitor.yearDownDays", downDays))
+	}
+	if warnDays == 1 {
+		parts = append(parts, translator.T("monitor.yearWarnDay"))
+	} else if warnDays > 1 {
+		parts = append(parts, translator.Tf("monitor.yearWarnDays", warnDays))
+	}
+	view.Summary = strings.Join(parts, " · ")
+	view.AriaLabel = translator.T("monitor.uptime1yChart") + " · " + view.Summary
+	return view
+}
+
+func shortMonthLabel(translator *i18n.Translator, value time.Time) string {
+	return value.Format(translator.T("date.monthShort"))
 }
 
 const (
@@ -580,20 +782,24 @@ type chartDatum struct {
 	Latency time.Duration
 }
 
-func buildHistoryChart(data []chartDatum, startLabel, endLabel string) historyChart {
-	chart := historyChart{StartLabel: startLabel, EndLabel: endLabel}
-	if len(data) == 0 {
-		return chart
-	}
-	step := (chartPlotRight - chartPlotLeft) / float64(len(data))
-	width := step * 0.62
+func chartGeometry(count int) (step, width float64) {
+	step = (chartPlotRight - chartPlotLeft) / float64(count)
+	width = step * 0.62
 	if width < 2 {
 		width = 2
 	}
 	if width > 18 {
 		width = 18
 	}
-	maxLatency := time.Duration(0)
+	return step, width
+}
+
+func buildHistoryChart(data []chartDatum, startLabel, endLabel string) historyChart {
+	chart := historyChart{StartLabel: startLabel, EndLabel: endLabel}
+	if len(data) == 0 {
+		return chart
+	}
+	step, width := chartGeometry(len(data))
 	for index, datum := range data {
 		x := chartPlotLeft + float64(index)*step
 		if !datum.HasData {
@@ -612,37 +818,51 @@ func buildHistoryChart(data []chartDatum, startLabel, endLabel string) historyCh
 			X: x, Y: chartBaseY - height, Width: width, Height: height,
 			Class: datum.Class, Title: datum.Title,
 		})
-		if datum.Latency > maxLatency {
+	}
+	return chart
+}
+
+func buildLatencyChart(data []chartDatum, startLabel, endLabel string) latencyChart {
+	chart := latencyChart{StartLabel: startLabel, EndLabel: endLabel}
+	if len(data) == 0 {
+		return chart
+	}
+	maxLatency := time.Duration(0)
+	for _, datum := range data {
+		if datum.HasData && datum.Latency > maxLatency {
 			maxLatency = datum.Latency
 		}
 	}
-	if maxLatency > 0 {
-		var segment strings.Builder
-		flush := func() {
-			if segment.Len() > 0 {
-				chart.LinePaths = append(chart.LinePaths, segment.String())
-				segment.Reset()
-			}
-		}
-		for index, datum := range data {
-			if !datum.HasData || datum.Latency <= 0 {
-				flush()
-				continue
-			}
-			x := chartPlotLeft + float64(index)*step + width/2
-			y := chartBaseY - (float64(datum.Latency)/float64(maxLatency))*chartBarHeight
-			if y < 22 {
-				y = 22
-			}
-			if segment.Len() == 0 {
-				fmt.Fprintf(&segment, "M %.1f %.1f", x, y)
-			} else {
-				fmt.Fprintf(&segment, " L %.1f %.1f", x, y)
-			}
-		}
-		flush()
-		chart.HasLine = len(chart.LinePaths) > 0
+	if maxLatency <= 0 {
+		return chart
 	}
+	step, width := chartGeometry(len(data))
+	var segment strings.Builder
+	flush := func() {
+		if segment.Len() > 0 {
+			chart.LinePaths = append(chart.LinePaths, segment.String())
+			segment.Reset()
+		}
+	}
+	for index, datum := range data {
+		if !datum.HasData || datum.Latency <= 0 {
+			flush()
+			continue
+		}
+		x := chartPlotLeft + float64(index)*step + width/2
+		y := chartBaseY - (float64(datum.Latency)/float64(maxLatency))*chartBarHeight
+		if y < 22 {
+			y = 22
+		}
+		if segment.Len() == 0 {
+			fmt.Fprintf(&segment, "M %.1f %.1f", x, y)
+		} else {
+			fmt.Fprintf(&segment, " L %.1f %.1f", x, y)
+		}
+	}
+	flush()
+	chart.HasData = len(chart.LinePaths) > 0
+	chart.MaxLabel = formatLatency(maxLatency)
 	return chart
 }
 

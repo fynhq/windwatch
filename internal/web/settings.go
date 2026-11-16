@@ -30,35 +30,8 @@ type publicSettingsPage struct {
 	PublicMonitorGroups []publicMonitorGroup
 }
 
-type settingsIndexItem struct {
-	Title string
-	Intro string
-	Href  string
-	Icon  string
-}
-
-type settingsIndexPage struct {
-	pageData
-	Items []settingsIndexItem
-}
-
-func (s *Server) handleSettingsIndex(w http.ResponseWriter, r *http.Request, auth model.AuthInfo) {
-	data := s.authenticatedPage(r, auth, "settings.overviewTitle")
-	data.ActiveNav = "settings"
-	data.SettingsSection = "overview"
-	data.BackURL = "/"
-	translator := data.I18n
-	page := settingsIndexPage{
-		pageData: data,
-		Items: []settingsIndexItem{
-			{Title: translator.T("settings.navGeneral"), Intro: translator.T("settings.systemIntro"), Href: "/settings/general", Icon: "general"},
-			{Title: translator.T("settings.navPublic"), Intro: translator.T("settings.publicStatusIntro"), Href: "/settings/public", Icon: "public"},
-			{Title: translator.T("settings.navNotifications"), Intro: translator.T("notification.intro"), Href: "/settings/notifications", Icon: "notifications"},
-			{Title: translator.T("settings.navLogs"), Intro: translator.T("settings.logsIntro"), Href: "/settings/logs", Icon: "logs"},
-			{Title: translator.T("settings.navProxies"), Intro: translator.T("proxy.listHint"), Href: "/settings/proxies", Icon: "proxies"},
-		},
-	}
-	s.render(w, "settings_index", http.StatusOK, page)
+func (s *Server) handleSettingsIndex(w http.ResponseWriter, r *http.Request, _ model.AuthInfo) {
+	http.Redirect(w, r, "/settings/general", http.StatusSeeOther)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, auth model.AuthInfo) {

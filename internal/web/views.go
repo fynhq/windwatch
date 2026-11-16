@@ -115,11 +115,6 @@ func (s *Server) authenticatedPage(r *http.Request, auth model.AuthInfo, titleKe
 	case strings.HasPrefix(r.URL.Path, "/settings"):
 		data.ActiveNav = "settings"
 		data.SettingsSection = settingsSectionForPath(r.URL.Path)
-		if r.URL.Path == "/settings" {
-			data.BackURL = "/"
-		} else {
-			data.BackURL = "/settings"
-		}
 	}
 	return data
 }

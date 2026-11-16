@@ -13,19 +13,6 @@
     }
   }
 
-  function randomHex(byteCount) {
-    if (!window.crypto || !window.crypto.getRandomValues) {
-      return "";
-    }
-    var bytes = new Uint8Array(byteCount);
-    window.crypto.getRandomValues(bytes);
-    var value = "";
-    for (var j = 0; j < bytes.length; j++) {
-      value += ("0" + bytes[j].toString(16)).slice(-2);
-    }
-    return value;
-  }
-
   function toastRegion() {
     return document.querySelector("[data-toast-region]");
   }
@@ -272,6 +259,12 @@
       }
       for (var j = 0; j < panels.length; j++) {
         panels[j].hidden = panels[j].id !== id;
+        if (!panels[j].hidden) {
+          var heatmap = panels[j].querySelector(".heatmap-scroll");
+          if (heatmap) {
+            heatmap.scrollLeft = heatmap.scrollWidth;
+          }
+        }
       }
     }
 
@@ -393,6 +386,7 @@
       setFilterButtons(buttons, state);
       if (result) {
         result.textContent = formatShowing(result.getAttribute("data-result-template"), visible, cards.length);
+        result.hidden = state === "all" && !query;
       }
       if (empty) {
         empty.hidden = visible !== 0;
@@ -471,6 +465,7 @@
       setFilterButtons(buttons, state);
       if (result) {
         result.textContent = formatShowing(result.getAttribute("data-result-template"), visible, rows.length);
+        result.hidden = state === "all" && !query;
       }
       if (empty) {
         empty.hidden = visible !== 0;
@@ -724,29 +719,6 @@
     document.addEventListener("visibilitychange", tick);
   }
 
-  function initSecretGenerators() {
-    var buttons = document.querySelectorAll("[data-generate-secret]");
-    var secureRandom = !!(window.crypto && window.crypto.getRandomValues);
-    for (var i = 0; i < buttons.length; i++) {
-      if (!secureRandom) {
-        buttons[i].disabled = true;
-        continue;
-      }
-      buttons[i].addEventListener("click", function () {
-        var group = this.closest("[data-secret-group]");
-        var input = group ? group.querySelector("input") : null;
-        if (input) {
-          var generated = randomHex(32);
-          if (!generated) {
-            return;
-          }
-          input.value = generated;
-          input.setAttribute("data-secret-configured", "false");
-        }
-      });
-    }
-  }
-
   function initChannelTypeFields() {
     var selects = document.querySelectorAll("[data-channel-type-select]");
     for (var i = 0; i < selects.length; i++) {
@@ -936,6 +908,62 @@
     }
   }
 
+  function initTopbarScroll() {
+    var topbar = document.querySelector(".topbar");
+    if (!topbar) {
+      return;
+    }
+    var mobileQuery = window.matchMedia("(max-width: 760px)");
+    var lastY = window.pageYOffset || 0;
+    var ticking = false;
+
+    function sync() {
+      var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      if (!mobileQuery.matches) {
+        topbar.classList.remove("is-condensed");
+        lastY = y;
+        return;
+      }
+      var delta = y - lastY;
+      if (Math.abs(delta) < 4) {
+        if (y <= 16) {
+          topbar.classList.remove("is-condensed");
+          lastY = y;
+        }
+        return;
+      }
+      var goingDown = delta > 0;
+      lastY = y;
+      if (y <= 16 || !goingDown) {
+        topbar.classList.remove("is-condensed");
+      } else if (y > 56) {
+        topbar.classList.add("is-condensed");
+      }
+    }
+
+    window.addEventListener("scroll", function () {
+      if (ticking) {
+        return;
+      }
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        sync();
+        ticking = false;
+      });
+    }, { passive: true });
+
+    window.addEventListener("resize", function () {
+      lastY = window.pageYOffset || 0;
+      if (!mobileQuery.matches || lastY <= 16) {
+        topbar.classList.remove("is-condensed");
+      } else if (lastY > 56) {
+        topbar.classList.add("is-condensed");
+      }
+    });
+
+    sync();
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     refreshToggles();
     var toggles = document.querySelectorAll("[data-toggle-target]");
@@ -945,12 +973,12 @@
       });
     }
 
+    initTopbarScroll();
     initHistoryTabs();
     initMonitorFilters();
     initEventFilters();
     initPublicMonitorSelection();
     initAutoRefresh();
-    initSecretGenerators();
     initChannelTypeFields();
     initWebhookFormatFields();
     initHTTPSChecks();

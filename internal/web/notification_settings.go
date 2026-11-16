@@ -40,14 +40,15 @@ type notificationChannelRow struct {
 }
 
 type notificationLogRow struct {
-	Channel string
-	Method  string
-	Monitor string
-	Reason  string
-	Status  string
-	Time    string
-	Error   string
-	Payload string
+	Channel     string
+	Method      string
+	Monitor     string
+	Reason      string
+	Status      string
+	StatusClass string
+	Time        string
+	Error       string
+	Payload     string
 }
 
 type notificationSettingsPage struct {
@@ -160,15 +161,23 @@ func (s *Server) loadLogSettingsPage(r *http.Request, auth model.AuthInfo) (logS
 		if entry.Channel == string(model.NotificationChannelWebhook) {
 			payload = prettyNotificationPayload(payload)
 		}
+		statusClass := "status-pending"
+		switch entry.Status {
+		case "sent":
+			statusClass = "status-up"
+		case "failed":
+			statusClass = "status-down"
+		}
 		logRows = append(logRows, notificationLogRow{
-			Channel: entry.ChannelName,
-			Method:  notificationChannelTypeLabel(base.I18n, model.NotificationChannelType(entry.Channel)),
-			Monitor: entry.MonitorName,
-			Reason:  reason,
-			Status:  status,
-			Time:    formatTime(base.I18n, entry.CreatedAt, base.Location),
-			Error:   entry.Error,
-			Payload: payload,
+			Channel:     entry.ChannelName,
+			Method:      notificationChannelTypeLabel(base.I18n, model.NotificationChannelType(entry.Channel)),
+			Monitor:     entry.MonitorName,
+			Reason:      reason,
+			Status:      status,
+			StatusClass: statusClass,
+			Time:        formatTime(base.I18n, entry.CreatedAt, base.Location),
+			Error:       entry.Error,
+			Payload:     payload,
 		})
 	}
 	return logSettingsPage{settingsSectionPage: base, NotificationLogs: logRows}, nil

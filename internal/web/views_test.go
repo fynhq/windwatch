@@ -106,7 +106,7 @@ func TestBuildRecentChart(t *testing.T) {
 		{CheckedAt: now.Add(-2 * time.Hour), Status: model.CheckWarning, Latency: 30 * time.Millisecond},
 		{CheckedAt: now.Add(-3 * time.Hour), Status: model.CheckUp, Latency: 20 * time.Millisecond},
 	}
-	chart := buildRecentChart(translator, checks, 24, time.UTC)
+	chart, latency := buildRecentChart(translator, checks, 24, time.UTC)
 	if !chart.HasData || len(chart.Bars) != 4 {
 		t.Fatalf("recent chart hasData=%v bars=%d, want true/4", chart.HasData, len(chart.Bars))
 	}
@@ -116,11 +116,14 @@ func TestBuildRecentChart(t *testing.T) {
 			t.Fatalf("recent bar %d class = %q, want %q", index, got, want)
 		}
 	}
-	if len(chart.LinePaths) != 2 {
-		t.Fatalf("recent line paths = %d, want 2 segments around the failed check", len(chart.LinePaths))
+	if len(latency.LinePaths) != 2 {
+		t.Fatalf("recent latency paths = %d, want 2 segments around the failed check", len(latency.LinePaths))
 	}
-	if chart.BarLabel == "" || chart.LineLabel == "" || chart.Hint == "" || chart.AriaLabel == "" {
+	if chart.BarLabel == "" || chart.Hint == "" || chart.AriaLabel == "" {
 		t.Fatal("recent chart labels are incomplete")
+	}
+	if latency.Label == "" || latency.Hint == "" || latency.AriaLabel == "" || latency.MaxLabel == "" {
+		t.Fatal("recent latency labels are incomplete")
 	}
 }
 
@@ -138,7 +141,7 @@ func TestBuildHourlyChart(t *testing.T) {
 		{Start: firstHour.Add(2 * time.Hour), Total: 2, Down: 2, AvgLatency: 50 * time.Millisecond},
 		{Start: firstHour.Add(3 * time.Hour), Total: 2, Up: 2, AvgLatency: 30 * time.Millisecond},
 	}
-	chart := buildHourlyChart(translator, now, buckets, time.UTC)
+	chart, latency := buildHourlyChart(translator, now, buckets, time.UTC)
 	if !chart.HasData || len(chart.Bars) != 24 {
 		t.Fatalf("hourly chart hasData=%v bars=%d, want true/24", chart.HasData, len(chart.Bars))
 	}
@@ -148,8 +151,8 @@ func TestBuildHourlyChart(t *testing.T) {
 			t.Fatalf("hourly bar %d class = %q, want %q", index, got, want)
 		}
 	}
-	if len(chart.LinePaths) != 2 {
-		t.Fatalf("hourly line paths = %d, want 2 segments around the failed hour", len(chart.LinePaths))
+	if len(latency.LinePaths) != 2 {
+		t.Fatalf("hourly latency paths = %d, want 2 segments around the failed hour", len(latency.LinePaths))
 	}
 }
 
@@ -165,7 +168,7 @@ func TestBuildDailyChartBreaksOnFailureLatency(t *testing.T) {
 		{Start: today.AddDate(0, 0, -2), Total: 4, Down: 4, AvgLatency: 50 * time.Millisecond},
 		{Start: today.AddDate(0, 0, -1), Total: 4, Up: 4, AvgLatency: 30 * time.Millisecond},
 	}
-	chart := buildDailyChart(translator, today.Add(12*time.Hour), buckets, 3, time.UTC, "monitor.uptime30dChart")
+	chart, latency := buildDailyChart(translator, today.Add(12*time.Hour), buckets, 3, time.UTC, "monitor.uptime30dChart")
 	if !chart.HasData || len(chart.Bars) != 3 {
 		t.Fatalf("daily chart hasData=%v bars=%d, want true/3", chart.HasData, len(chart.Bars))
 	}
@@ -175,8 +178,8 @@ func TestBuildDailyChartBreaksOnFailureLatency(t *testing.T) {
 			t.Fatalf("daily bar %d class = %q, want %q", index, got, want)
 		}
 	}
-	if len(chart.LinePaths) != 2 {
-		t.Fatalf("daily line paths = %d, want 2 segments around the failed day", len(chart.LinePaths))
+	if len(latency.LinePaths) != 2 {
+		t.Fatalf("daily latency paths = %d, want 2 segments around the failed day", len(latency.LinePaths))
 	}
 }
 

@@ -1,9 +1,8 @@
 {{define "content" -}}
 <section class="page-head page-head-row">
-  <div>
-    <p class="eyebrow">{{.I18n.T "nav.users"}}</p>
+  <div class="page-head-copy">
     <h1>{{.I18n.T "users.title"}}</h1>
-    <p class="muted">{{.I18n.T "users.intro"}}</p>
+    <p class="page-meta"><span>{{if eq (len .Users) 1}}{{.I18n.T "users.countOne"}}{{else}}{{.I18n.Tf "users.count" (len .Users)}}{{end}}</span></p>
   </div>
   <div class="page-actions">
     <button class="button button-primary" type="button" data-dialog-open="create-user">
@@ -13,81 +12,52 @@
   </div>
 </section>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>{{.I18n.T "users.list"}}</h2>
-    <span class="muted">{{.I18n.Tf "users.count" (len .Users)}}</span>
+<section class="panel users-panel">
+  {{range .Users}}
+  {{$userRole := .Role}}
+  <div class="user-row">
+    <span class="avatar avatar-lg" aria-hidden="true">{{.Initial}}</span>
+    <div class="user-main">
+      <div class="user-name-line"><span class="user-name">{{.Username}}</span>{{if .IsSelf}}<span class="user-self">({{$.I18n.T "users.you"}})</span>{{end}}</div>
+      <p class="user-desc">{{$.I18n.T "users.created"}} {{.Created}}</p>
+    </div>
+    <div class="user-role-cell">
+      {{if .IsSelf}}
+      {{.RoleLabel}}
+      {{else}}
+      <form method="post" action="/settings/users/{{.ID}}/role" class="role-form" data-auto-submit>
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <select name="role" class="role-select" aria-label="{{$.I18n.T "users.role"}}">
+          {{range $.Roles}}
+          <option value="{{.Value}}" {{if eq .Value $userRole}}selected{{end}}>{{.Label}}</option>
+          {{end}}
+        </select>
+        <noscript>
+          <button class="text-button" type="submit">{{$.I18n.T "users.saveRole"}}</button>
+        </noscript>
+      </form>
+      {{end}}
+    </div>
+    <span class="status-text {{if .Disabled}}status-paused{{else}}status-up{{end}}"><span class="status-dot" aria-hidden="true"></span>{{if .Disabled}}{{$.I18n.T "users.disabled"}}{{else}}{{$.I18n.T "users.active"}}{{end}}</span>
+    <div class="user-actions">
+      {{if not .IsSelf}}
+      <form method="post" action="/settings/users/{{.ID}}/disabled" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="disabled" value="{{if .Disabled}}0{{else}}1{{end}}">
+        <button class="text-button" type="submit">{{if .Disabled}}{{$.I18n.T "users.enable"}}{{else}}{{$.I18n.T "users.disable"}}{{end}}</button>
+      </form>
+      {{end}}
+      <button class="text-button" type="button" data-dialog-open="reset-password-{{.ID}}">{{$.I18n.T "users.resetPassword"}}</button>
+      {{if not .IsSelf}}
+      <form method="post" action="/settings/users/{{.ID}}/delete" class="inline-form"
+        data-confirm="{{$.I18n.T "users.deleteConfirm"}}">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <button class="text-button is-danger" type="submit">{{$.I18n.T "common.delete"}}</button>
+      </form>
+      {{end}}
+    </div>
   </div>
-  <div class="table-scroll">
-    <table class="responsive-table users-table">
-      <thead>
-        <tr>
-          <th>{{.I18n.T "users.username"}}</th>
-          <th>{{.I18n.T "users.role"}}</th>
-          <th>{{.I18n.T "users.status"}}</th>
-          <th>{{.I18n.T "users.created"}}</th>
-          <th>{{.I18n.T "users.actions"}}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range .Users}}
-        {{$userRole := .Role}}
-        <tr>
-          <td data-label="{{$.I18n.T "users.username"}}">
-            <strong>{{.Username}}</strong>
-            {{if .IsSelf}}<span class="muted">({{$.I18n.T "users.you"}})</span>{{end}}
-          </td>
-          <td data-label="{{$.I18n.T "users.role"}}">
-            {{if .IsSelf}}
-            {{.RoleLabel}}
-            {{else}}
-            <form method="post" action="/settings/users/{{.ID}}/role" class="role-form" data-auto-submit>
-              <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-              <select name="role" class="role-select" aria-label="{{$.I18n.T "users.role"}}">
-                {{range $.Roles}}
-                <option value="{{.Value}}" {{if eq .Value $userRole}}selected{{end}}>{{.Label}}</option>
-                {{end}}
-              </select>
-              <noscript>
-                <button class="button button-secondary button-small" type="submit">{{$.I18n.T "users.saveRole"}}</button>
-              </noscript>
-            </form>
-            {{end}}
-          </td>
-          <td data-label="{{$.I18n.T "users.status"}}">
-            {{if .Disabled}}
-            <span class="status-pill status-paused">{{$.I18n.T "users.disabled"}}</span>
-            {{else}}
-            <span class="status-pill status-up">{{$.I18n.T "users.active"}}</span>
-            {{end}}
-          </td>
-          <td data-label="{{$.I18n.T "users.created"}}">{{.Created}}</td>
-          <td class="is-wide" data-label="{{$.I18n.T "users.actions"}}">
-            <div class="user-actions">
-              {{if not .IsSelf}}
-              <form method="post" action="/settings/users/{{.ID}}/disabled" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-                <input type="hidden" name="disabled" value="{{if .Disabled}}0{{else}}1{{end}}">
-                <button class="button button-secondary button-small" type="submit">
-                  {{if .Disabled}}{{$.I18n.T "users.enable"}}{{else}}{{$.I18n.T "users.disable"}}{{end}}
-                </button>
-              </form>
-              {{end}}
-              <button class="button button-secondary button-small" type="button" data-dialog-open="reset-password-{{.ID}}">{{$.I18n.T "users.resetPassword"}}</button>
-              {{if not .IsSelf}}
-              <form method="post" action="/settings/users/{{.ID}}/delete" class="inline-form"
-                data-confirm="{{$.I18n.T "users.deleteConfirm"}}">
-                <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-                <button class="button button-danger-outline button-small" type="submit">{{$.I18n.T "common.delete"}}</button>
-              </form>
-              {{end}}
-            </div>
-          </td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-  </div>
+  {{end}}
 </section>
 
 {{range .Users}}

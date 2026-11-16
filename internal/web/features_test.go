@@ -553,8 +553,11 @@ func TestLongRangeChartRendering(t *testing.T) {
 	if got := strings.Count(body, `class="long-range-chart"`); got != 4 {
 		t.Fatalf("history charts = %d, want 4 (recent, 24h, 30d, 90d)", got)
 	}
+	if got := strings.Count(body, `class="latency-chart"`); got != 4 {
+		t.Fatalf("latency charts = %d, want 4 (recent, 24h, 30d, 90d; none for 1y)", got)
+	}
 	if got := strings.Count(body, `class="latency-line"`); got != 4 {
-		t.Fatalf("latency lines = %d, want one per history chart", got)
+		t.Fatalf("latency lines = %d, want one per latency chart", got)
 	}
 }
 
@@ -700,7 +703,7 @@ func TestAuthenticatedErrorPageKeepsLayout(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", response.StatusCode)
 	}
-	if !strings.Contains(body, `class="app-body"`) || !strings.Contains(body, `class="sidebar`) {
+	if !strings.Contains(body, `class="app-body"`) || !strings.Contains(body, `class="topbar"`) || !strings.Contains(body, `class="mainnav"`) {
 		t.Fatalf("error page lost authenticated layout: %s", body)
 	}
 }

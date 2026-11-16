@@ -13,20 +13,19 @@ import (
 	"github.com/fynhq/windwatch/internal/secret"
 )
 
-func TestSplitSettingsPagesAndSidebarNavigation(t *testing.T) {
+func TestSettingsPagesUseTopNavigation(t *testing.T) {
 	_, _, testServer := newWebTestServer(t)
 	client, _ := setupAdminSession(t, testServer)
 
 	pages := []struct {
-		path    string
-		heading string
-		marker  string
+		path   string
+		marker string
 	}{
-		{"/settings/general", "<h1>General</h1>", `action="/settings/timezone"`},
-		{"/settings/public", "<h1>Public page</h1>", `action="/settings/public-status"`},
-		{"/settings/notifications", "<h1>Notifications</h1>", `id="notification-channel"`},
-		{"/settings/logs", "<h1>Delivery log</h1>", `settings-section`},
-		{"/settings/proxies", "<h1>Outbound proxies</h1>", `action="/settings/proxies"`},
+		{"/settings/general", `action="/settings/timezone"`},
+		{"/settings/public", `action="/settings/public-status"`},
+		{"/settings/notifications", `id="notification-channel"`},
+		{"/settings/logs", `settings-section`},
+		{"/settings/proxies", `action="/settings/proxies"`},
 	}
 	for _, page := range pages {
 		response, err := client.Get(testServer.URL + page.path)
@@ -34,19 +33,16 @@ func TestSplitSettingsPagesAndSidebarNavigation(t *testing.T) {
 			t.Fatalf("GET %s: %v", page.path, err)
 		}
 		body := readResponseBody(t, response)
-		if response.StatusCode != http.StatusOK || !strings.Contains(body, page.heading) || !strings.Contains(body, page.marker) {
+		if response.StatusCode != http.StatusOK || !strings.Contains(body, "<h1>Settings</h1>") || !strings.Contains(body, page.marker) {
 			t.Fatalf("GET %s status=%d body=%s", page.path, response.StatusCode, body)
 		}
-		for _, want := range []string{`class="nav-subnav"`, `href="/settings/general"`, `href="/settings/proxies"`} {
+		for _, want := range []string{`class="topbar"`, `class="mainnav"`, `class="subnav"`, `href="/settings/general"`, `href="/settings/proxies"`} {
 			if !strings.Contains(body, want) {
-				t.Fatalf("GET %s missing sidebar navigation %q", page.path, want)
+				t.Fatalf("GET %s missing top navigation %q", page.path, want)
 			}
 		}
-		if !strings.Contains(body, `class="page-back"`) {
-			t.Fatalf("GET %s missing back link", page.path)
-		}
-		if !strings.Contains(body, `class="page-back" href="/settings"`) {
-			t.Fatalf("GET %s back link does not return to the settings overview", page.path)
+		if strings.Contains(body, `class="sidebar`) || strings.Contains(body, `class="mobile-dock"`) {
+			t.Fatalf("GET %s still renders the legacy sidebar", page.path)
 		}
 	}
 
@@ -73,75 +69,58 @@ func TestSplitSettingsPagesAndSidebarNavigation(t *testing.T) {
 		t.Fatalf("GET /settings: %v", err)
 	}
 	body = readResponseBody(t, response)
-	if response.StatusCode != http.StatusOK || response.Request.URL.Path != "/settings" {
+	if response.StatusCode != http.StatusOK || response.Request.URL.Path != "/settings/general" {
 		t.Fatalf("/settings status=%d path=%q", response.StatusCode, response.Request.URL.Path)
 	}
-	for _, want := range []string{
-		"<h1>Settings</h1>",
-		`class="settings-index"`,
-		`href="/settings/general"`,
-		`href="/settings/public"`,
-		`href="/settings/notifications"`,
-		`href="/settings/logs"`,
-		`href="/settings/proxies"`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("settings overview missing %q", want)
-		}
-	}
-	if strings.Contains(body, `action="/settings/timezone"`) {
-		t.Fatal("settings overview rendered the general settings form")
-	}
-	if !strings.Contains(body, `class="page-back"`) {
-		t.Fatal("settings overview missing back link")
+	if !strings.Contains(body, `action="/settings/timezone"`) || strings.Contains(body, `class="settings-index"`) {
+		t.Fatalf("settings landing did not resolve to the general section: %s", body)
 	}
 }
 
-func TestConsoleBrandVersionAndSettingsCards(t *testing.T) {
+func TestTopbarBrandLanguageAndFooter(t *testing.T) {
 	_, _, testServer := newWebTestServer(t)
 	client, _ := setupAdminSession(t, testServer)
 
-	response, err := client.Get(testServer.URL + "/settings")
+	response, err := client.Get(testServer.URL + "/settings/general")
 	if err != nil {
-		t.Fatalf("GET /settings: %v", err)
+		t.Fatalf("GET settings: %v", err)
 	}
 	body := readResponseBody(t, response)
 	for _, want := range []string{
 		"WindWatch Console",
-		"Hear the wind, hold the line.",
-		`class="sidebar-version"`,
-		`class="settings-version"`,
+		`class="topbar"`,
+		`class="brand-mark"`,
+		`class="mainnav"`,
+		`class="subnav"`,
+		`class="site-footer"`,
+		`href="/settings/general"`,
+		`href="/settings/users"`,
 		`https://github.com/fynhq/windwatch`,
-		`class="settings-index"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings page missing %q", want)
 		}
 	}
-	if count := strings.Count(body, `class="settings-index-link"`); count != 5 {
-		t.Fatalf("settings cards = %d, want 5", count)
+	for _, old := range []string{`class="sidebar`, `class="mobile-dock"`, `class="mobile-topbar"`} {
+		if strings.Contains(body, old) {
+			t.Fatalf("settings page still renders legacy shell %q", old)
+		}
 	}
-	if strings.Contains(body, `class="mobile-version"`) {
-		t.Fatal("mobile topbar still renders the version")
-	}
-	if !strings.Contains(body, `class="mobile-lang"`) {
-		t.Fatal("mobile topbar language switch is missing")
-	}
-	if strings.Contains(body, "mobile-avatar") {
-		t.Fatal("mobile topbar still renders the user avatar")
+	if strings.Contains(body, "Hear the wind, hold the line.") {
+		t.Fatal("authenticated topbar should not duplicate the auth tagline")
 	}
 
-	response, err = client.Get(testServer.URL + "/language/zh-CN?next=%2Fsettings")
+	response, err = client.Get(testServer.URL + "/language/zh-CN?next=%2Fsettings%2Fgeneral")
 	if err != nil {
 		t.Fatalf("switch to Chinese: %v", err)
 	}
 	_ = readResponseBody(t, response)
-	response, err = client.Get(testServer.URL + "/settings")
+	response, err = client.Get(testServer.URL + "/settings/general")
 	if err != nil {
-		t.Fatalf("GET /settings in Chinese: %v", err)
+		t.Fatalf("GET settings in Chinese: %v", err)
 	}
 	body = readResponseBody(t, response)
-	for _, want := range []string{"听风台", "听风知变，守望在线。"} {
+	for _, want := range []string{"听风台", "设置", "时区"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Chinese settings page missing %q", want)
 		}
@@ -207,9 +186,9 @@ func TestUsersCreateDialog(t *testing.T) {
 		`data-dialog-open="reset-password-`,
 		`<dialog class="dialog" id="reset-password-`,
 		`Reset password`,
-		`sidebar-version`,
-		`class="mobile-topbar"`,
-		`mobile-dock`,
+		`class="topbar"`,
+		`class="mainnav"`,
+		`class="site-footer"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("users page missing %q", want)
@@ -218,8 +197,8 @@ func TestUsersCreateDialog(t *testing.T) {
 	if strings.Contains(body, `action="/settings/users" class="stack"`) {
 		t.Fatal("create user form is still rendered inline at the top of the page")
 	}
-	if strings.Contains(body, `data-sidebar-toggle`) || strings.Contains(body, `class="app-footer"`) {
-		t.Fatal("sidebar should not be collapsible and the bottom footer should be removed")
+	if strings.Contains(body, `class="sidebar`) || strings.Contains(body, `class="mobile-dock"`) {
+		t.Fatal("users page still renders the legacy sidebar or dock")
 	}
 }
 
@@ -257,7 +236,7 @@ func TestUsersRoleUpdate(t *testing.T) {
 	for _, want := range []string{
 		`action="` + rolePath + `" class="role-form" data-auto-submit`,
 		`data-confirm="Delete this user?`,
-		`class="button button-danger-outline button-small" type="submit">Delete</button>`,
+		`class="text-button is-danger" type="submit">Delete</button>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("users page missing %q", want)

@@ -1,9 +1,10 @@
 {{define "content" -}}
 <section class="page-head page-head-row">
-  <div>
-    <p class="eyebrow">{{if .IsEdit}}{{.I18n.T "common.edit"}}{{else}}{{.I18n.T "monitor.add"}}{{end}}</p>
-    <h1>{{if .IsEdit}}{{.I18n.T "monitor.editTitle"}}{{else}}{{.I18n.T "monitor.newTitle"}}{{end}}</h1>
-    <p class="monitor-meta"><span class="type-badge">{{.TypeLabel}}</span></p>
+  <div class="page-head-copy">
+    <div class="detail-title-line">
+      <h1>{{if .IsEdit}}{{.I18n.T "monitor.editTitle"}}{{else}}{{.I18n.T "monitor.newTitle"}}{{end}}</h1>
+      <span class="type-badge">{{.TypeShort}}</span>
+    </div>
   </div>
   <div class="page-actions">
     <button class="button button-primary" type="submit" form="monitor-form">{{if .IsEdit}}{{.I18n.T "monitor.saveChanges"}}{{else}}{{.I18n.T "monitor.save"}}{{end}}</button>
