@@ -119,6 +119,21 @@ func TestBuildRecentChart(t *testing.T) {
 	if len(latency.LinePaths) != 2 {
 		t.Fatalf("recent latency paths = %d, want 2 segments around the failed check", len(latency.LinePaths))
 	}
+	if len(latency.AreaPaths) != 2 || len(latency.Points) != 3 {
+		t.Fatalf("recent latency areas = %d, points = %d, want 2/3", len(latency.AreaPaths), len(latency.Points))
+	}
+	if latency.Points[0].Solo || !latency.Points[2].Solo || !latency.Points[2].Last {
+		t.Fatal("recent latency solo/last markers are wrong")
+	}
+	if latency.MaxLabel != "100 ms" || latency.MidLabel != "50 ms" {
+		t.Fatalf("recent latency scale labels = %q/%q, want 100 ms/50 ms", latency.MaxLabel, latency.MidLabel)
+	}
+	if !latency.ShowAvg || latency.GradientID == "" {
+		t.Fatal("recent latency average line or gradient id missing")
+	}
+	if want := "Min 20 ms · Avg 33 ms · Peak 50 ms"; latency.StatsLabel != want {
+		t.Fatalf("recent latency stats = %q, want %q", latency.StatsLabel, want)
+	}
 	if chart.BarLabel == "" || chart.Hint == "" || chart.AriaLabel == "" {
 		t.Fatal("recent chart labels are incomplete")
 	}
@@ -154,6 +169,12 @@ func TestBuildHourlyChart(t *testing.T) {
 	if len(latency.LinePaths) != 2 {
 		t.Fatalf("hourly latency paths = %d, want 2 segments around the failed hour", len(latency.LinePaths))
 	}
+	if len(latency.AreaPaths) != 2 || len(latency.Points) != 3 {
+		t.Fatalf("hourly latency areas = %d, points = %d, want 2/3", len(latency.AreaPaths), len(latency.Points))
+	}
+	if latency.MaxLabel != "40 ms" || latency.MidLabel != "20 ms" {
+		t.Fatalf("hourly latency scale labels = %q/%q, want 40 ms/20 ms", latency.MaxLabel, latency.MidLabel)
+	}
 }
 
 func TestBuildDailyChartBreaksOnFailureLatency(t *testing.T) {
@@ -180,6 +201,50 @@ func TestBuildDailyChartBreaksOnFailureLatency(t *testing.T) {
 	}
 	if len(latency.LinePaths) != 2 {
 		t.Fatalf("daily latency paths = %d, want 2 segments around the failed day", len(latency.LinePaths))
+	}
+	if len(latency.AreaPaths) != 2 || len(latency.Points) != 2 {
+		t.Fatalf("daily latency areas = %d, points = %d, want 2/2", len(latency.AreaPaths), len(latency.Points))
+	}
+	if !latency.Points[0].Solo || !latency.Points[1].Solo || !latency.Points[1].Last {
+		t.Fatal("daily latency solo/last markers are wrong")
+	}
+}
+
+func TestNiceLatencyCeil(t *testing.T) {
+	cases := []struct {
+		in   time.Duration
+		want time.Duration
+	}{
+		{time.Millisecond, time.Millisecond},
+		{30 * time.Millisecond, 40 * time.Millisecond},
+		{50 * time.Millisecond, 100 * time.Millisecond},
+		{100 * time.Millisecond, 100 * time.Millisecond},
+		{120 * time.Millisecond, 200 * time.Millisecond},
+		{250 * time.Millisecond, 400 * time.Millisecond},
+		{999 * time.Millisecond, time.Second},
+	}
+	for _, item := range cases {
+		if got := niceLatencyCeil(item.in); got != item.want {
+			t.Fatalf("niceLatencyCeil(%s) = %s, want %s", item.in, got, item.want)
+		}
+	}
+}
+
+func TestBuildLatencyChartEmptyAndAllFailed(t *testing.T) {
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("i18n.Load: %v", err)
+	}
+	translator := catalogs.Translator(i18n.LangEN)
+	if chart := buildLatencyChart(translator, nil, "start", "end", "lg-test"); chart.HasData {
+		t.Fatal("empty data should produce no latency chart")
+	}
+	failed := []chartDatum{
+		{Title: "failed", HasData: true, Latency: 0},
+		{Title: "missing"},
+	}
+	if chart := buildLatencyChart(translator, failed, "start", "end", "lg-test"); chart.HasData {
+		t.Fatal("failed or missing data should produce no latency chart")
 	}
 }
 

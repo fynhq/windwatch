@@ -285,13 +285,31 @@
 
 {{define "latency-chart" -}}
 <div class="chart-frame latency-frame">
-  <div class="chart-legend" aria-hidden="true">
+  <div class="chart-legend latency-legend" aria-hidden="true">
     <span><i class="legend-dot legend-line"></i>{{.Label}}</span>
+    <span class="latency-stats">{{.StatsLabel}}</span>
   </div>
-  <svg class="latency-chart" viewBox="0 0 720 160" role="img" aria-label="{{.AriaLabel}}">
+  <svg class="latency-chart" viewBox="0 0 720 160" role="img" aria-label="{{.AriaLabel}} · {{.StatsLabel}}">
+    <defs>
+      <linearGradient id="{{.GradientID}}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" class="latency-grad-top"></stop>
+        <stop offset="1" class="latency-grad-bottom"></stop>
+      </linearGradient>
+    </defs>
+    <line class="latency-grid" x1="8" y1="22" x2="712" y2="22"></line>
+    <line class="latency-grid" x1="8" y1="81" x2="712" y2="81"></line>
     <text class="chart-axis-label" x="8" y="16">{{.MaxLabel}}</text>
+    <text class="chart-axis-label" x="8" y="77">{{.MidLabel}}</text>
+    {{range .AreaPaths}}<path class="latency-area" fill="url(#{{$.GradientID}})" d="{{.}}"></path>{{end}}
+    {{if .ShowAvg}}<line class="latency-avg" x1="8" y1="{{.AvgY}}" x2="712" y2="{{.AvgY}}"></line>{{end}}
     <line class="latency-baseline" x1="8" y1="140" x2="712" y2="140"></line>
     {{range .LinePaths}}<path class="latency-line" d="{{.}}"></path>{{end}}
+    {{range .Points}}<g class="latency-hover">
+      <title>{{.Title}}</title>
+      <rect class="latency-hit" x="{{.HitX}}" y="22" width="{{.HitWidth}}" height="118"></rect>
+      <line class="latency-guide" x1="{{.X}}" y1="22" x2="{{.X}}" y2="140"></line>
+      <circle class="latency-dot{{if .Solo}} latency-dot-solo{{end}}{{if .Last}} latency-dot-last{{end}}" cx="{{.X}}" cy="{{.Y}}" r="3.5"></circle>
+    </g>{{end}}
   </svg>
   <div class="bar-range" aria-hidden="true">
     <span>{{.StartLabel}}</span>

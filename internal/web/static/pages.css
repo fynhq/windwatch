@@ -1655,10 +1655,69 @@
   stroke-linejoin: round;
 }
 
-.latency-point {
+.latency-stats {
+  margin-left: auto;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.latency-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.latency-grad-top {
+  stop-color: var(--accent);
+  stop-opacity: 0.16;
+}
+
+.latency-grad-bottom {
+  stop-color: var(--accent);
+  stop-opacity: 0;
+}
+
+.latency-area {
+  stroke: none;
+  pointer-events: none;
+}
+
+.latency-avg {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
+.latency-hit {
+  fill: transparent;
+}
+
+.latency-guide {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+  pointer-events: none;
+}
+
+.latency-dot {
   fill: var(--surface);
   stroke: var(--accent);
-  stroke-width: 1.5;
+  stroke-width: 2;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+  pointer-events: none;
+}
+
+.latency-dot-solo,
+.latency-dot-last {
+  opacity: 1;
+}
+
+.latency-hover:hover .latency-guide,
+.latency-hover:hover .latency-dot {
+  opacity: 1;
 }
 
 .chart-meta {

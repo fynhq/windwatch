@@ -33,13 +33,30 @@ type historyChart struct {
 	AriaLabel  string
 }
 
+type latencyPoint struct {
+	X        float64
+	Y        float64
+	HitX     float64
+	HitWidth float64
+	Title    string
+	Solo     bool
+	Last     bool
+}
+
 type latencyChart struct {
 	HasData    bool
+	GradientID string
 	LinePaths  []string
+	AreaPaths  []string
+	Points     []latencyPoint
 	StartLabel string
 	EndLabel   string
 	Label      string
 	MaxLabel   string
+	MidLabel   string
+	AvgY       float64
+	ShowAvg    bool
+	StatsLabel string
 	Hint       string
 	AriaLabel  string
 }
@@ -514,7 +531,7 @@ func buildRecentChart(translator *i18n.Translator, checks []model.CheckSummary, 
 	bars.BarLabel = translator.T("monitor.chartUptime")
 	bars.Hint = translator.T("monitor.rangeChartHint")
 	bars.AriaLabel = translator.T("monitor.recentStatus")
-	latency := buildLatencyChart(data, startLabel, endLabel)
+	latency := buildLatencyChart(translator, data, startLabel, endLabel, "lg-recent")
 	latency.Label = translator.T("monitor.chartLatency")
 	latency.Hint = translator.T("monitor.latencyChartHint")
 	latency.AriaLabel = translator.T("monitor.recentStatus") + " · " + translator.T("monitor.chartLatency")
@@ -567,7 +584,7 @@ func buildHourlyChart(translator *i18n.Translator, now time.Time, buckets []mode
 	bars.BarLabel = translator.T("monitor.chartUptime")
 	bars.Hint = translator.T("monitor.rangeChartHint")
 	bars.AriaLabel = translator.T("monitor.history24h")
-	latency := buildLatencyChart(data, startLabel, endLabel)
+	latency := buildLatencyChart(translator, data, startLabel, endLabel, "lg-24h")
 	latency.Label = translator.T("monitor.chartLatency")
 	latency.Hint = translator.T("monitor.latencyChartHint")
 	latency.AriaLabel = translator.T("monitor.history24h") + " · " + translator.T("monitor.chartLatency")
@@ -625,7 +642,7 @@ func buildDailyChart(translator *i18n.Translator, now time.Time, buckets []model
 	bars.BarLabel = translator.T("monitor.chartUptime")
 	bars.Hint = translator.T("monitor.dailyChartHint")
 	bars.AriaLabel = translator.T(ariaKey)
-	latency := buildLatencyChart(data, startLabel, endLabel)
+	latency := buildLatencyChart(translator, data, startLabel, endLabel, fmt.Sprintf("lg-%dd", days))
 	latency.Label = translator.T("monitor.chartLatency")
 	latency.Hint = translator.T("monitor.latencyChartHint")
 	latency.AriaLabel = translator.T(ariaKey) + " · " + translator.T("monitor.chartLatency")
@@ -822,27 +839,60 @@ func buildHistoryChart(data []chartDatum, startLabel, endLabel string) historyCh
 	return chart
 }
 
-func buildLatencyChart(data []chartDatum, startLabel, endLabel string) latencyChart {
-	chart := latencyChart{StartLabel: startLabel, EndLabel: endLabel}
-	if len(data) == 0 {
-		return chart
+func niceLatencyCeil(value time.Duration) time.Duration {
+	magnitude := time.Duration(1)
+	for magnitude*10 <= value {
+		magnitude *= 10
 	}
-	maxLatency := time.Duration(0)
+	for _, factor := range []time.Duration{1, 2, 4, 10} {
+		if magnitude*factor >= value {
+			return magnitude * factor
+		}
+	}
+	return magnitude * 10
+}
+
+func buildLatencyChart(translator *i18n.Translator, data []chartDatum, startLabel, endLabel, gradientID string) latencyChart {
+	chart := latencyChart{StartLabel: startLabel, EndLabel: endLabel, GradientID: gradientID}
+	var (
+		maxLatency time.Duration
+		minLatency time.Duration
+		total      time.Duration
+		count      int
+	)
 	for _, datum := range data {
-		if datum.HasData && datum.Latency > maxLatency {
+		if !datum.HasData || datum.Latency <= 0 {
+			continue
+		}
+		if datum.Latency > maxLatency {
 			maxLatency = datum.Latency
 		}
+		if minLatency == 0 || datum.Latency < minLatency {
+			minLatency = datum.Latency
+		}
+		total += datum.Latency
+		count++
 	}
-	if maxLatency <= 0 {
+	if count == 0 {
 		return chart
 	}
+	scale := niceLatencyCeil(maxLatency)
+	avg := total / time.Duration(count)
 	step, width := chartGeometry(len(data))
 	var segment strings.Builder
+	segmentCount := 0
+	firstX, lastX := 0.0, 0.0
 	flush := func() {
-		if segment.Len() > 0 {
-			chart.LinePaths = append(chart.LinePaths, segment.String())
-			segment.Reset()
+		if segment.Len() == 0 {
+			return
 		}
+		chart.LinePaths = append(chart.LinePaths, segment.String())
+		chart.AreaPaths = append(chart.AreaPaths, fmt.Sprintf("%s L %.1f %.1f L %.1f %.1f Z", segment.String(), lastX, chartBaseY, firstX, chartBaseY))
+		if segmentCount == 1 {
+			chart.Points[len(chart.Points)-1].Solo = true
+		}
+		segment.Reset()
+		segmentCount = 0
 	}
 	for index, datum := range data {
 		if !datum.HasData || datum.Latency <= 0 {
@@ -850,19 +900,33 @@ func buildLatencyChart(data []chartDatum, startLabel, endLabel string) latencyCh
 			continue
 		}
 		x := chartPlotLeft + float64(index)*step + width/2
-		y := chartBaseY - (float64(datum.Latency)/float64(maxLatency))*chartBarHeight
-		if y < 22 {
-			y = 22
-		}
+		y := chartBaseY - (float64(datum.Latency)/float64(scale))*chartBarHeight
 		if segment.Len() == 0 {
 			fmt.Fprintf(&segment, "M %.1f %.1f", x, y)
+			firstX = x
 		} else {
 			fmt.Fprintf(&segment, " L %.1f %.1f", x, y)
 		}
+		lastX = x
+		segmentCount++
+		chart.Points = append(chart.Points, latencyPoint{
+			X: x, Y: y,
+			HitX: chartPlotLeft + float64(index)*step, HitWidth: step,
+			Title: datum.Title,
+		})
 	}
 	flush()
-	chart.HasData = len(chart.LinePaths) > 0
-	chart.MaxLabel = formatLatency(maxLatency)
+	chart.Points[len(chart.Points)-1].Last = true
+	chart.HasData = true
+	chart.MaxLabel = formatLatency(scale)
+	chart.MidLabel = formatLatency(scale / 2)
+	chart.AvgY = chartBaseY - (float64(avg)/float64(scale))*chartBarHeight
+	chart.ShowAvg = count >= 2
+	chart.StatsLabel = strings.Join([]string{
+		translator.Tf("monitor.latencyMinStat", formatLatency(minLatency)),
+		translator.Tf("monitor.latencyAvgStat", formatLatency(avg)),
+		translator.Tf("monitor.latencyMaxStat", formatLatency(maxLatency)),
+	}, " · ")
 	return chart
 }
 
