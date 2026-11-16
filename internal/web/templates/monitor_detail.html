@@ -17,8 +17,8 @@
         <span class="hint" title="{{.Monitor.LastCheckTitle}}">{{.I18n.T "monitor.lastCheck"}} {{.Monitor.LastCheckAgo}}</span>
       </p>
     </div>
+    {{if .IsAdmin}}
     <div class="page-actions">
-      {{if .IsAdmin}}
       <a class="button button-secondary" href="/monitors/{{.Monitor.ID}}/edit">{{.I18n.T "common.edit"}}</a>
       {{if .Monitor.Enabled}}
       <form method="post" action="/monitors/{{.Monitor.ID}}/check" class="inline-form">
@@ -30,8 +30,8 @@
         <input type="hidden" name="csrf_token" value="{{.CSRF}}">
         <button class="button button-secondary" type="submit">{{if .Monitor.Enabled}}{{.I18n.T "monitor.pause"}}{{else}}{{.I18n.T "monitor.resume"}}{{end}}</button>
       </form>
-      {{end}}
     </div>
+    {{end}}
   </div>
   {{if .Monitor.LastError}}<p class="alert alert-error detail-alert">{{.I18n.T "monitor.lastError"}}<br>{{.Monitor.LastError}}</p>{{end}}
 </section>
