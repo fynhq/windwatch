@@ -27,7 +27,7 @@ from pathlib import Path
 # data, so they are safe to match from a committed checker.
 PRIVATE_DOC = re.compile(
     r"("
-    r"\b(?<!LICENSE-)(?!README\b|THIRD_PARTY_NOTICES\b|LICENSE\b)[A-Z][A-Z0-9_-]{2,}\.md\b"
+    r"\b(?<!LICENSE-)(?!LICENSE[-_])(?!README\b|THIRD_PARTY_NOTICES\b|LICENSE\b)[A-Z][A-Z0-9_-]{2,}\.md\b"
     r"|docs-local"
     r"|product-scope|documentation-map|workflow-windows-wsl|local-testing"
     r"|changelog\.md|lessons\.md"
@@ -56,6 +56,7 @@ SECRET = re.compile(
 
 TREE_ALLOW = {
     "README.md": {"cjk"},
+    "THIRD_PARTY_NOTICES.md": {"email", "private-doc"},
     "compose.example.yaml": {"cjk"},
     "deploy/windwatch.service": {"cjk"},
     "internal/i18n/locales/": {"cjk"},

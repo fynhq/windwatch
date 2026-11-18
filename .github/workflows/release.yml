@@ -23,7 +23,7 @@ jobs:
       build_time: ${{ steps.meta.outputs.build_time }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -69,7 +69,7 @@ jobs:
           python3 .github/scripts/check_public_surface.py --tag "$GITHUB_REF_NAME"
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -87,7 +87,7 @@ jobs:
         run: make smoke
 
       - name: Run govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: make vuln
 
   release:
     name: Publish release
@@ -97,9 +97,10 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Extract tag message
         id: notes
@@ -112,7 +113,7 @@ jobs:
           echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -140,7 +141,8 @@ jobs:
         run: |
           set -euo pipefail
           archive="./dist/windwatch-linux-amd64-v${VERSION}.tar.gz"
-          test "$(tar -tzf "$archive")" = "windwatch"
+          expected="$(printf 'windwatch\nTHIRD_PARTY_NOTICES.md')"
+          test "$(tar -tzf "$archive")" = "$expected"
           tmp="$(mktemp -d)"
           tar -xzf "$archive" -C "$tmp"
           output="$("$tmp/windwatch" version)"
@@ -192,28 +194,34 @@ jobs:
           done
           test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
           sha256sum -c --strict SHA256SUMS
-          test "$(tar -tzf "windwatch-linux-amd64-v${VERSION}.tar.gz")" = "windwatch"
-          test "$(tar -tzf "windwatch-linux-arm64-v${VERSION}.tar.gz")" = "windwatch"
+          expected="$(printf 'windwatch\nTHIRD_PARTY_NOTICES.md')"
+          test "$(tar -tzf "windwatch-linux-amd64-v${VERSION}.tar.gz")" = "$expected"
+          test "$(tar -tzf "windwatch-linux-arm64-v${VERSION}.tar.gz")" = "$expected"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.39.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
+          provenance: true
           tags: |
             ghcr.io/fynhq/windwatch:latest
             ghcr.io/fynhq/windwatch:v${{ needs.check.outputs.version }}
@@ -223,6 +231,37 @@ jobs:
             BUILD_TIME=${{ needs.check.outputs.build_time }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        with:
+          cosign-release: 'v2.5.2'
+
+      - name: Sign image
+        env:
+          IMAGE: ghcr.io/fynhq/windwatch
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Verify image signature
+        env:
+          IMAGE: ghcr.io/fynhq/windwatch
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if cosign verify "${IMAGE}@${DIGEST}" \
+              --certificate-identity-regexp '^https://github\.com/fynhq/windwatch/\.github/workflows/release\.yml@refs/tags/v.*$' \
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::image signature verification failed"
+          exit 1
 
       - name: Verify image tags
         env:

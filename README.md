@@ -53,7 +53,7 @@ Open [http://localhost:8080/setup](http://localhost:8080/setup). Data and daily 
 
 The example uses host networking on Linux so monitors can reach host services such as a local proxy. On Docker Desktop, skip `chown`, comment out `network_mode: host`, uncomment the `ports` mapping, and use `host.docker.internal` instead of `127.0.0.1`. If HTTPS checks show multi-second latency there, enable the commented `GODEBUG=tlsmlkem=0`; certificate verification is unchanged.
 
-To upgrade, back up `./data`, then run `docker compose pull && docker compose up -d`. Migrations run at startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous tag or digest. The example references the published `ghcr.io/fynhq/windwatch:latest` image, which supports linux/amd64 and linux/arm64; to build locally, run `docker build -t windwatch:latest .` and set `WINDWATCH_IMAGE=windwatch:latest`. Container hardening and Docker socket options are documented in [compose.example.yaml](compose.example.yaml); mounting the socket is required for Docker monitors and grants significant control over the host.
+To upgrade, back up `./data`, then run `docker compose pull && docker compose up -d`. Migrations run at startup and are not reversible; to roll back, restore the backup and set `WINDWATCH_IMAGE` to the previous tag or digest. The example references the published `ghcr.io/fynhq/windwatch:latest` image, which supports linux/amd64 and linux/arm64; to build locally, run `docker build -t windwatch:latest .` and set `WINDWATCH_IMAGE=windwatch:latest`. Images published by the release workflow are signed with cosign keyless and include BuildKit SBOM/provenance attestations; the workflow documents the verification identity. Container hardening and Docker socket options are documented in [compose.example.yaml](compose.example.yaml); mounting the socket is required for Docker monitors and grants significant control over the host.
 
 Logs: `docker compose logs -f windwatch`.
 
@@ -61,7 +61,7 @@ Logs: `docker compose logs -f windwatch`.
 
 Standalone binaries are provided only for Linux amd64 and arm64; other platforms should use the container image. Releases publish `windwatch-linux-amd64-vX.Y.Z.tar.gz`, `windwatch-linux-arm64-vX.Y.Z.tar.gz`, and `SHA256SUMS`. Verify with `sha256sum -c --strict SHA256SUMS`, extract the archive for your architecture, and run `windwatch version`.
 
-`make dist` runs formatting, vet, and tests first, then writes both archives and `dist/SHA256SUMS`; each archive contains a single static `windwatch` binary. HTTPS checks use the system CA bundle, so minimal hosts need a `ca-certificates` package.
+`make dist` runs formatting, vet, tests, and the third-party notices freshness check first, then writes both archives and `dist/SHA256SUMS`; each archive contains the static `windwatch` binary and `THIRD_PARTY_NOTICES.md`. HTTPS checks use the system CA bundle, so minimal hosts need a `ca-certificates` package.
 
 Install with systemd (replace `X.Y.Z` with the release version):
 
@@ -146,11 +146,11 @@ make race
 make build
 ```
 
-The same checks are available directly with `gofmt -l .`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and `go build ./cmd/windwatch`; `make dist` and `make docker-build` wrap the deployment builds, and `make version` prints the current version. The code lives in `cmd/windwatch` and `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`. Tests use local fakes for HTTP, TCP, Docker, Telegram, and proxies; SQLite uses the pure-Go `modernc.org/sqlite` driver, so `CGO_ENABLED=0` builds are supported.
+The same checks are available directly with `gofmt -l .`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and `go build ./cmd/windwatch`; `make check` also verifies that `THIRD_PARTY_NOTICES.md` is current, and `make vuln` runs the pinned `govulncheck`. `make dist` and `make docker-build` wrap the deployment builds, and `make version` prints the current version. The code lives in `cmd/windwatch` and `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`. Tests use local fakes for HTTP, TCP, Docker, Telegram, and proxies; SQLite uses the pure-Go `modernc.org/sqlite` driver, so `CGO_ENABLED=0` builds are supported.
 
 ## License
 
-Released under the MIT License. See [LICENSE](LICENSE).
+Released under the MIT License. See [LICENSE](LICENSE). Third-party notices are included in release archives and container images; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
@@ -209,7 +209,7 @@ docker compose up -d
 
 示例在 Linux 上默认使用 host 网络，便于监控宿主机服务（例如本地代理）。在 Docker Desktop 上跳过 `chown`，注释掉 `network_mode: host`、取消 `ports` 映射的注释，并把 `127.0.0.1` 换成 `host.docker.internal`。如果那里 HTTPS 检查出现数秒延迟，可启用已注释的 `GODEBUG=tlsmlkem=0`；证书校验不变。
 
-升级时先备份 `./data`，再执行 `docker compose pull && docker compose up -d`。迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或 digest。示例默认引用已发布的 `ghcr.io/fynhq/windwatch:latest` 镜像，支持 linux/amd64 和 linux/arm64；本地构建可执行 `docker build -t windwatch:latest .` 并设置 `WINDWATCH_IMAGE=windwatch:latest`。容器加固和 Docker socket 选项见 [compose.example.yaml](compose.example.yaml)；Docker 监控需要挂载 socket，这会让 WindWatch 获得较高的宿主机控制权限。
+升级时先备份 `./data`，再执行 `docker compose pull && docker compose up -d`。迁移在启动时执行且不可自动回退；需要回滚时恢复备份，并把 `WINDWATCH_IMAGE` 设为升级前的版本标签或 digest。示例默认引用已发布的 `ghcr.io/fynhq/windwatch:latest` 镜像，支持 linux/amd64 和 linux/arm64；本地构建可执行 `docker build -t windwatch:latest .` 并设置 `WINDWATCH_IMAGE=windwatch:latest`。由 release workflow 发布的镜像使用 cosign keyless 签名，并带 BuildKit SBOM/provenance 证明；验证身份见 release workflow。容器加固和 Docker socket 选项见 [compose.example.yaml](compose.example.yaml)；Docker 监控需要挂载 socket，这会让 WindWatch 获得较高的宿主机控制权限。
 
 查看日志：`docker compose logs -f windwatch`。
 
@@ -217,7 +217,7 @@ docker compose up -d
 
 单文件只提供 Linux amd64 和 arm64 版本，其他平台请使用容器镜像。正式发布提供 `windwatch-linux-amd64-vX.Y.Z.tar.gz`、`windwatch-linux-arm64-vX.Y.Z.tar.gz` 和 `SHA256SUMS`。用 `sha256sum -c --strict SHA256SUMS` 校验，解压对应架构的压缩包，再用 `windwatch version` 查看版本。
 
-`make dist` 会先执行格式检查、vet 和测试，然后生成两个压缩包和 `dist/SHA256SUMS`；每个压缩包内是单个静态链接的 `windwatch` 二进制。HTTPS 检查使用系统 CA 证书，最小化系统需要安装 `ca-certificates` 包。
+`make dist` 会先执行格式检查、vet、测试和第三方许可证通知新鲜度检查，然后生成两个压缩包和 `dist/SHA256SUMS`；每个压缩包内是静态链接的 `windwatch` 二进制和 `THIRD_PARTY_NOTICES.md`。HTTPS 检查使用系统 CA 证书，最小化系统需要安装 `ca-certificates` 包。
 
 在 systemd 主机上安装（把 `X.Y.Z` 换成实际版本）：
 
@@ -302,8 +302,8 @@ make race
 make build
 ```
 
-也可以直接运行 `gofmt -l .`、`go vet ./...`、`go test ./...`、`go test -race ./...` 和 `go build ./cmd/windwatch`；`make dist` 和 `make docker-build` 负责部署构建，`make version` 输出当前版本。代码位于 `cmd/windwatch` 和 `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`。测试使用本地替身覆盖 HTTP、TCP、Docker、Telegram 和代理；SQLite 使用纯 Go 的 `modernc.org/sqlite` 驱动，因此支持 `CGO_ENABLED=0` 构建。
+也可以直接运行 `gofmt -l .`、`go vet ./...`、`go test ./...`、`go test -race ./...` 和 `go build ./cmd/windwatch`；`make check` 还会校验 `THIRD_PARTY_NOTICES.md` 是否为最新，`make vuln` 运行固定版本的 `govulncheck`。`make dist` 和 `make docker-build` 负责部署构建，`make version` 输出当前版本。代码位于 `cmd/windwatch` 和 `internal/{app,web,scheduler,checker,notify,store,i18n,proxy}`。测试使用本地替身覆盖 HTTP、TCP、Docker、Telegram 和代理；SQLite 使用纯 Go 的 `modernc.org/sqlite` 驱动，因此支持 `CGO_ENABLED=0` 构建。
 
 ## 开源协议
 
-基于 MIT 许可发布，见 [LICENSE](LICENSE)。
+基于 MIT 许可发布，见 [LICENSE](LICENSE)。第三方许可证通知随发布压缩包和容器镜像提供，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

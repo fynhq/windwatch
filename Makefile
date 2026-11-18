@@ -26,10 +26,12 @@ LDFLAGS_DEV := $(LDFLAGS_COMMON) \
 LDFLAGS_RELEASE := $(LDFLAGS_COMMON) \
 	-X github.com/fynhq/windwatch/internal/version.Version=$(VERSION_TAG)
 
-STATICCHECK_PKG ?= honnef.co/go/tools/cmd/staticcheck@latest
-ERRCHECK_PKG ?= github.com/kisielk/errcheck@latest
+STATICCHECK_PKG ?= honnef.co/go/tools/cmd/staticcheck@v0.8.2
+ERRCHECK_PKG ?= github.com/kisielk/errcheck@v1.30.0
+GOVULNCHECK_PKG ?= golang.org/x/vuln/cmd/govulncheck@v1.10.0
+NOTICES := THIRD_PARTY_NOTICES.md
 
-.PHONY: all build dist docker-build docker-up docker-down fmt fmt-check vet test race check lint cover smoke version clean
+.PHONY: all build dist docker-build docker-up docker-down fmt fmt-check vet test race check lint vuln notices notices-check cover smoke version clean
 
 all: check build
 
@@ -43,7 +45,8 @@ dist: check
 		echo "building linux/$$arch"; \
 		work="$$(mktemp -d)"; \
 		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build $(GO_BUILD_FLAGS) -ldflags '$(LDFLAGS_RELEASE)' -o "$$work/windwatch" ./cmd/windwatch; \
-		tar -C "$$work" -czf "$(DIST)/windwatch-linux-$$arch-$(VERSION_TAG).tar.gz" windwatch; \
+		cp $(NOTICES) "$$work/$(NOTICES)"; \
+		tar -C "$$work" -czf "$(DIST)/windwatch-linux-$$arch-$(VERSION_TAG).tar.gz" windwatch $(NOTICES); \
 		rm -rf "$$work"; \
 	done
 	cd $(DIST) && sha256sum windwatch-linux-amd64-$(VERSION_TAG).tar.gz windwatch-linux-arm64-$(VERSION_TAG).tar.gz > SHA256SUMS
@@ -89,6 +92,22 @@ lint:
 	go run $(STATICCHECK_PKG) ./...
 	go run $(ERRCHECK_PKG) -ignoretests -exclude .errcheck-excludes ./...
 
+vuln:
+	go run $(GOVULNCHECK_PKG) ./...
+
+notices:
+	@tmp="$$(mktemp)"; trap 'rm -f "$$tmp"' EXIT; \
+	sh scripts/gen-third-party-notices.sh > "$$tmp"; \
+	mv "$$tmp" $(NOTICES)
+
+notices-check:
+	@tmp="$$(mktemp)"; trap 'rm -f "$$tmp"' EXIT; \
+	sh scripts/gen-third-party-notices.sh > "$$tmp"; \
+	if ! diff -u $(NOTICES) "$$tmp"; then \
+		echo "$(NOTICES) is stale; run make notices" >&2; \
+		exit 1; \
+	fi
+
 cover:
 	go test -cover ./...
 
@@ -109,7 +128,7 @@ smoke:
 		*) echo "release version is missing build metadata" >&2; exit 1 ;; \
 	esac
 
-check: fmt-check vet test
+check: fmt-check vet test notices-check
 
 version:
 	@echo $(VERSION_TAG)

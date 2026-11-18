@@ -1,6 +1,6 @@
 # Do not pin the builder to BUILDPLATFORM: the fallback GOOS/GOARCH below also
 # works with the legacy Docker builder, which does not provide those ARGs.
-FROM golang:1.27.4-alpine AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -36,7 +36,7 @@ RUN set -eux; \
             -X github.com/fynhq/windwatch/internal/version.BuildTime=${BUILD_TIME}" \
         -o /out/windwatch ./cmd/windwatch
 
-FROM alpine:3.22
+FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
 
 RUN apk add --no-cache ca-certificates \
     && addgroup -g 65532 -S windwatch \
@@ -46,6 +46,7 @@ RUN apk add --no-cache ca-certificates \
     && chown 65532:65532 /data
 
 COPY --from=build --chown=65532:65532 /out/windwatch /windwatch
+COPY --chown=65532:65532 THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
 
 LABEL org.opencontainers.image.source="https://github.com/fynhq/windwatch" \
       org.opencontainers.image.licenses="MIT"
