@@ -6,6 +6,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f7f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0c0b" media="(prefers-color-scheme: dark)">
   <meta name="description" content="{{.I18n.T "meta.description"}}">
   <link rel="icon" type="image/svg+xml" href="/static/windwatch-icon.svg?v={{.AssetVersion}}">
   <link rel="apple-touch-icon" href="/static/windwatch-icon-1024.png?v={{.AssetVersion}}">
@@ -15,7 +17,7 @@
   <link rel="stylesheet" href="/static/app.css?v={{.AssetVersion}}">
   <link rel="stylesheet" href="/static/pages.css?v={{.AssetVersion}}">
 </head>
-<body class="{{if .Authenticated}}app-body{{else if .PublicView}}public-body{{else}}auth-body{{end}}{{if eq .ActiveNav "events"}} page-events{{end}}"{{if .AutoRefresh}} data-auto-refresh="30" data-refresh-target="{{if .PublicView}}status{{else}}dashboard{{end}}"{{end}}>
+<body class="{{if .Authenticated}}app-body{{else if .PublicView}}public-body{{else}}auth-body{{end}}"{{if .AutoRefresh}} data-auto-refresh="30" data-refresh-target="{{if .PublicView}}status{{else}}dashboard{{end}}"{{end}}>
 <a class="skip-link" href="#main">{{.I18n.T "common.skipToContent"}}</a>
 <div class="toast-region" data-toast-region
   data-close-label="{{.I18n.T "common.dismiss"}}"
@@ -159,12 +161,6 @@
 {{define "icon-events"}}
 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
   <path d="M3 12h4l2.2-6 4.1 12L15.5 12H21"></path>
-</svg>
-{{end}}
-
-{{define "icon-chevron"}}
-<svg class="icon settings-index-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-  <path d="M9 6l6 6-6 6"></path>
 </svg>
 {{end}}
 
