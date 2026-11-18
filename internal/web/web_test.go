@@ -61,19 +61,7 @@ func (f *fakeScheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, 
 	if f.st == nil {
 		return nil
 	}
-	if err := f.st.SetMonitorEnabled(ctx, monitorID, enabled); err != nil {
-		return err
-	}
-	now := time.Now().UTC()
-	if !enabled {
-		if err := f.st.DeleteReminderStates(ctx, monitorID); err != nil {
-			return err
-		}
-	}
-	if err := f.st.CloseOpenDownEvents(ctx, monitorID, now); err != nil {
-		return err
-	}
-	return f.st.ResetMonitorCounters(ctx, monitorID, now)
+	return f.st.SetMonitorEnabledWithReset(ctx, monitorID, enabled, time.Now().UTC())
 }
 
 type fakeNotifier struct {

@@ -131,6 +131,60 @@ func TestViewerPermissions(t *testing.T) {
 	}
 }
 
+func TestViewerDetailHidesOperationalConfig(t *testing.T) {
+	srv, st, testServer := newWebTestServer(t)
+	adminClient, _ := setupAdminSession(t, testServer)
+	hash, err := secret.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	if _, err := st.CreateUser(t.Context(), "viewer", hash, model.RoleViewer, time.Now()); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	channelID, err := st.CreateNotificationChannel(t.Context(), model.NotificationChannel{
+		Name: "Visible hook", Type: model.NotificationChannelWebhook, Enabled: true,
+		WebhookURL: "https://example.com/hook",
+	}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("CreateNotificationChannel: %v", err)
+	}
+	proxyID, err := st.CreateProxy(t.Context(), model.Proxy{
+		Name: "Visible proxy", Type: model.ProxyHTTP, Address: "127.0.0.1:8080",
+	}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("CreateProxy: %v", err)
+	}
+	id := createHTTPMonitor(t, srv, "Internal API", "https://internal.example.com/health")
+	monitor, err := st.MonitorByID(t.Context(), id)
+	if err != nil {
+		t.Fatalf("MonitorByID: %v", err)
+	}
+	monitor.NotificationChannelIDs = []int64{channelID}
+	monitor.ProxyID = &proxyID
+	if err := st.UpdateMonitor(t.Context(), monitor, time.Now().UTC()); err != nil {
+		t.Fatalf("UpdateMonitor: %v", err)
+	}
+
+	response, err := adminClient.Get(testServer.URL + "/monitors/" + strconv.FormatInt(id, 10))
+	if err != nil {
+		t.Fatalf("admin detail: %v", err)
+	}
+	body := readResponseBody(t, response)
+	if !strings.Contains(body, "Visible hook") || !strings.Contains(body, "Visible proxy") {
+		t.Fatalf("admin detail missing operational config: %s", body)
+	}
+
+	viewerClient, _ := loginAs(t, testServer.URL, "viewer", testPassword)
+	response, err = viewerClient.Get(testServer.URL + "/monitors/" + strconv.FormatInt(id, 10))
+	if err != nil {
+		t.Fatalf("viewer detail: %v", err)
+	}
+	body = readResponseBody(t, response)
+	if strings.Contains(body, "Visible hook") || strings.Contains(body, "Visible proxy") {
+		t.Fatalf("viewer detail leaked operational config: %s", body)
+	}
+}
+
 func TestPublicStatusPage(t *testing.T) {
 	srv, _, testServer := newWebTestServer(t)
 	adminClient, csrf := setupAdminSession(t, testServer)

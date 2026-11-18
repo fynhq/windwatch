@@ -17,11 +17,7 @@ var (
 	ErrInvalidRole   = errors.New("invalid role")
 )
 
-type userScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanUser(row userScanner) (model.Admin, error) {
+func scanUser(row scanner) (model.Admin, error) {
 	var (
 		user                   model.Admin
 		disabled               int
@@ -81,7 +77,7 @@ func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role str
 		VALUES (?, ?, ?, 0, ?, ?)
 	`, username, passwordHash, role, createdAt.UnixMilli(), createdAt.UnixMilli())
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		if isUniqueConstraint(err) {
 			return model.Admin{}, ErrUsernameTaken
 		}
 		return model.Admin{}, fmt.Errorf("insert user: %w", err)

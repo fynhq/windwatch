@@ -83,3 +83,12 @@ func StateNotificationLikePatterns(monitorID int64) []string {
 		NotificationKindRemindDown + ":" + id + ":%",
 	}
 }
+
+func NotificationLikePatternsForMonitor(monitorID int64) []string {
+	patterns := StateNotificationLikePatterns(monitorID)
+	id := strconv.FormatInt(monitorID, 10)
+	return append(patterns,
+		NotificationKindWarnCert+":"+id+":%",
+		NotificationKindRemindWarning+":"+id+":%",
+	)
+}

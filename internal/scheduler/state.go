@@ -6,7 +6,20 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
-func advance(monitor model.Monitor, current model.MonitorState, result model.CheckResult, at time.Time) (model.MonitorState, *model.Event, bool) {
+type transitionResult struct {
+	state          model.MonitorState
+	event          *model.Event
+	checkStatus    string
+	warningChanged bool
+	closeDown      bool
+	warningContext *string
+}
+
+func advance(monitor model.Monitor, current model.MonitorState, result model.CheckResult, at time.Time, warningActive bool, warningKey string) transitionResult {
+	previousStatus := current.Status
+	previousSince := current.StatusSince
+	previousWarningKey := current.WarningContext
+
 	next := current
 	if next.Status == "" {
 		next.Status = model.StatusPending
@@ -26,6 +39,10 @@ func advance(monitor model.Monitor, current model.MonitorState, result model.Che
 		recoverThreshold = 1
 	}
 
+	var (
+		event     *model.Event
+		closeDown bool
+	)
 	if result.Success {
 		next.ConsecutiveFailures = 0
 		next.ConsecutiveSuccesses++
@@ -36,12 +53,13 @@ func advance(monitor model.Monitor, current model.MonitorState, result model.Che
 				next.Status = model.StatusUp
 				next.StatusSince = at
 				next.LastError = ""
-				return next, &model.Event{
+				event = &model.Event{
 					MonitorID: monitor.ID,
 					Type:      model.EventUp,
 					StartedAt: at,
 					MetaJSON:  "{}",
-				}, true
+				}
+				closeDown = true
 			}
 		case next.Status == model.StatusPending || next.Status == model.StatusWarning:
 			next.Status = model.StatusUp
@@ -50,21 +68,61 @@ func advance(monitor model.Monitor, current model.MonitorState, result model.Che
 		default:
 			next.LastError = ""
 		}
-		return next, nil, false
+	} else {
+		next.ConsecutiveSuccesses = 0
+		next.ConsecutiveFailures++
+		next.LastError = result.ErrorMessage
+		if next.Status != model.StatusDown && next.ConsecutiveFailures >= failThreshold {
+			next.Status = model.StatusDown
+			next.StatusSince = at
+			event = &model.Event{
+				MonitorID: monitor.ID,
+				Type:      model.EventDown,
+				StartedAt: at,
+				MetaJSON:  "{}",
+			}
+		}
 	}
 
-	next.ConsecutiveSuccesses = 0
-	next.ConsecutiveFailures++
-	next.LastError = result.ErrorMessage
-	if next.Status != model.StatusDown && next.ConsecutiveFailures >= failThreshold {
-		next.Status = model.StatusDown
-		next.StatusSince = at
-		return next, &model.Event{
-			MonitorID: monitor.ID,
-			Type:      model.EventDown,
-			StartedAt: at,
-			MetaJSON:  "{}",
-		}, false
+	if next.Status != model.StatusDown && result.Success && warningActive && next.Status != model.StatusWarning {
+		if previousStatus == model.StatusWarning && previousWarningKey == warningKey {
+			next.StatusSince = previousSince
+		} else {
+			next.StatusSince = at
+		}
+		next.Status = model.StatusWarning
 	}
-	return next, nil, false
+
+	checkStatus := model.CheckDown
+	if result.Success {
+		checkStatus = model.CheckUp
+		if warningActive && next.Status != model.StatusDown {
+			checkStatus = model.CheckWarning
+		}
+	}
+
+	warningChanged := warningActive && next.Status == model.StatusWarning &&
+		(previousStatus != model.StatusWarning || previousWarningKey != warningKey)
+
+	var warningContext *string
+	if next.Status == model.StatusWarning && warningActive {
+		next.WarningContext = warningKey
+		value := warningKey
+		warningContext = &value
+	} else if next.Status != model.StatusWarning {
+		next.WarningContext = ""
+		if previousWarningKey != "" {
+			value := ""
+			warningContext = &value
+		}
+	}
+
+	return transitionResult{
+		state:          next,
+		event:          event,
+		checkStatus:    checkStatus,
+		warningChanged: warningChanged,
+		closeDown:      closeDown,
+		warningContext: warningContext,
+	}
 }

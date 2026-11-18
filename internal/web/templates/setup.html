@@ -7,17 +7,17 @@
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <label class="field">
       <span>{{.I18n.T "common.username"}}</span>
-      <input type="text" name="username" value="{{.Username}}" autocomplete="username" minlength="3" maxlength="64" required autofocus>
+      <input type="text" name="username" value="{{.Username}}" autocomplete="username" minlength="{{usernameMinRunes}}" maxlength="{{usernameMaxRunes}}" required autofocus>
       <small class="hint">{{.I18n.T "setup.usernameHint"}}</small>
     </label>
     <label class="field">
       <span>{{.I18n.T "common.password"}}</span>
-      <input type="password" name="password" autocomplete="new-password" minlength="10" maxlength="256" required>
+      <input type="password" name="password" autocomplete="new-password" minlength="{{passwordMinRunes}}" maxlength="{{passwordMaxRunes}}" required>
       <small class="hint">{{.I18n.T "setup.passwordHint"}}</small>
     </label>
     <label class="field">
       <span>{{.I18n.T "common.confirmPassword"}}</span>
-      <input type="password" name="password_confirm" autocomplete="new-password" minlength="10" maxlength="256" required>
+      <input type="password" name="password_confirm" autocomplete="new-password" minlength="{{passwordMinRunes}}" maxlength="{{passwordMaxRunes}}" required>
     </label>
     <button class="button button-primary" type="submit">{{.I18n.T "setup.submit"}}</button>
   </form>

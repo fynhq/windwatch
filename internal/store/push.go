@@ -65,24 +65,11 @@ func (s *Store) ReplacePushToken(ctx context.Context, monitorID int64, tokenHash
 	`, monitorID, tokenHash, tokenEnc, now.UnixMilli()); err != nil {
 		return fmt.Errorf("replace push token: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE monitor_state
-		SET status = ?,
-		    status_since_ms = ?,
-		    last_error = '',
-		    consecutive_failures = 0,
-		    consecutive_successes = 0,
-		    warning_context = '',
-		    updated_at_ms = ?
-		WHERE monitor_id = ?
-	`, model.StatusPending, now.UnixMilli(), now.UnixMilli(), monitorID); err != nil {
-		return fmt.Errorf("reset push monitor state: %w", err)
+	if err := resetMonitorToPending(ctx, tx, monitorID, now); err != nil {
+		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE events SET ended_at_ms = ?
-		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
-	`, now.UnixMilli(), monitorID, model.EventDown); err != nil {
-		return fmt.Errorf("close push monitor events: %w", err)
+	if err := closeOpenDownEvents(ctx, tx, monitorID, now); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit replace push token: %w", err)

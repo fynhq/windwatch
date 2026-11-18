@@ -160,6 +160,7 @@ type monitorDetailView struct {
 	Events            []eventRow
 	ProxyName         string
 	NotificationLabel string
+	ShowConfig        bool
 	CertEnabled       bool
 	Cert              *certificateDetailView
 	PushURL           string
@@ -982,20 +983,20 @@ func buildEventRows(translator *i18n.Translator, events []model.Event, includeMo
 func defaultFormValues() monitorFormValues {
 	policy := model.DefaultNotificationPolicy()
 	return monitorFormValues{
-		Interval:               "60",
-		Timeout:                "10",
-		FailThreshold:          "2",
-		RecoverThreshold:       "1",
+		Interval:               fmt.Sprintf("%d", model.DefaultIntervalSeconds),
+		Timeout:                fmt.Sprintf("%d", model.DefaultTimeoutSeconds),
+		FailThreshold:          fmt.Sprintf("%d", model.DefaultFailThreshold),
+		RecoverThreshold:       fmt.Sprintf("%d", model.DefaultRecoverThreshold),
 		WarningReminderCount:   fmt.Sprintf("%d", policy.WarningReminderCount),
 		WarningReminderMinutes: fmt.Sprintf("%d", int(policy.WarningReminderInterval/time.Minute)),
 		FailureReminderCount:   fmt.Sprintf("%d", policy.FailureReminderCount),
 		FailureReminderMinutes: fmt.Sprintf("%d", int(policy.FailureReminderInterval/time.Minute)),
-		Method:                 "GET",
-		ExpectedStatus:         "200-299",
-		FollowRedirects:        true,
-		CertCheck:              true,
-		CertWarnDays:           "14",
-		DockerHealthy:          true,
+		Method:                 model.DefaultHTTPMethod,
+		ExpectedStatus:         model.DefaultExpectedStatus,
+		FollowRedirects:        model.DefaultFollowRedirects,
+		CertCheck:              model.DefaultCertCheck,
+		CertWarnDays:           fmt.Sprintf("%d", model.DefaultCertWarnDays),
+		DockerHealthy:          model.DefaultDockerHealthy,
 		NotifyEnabled:          true,
 	}
 }
@@ -1012,8 +1013,8 @@ func formValuesFromMonitor(monitor model.Monitor) monitorFormValues {
 		WarningReminderMinutes: fmt.Sprintf("%d", int(policy.WarningReminderInterval/time.Minute)),
 		FailureReminderCount:   fmt.Sprintf("%d", policy.FailureReminderCount),
 		FailureReminderMinutes: fmt.Sprintf("%d", int(policy.FailureReminderInterval/time.Minute)),
-		CertWarnDays:           "14",
-		DockerHealthy:          true,
+		CertWarnDays:           fmt.Sprintf("%d", model.DefaultCertWarnDays),
+		DockerHealthy:          model.DefaultDockerHealthy,
 		NotifyEnabled:          monitor.NotifyEnabled,
 	}
 	if monitor.ProxyID != nil {

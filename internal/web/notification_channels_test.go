@@ -635,8 +635,12 @@ func TestMonitorSelectsNotificationChannels(t *testing.T) {
 	if err != nil || len(monitors) != 1 {
 		t.Fatalf("monitors=%+v err=%v", monitors, err)
 	}
-	if len(monitors[0].NotificationChannelIDs) != 1 || monitors[0].NotificationChannelIDs[0] != channelID {
-		t.Fatalf("monitor channels=%v", monitors[0].NotificationChannelIDs)
+	stored, err := st.MonitorByID(t.Context(), monitors[0].ID)
+	if err != nil {
+		t.Fatalf("MonitorByID: %v", err)
+	}
+	if len(stored.NotificationChannelIDs) != 1 || stored.NotificationChannelIDs[0] != channelID {
+		t.Fatalf("monitor channels=%v", stored.NotificationChannelIDs)
 	}
 	if !strings.Contains(body, "Ops hook") {
 		t.Fatalf("monitor detail missing notification channel: %s", body)

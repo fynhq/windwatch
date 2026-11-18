@@ -19,7 +19,7 @@
     <h2>{{.I18n.T "monitor.basicSection"}}</h2>
     <label class="field">
       <span>{{.I18n.T "monitor.name"}}</span>
-      <input type="text" name="name" value="{{.Values.Name}}" maxlength="100" required autofocus>
+      <input type="text" name="name" value="{{.Values.Name}}" maxlength="{{monitorNameMax}}" required autofocus>
     </label>
   </div>
 
@@ -28,7 +28,7 @@
     <h2>{{.I18n.T "monitor.httpSection"}}</h2>
     <label class="field">
       <span>{{.I18n.T "monitor.url"}}</span>
-      <input type="url" name="url" value="{{.Values.URL}}" maxlength="2048" placeholder="https://example.com" required>
+      <input type="url" name="url" value="{{.Values.URL}}" maxlength="{{urlMaxBytes}}" placeholder="https://example.com" required>
     </label>
   </div>
   {{end}}
@@ -39,11 +39,11 @@
     <div class="form-grid">
       <label class="field">
         <span>{{.I18n.T "monitor.host"}}</span>
-        <input type="text" name="host" value="{{.Values.Host}}" maxlength="255" placeholder="127.0.0.1" required>
+        <input type="text" name="host" value="{{.Values.Host}}" maxlength="{{tcpHostMaxBytes}}" placeholder="127.0.0.1" required>
       </label>
       <label class="field">
         <span>{{.I18n.T "monitor.port"}}</span>
-        <input type="number" name="port" value="{{.Values.Port}}" min="1" max="65535" required>
+        <input type="number" name="port" value="{{.Values.Port}}" min="{{portMin}}" max="{{portMax}}" required>
       </label>
     </div>
     <p class="hint">{{.I18n.T "monitor.tcpHint"}}</p>
@@ -55,7 +55,7 @@
     <h2>{{.I18n.T "monitor.dockerSection"}}</h2>
     <label class="field">
       <span>{{.I18n.T "monitor.container"}}</span>
-      <input type="text" name="docker_container" value="{{.Values.DockerContainer}}" maxlength="255" placeholder="my-container" required>
+      <input type="text" name="docker_container" value="{{.Values.DockerContainer}}" maxlength="{{dockerContainerMax}}" placeholder="my-container" required>
     </label>
     <p class="hint">{{.I18n.T "monitor.dockerHint"}}</p>
   </div>
@@ -73,12 +73,12 @@
     <div class="form-grid">
       <label class="field">
         <span>{{if .ShowPush}}{{.I18n.T "monitor.heartbeatInterval"}}{{else}}{{.I18n.T "monitor.interval"}}{{end}}</span>
-        <input type="number" name="interval" value="{{.Values.Interval}}" min="20" max="86400" required>
+        <input type="number" name="interval" value="{{.Values.Interval}}" min="{{intervalMin}}" max="{{intervalMax}}" required>
         <small class="hint">{{.I18n.T "monitor.intervalHint"}}</small>
       </label>
       <label class="field">
         <span>{{if .ShowPush}}{{.I18n.T "monitor.gracePeriod"}}{{else}}{{.I18n.T "monitor.timeout"}}{{end}}</span>
-        <input type="number" name="timeout" value="{{.Values.Timeout}}" min="1" max="300" required>
+        <input type="number" name="timeout" value="{{.Values.Timeout}}" min="{{timeoutMin}}" max="{{timeoutMax}}" required>
         <small class="hint">{{if .ShowPush}}{{.I18n.T "monitor.graceHint"}}{{else}}{{.I18n.T "monitor.timeoutHint"}}{{end}}</small>
       </label>
     </div>
@@ -128,13 +128,13 @@
           </label>
           <label class="field">
             <span>{{.I18n.T "monitor.expectedStatus"}}</span>
-            <input type="text" name="expected_status" value="{{.Values.ExpectedStatus}}" maxlength="20" placeholder="200-299">
+            <input type="text" name="expected_status" value="{{.Values.ExpectedStatus}}" maxlength="{{expectedStatusMaxRunes}}" placeholder="{{expectedStatusDefault}}">
           </label>
         </div>
         <p class="hint">{{.I18n.T "monitor.expectedStatusHint"}}</p>
         <label class="field">
           <span>{{.I18n.T "monitor.keyword"}}</span>
-          <input type="text" name="keyword" value="{{.Values.Keyword}}" maxlength="500">
+          <input type="text" name="keyword" value="{{.Values.Keyword}}" maxlength="{{keywordMaxRunes}}">
         </label>
         <p class="hint">{{.I18n.T "monitor.keywordHint"}}</p>
         <label class="checkbox-field">
@@ -157,7 +157,7 @@
           </label>
           <label class="field">
             <span>{{.I18n.T "monitor.certWarnDays"}}</span>
-            <input type="number" id="cert-warn-days" name="cert_warn_days" value="{{.Values.CertWarnDays}}" min="1" max="365" {{if not .Values.CertCheck}}disabled{{end}}>
+            <input type="number" id="cert-warn-days" name="cert_warn_days" value="{{.Values.CertWarnDays}}" min="{{certWarnMin}}" max="{{certWarnMax}}" {{if not .Values.CertCheck}}disabled{{end}}>
           </label>
         </div>
       </div>
@@ -178,11 +178,11 @@
         <div class="form-grid">
           <label class="field">
             <span>{{.I18n.T "monitor.failThreshold"}}</span>
-            <input type="number" name="fail_threshold" value="{{.Values.FailThreshold}}" min="1" max="20">
+            <input type="number" name="fail_threshold" value="{{.Values.FailThreshold}}" min="{{thresholdMin}}" max="{{thresholdMax}}">
           </label>
           <label class="field">
             <span>{{.I18n.T "monitor.recoverThreshold"}}</span>
-            <input type="number" name="recover_threshold" value="{{.Values.RecoverThreshold}}" min="1" max="20">
+            <input type="number" name="recover_threshold" value="{{.Values.RecoverThreshold}}" min="{{thresholdMin}}" max="{{thresholdMax}}">
           </label>
         </div>
         <p class="hint">{{.I18n.T "monitor.thresholdHint"}}</p>
@@ -194,20 +194,20 @@
         <div class="form-grid">
           <label class="field">
             <span>{{.I18n.T "notification.failureReminderCount"}}</span>
-            <input type="number" name="failure_reminder_count" min="0" max="100" value="{{.Values.FailureReminderCount}}">
+            <input type="number" name="failure_reminder_count" min="{{reminderCountMin}}" max="{{reminderCountMax}}" value="{{.Values.FailureReminderCount}}">
           </label>
           <label class="field">
             <span>{{.I18n.T "notification.failureReminderInterval"}}</span>
-            <input type="number" name="failure_reminder_interval_minutes" min="1" max="525600" value="{{.Values.FailureReminderMinutes}}">
+            <input type="number" name="failure_reminder_interval_minutes" min="{{reminderIntervalMin}}" max="{{reminderIntervalMax}}" value="{{.Values.FailureReminderMinutes}}">
           </label>
           {{if .ShowHTTP}}
           <label class="field">
             <span>{{.I18n.T "notification.warningReminderCount"}}</span>
-            <input type="number" name="warning_reminder_count" min="0" max="100" value="{{.Values.WarningReminderCount}}">
+            <input type="number" name="warning_reminder_count" min="{{reminderCountMin}}" max="{{reminderCountMax}}" value="{{.Values.WarningReminderCount}}">
           </label>
           <label class="field">
             <span>{{.I18n.T "notification.warningReminderInterval"}}</span>
-            <input type="number" name="warning_reminder_interval_minutes" min="1" max="525600" value="{{.Values.WarningReminderMinutes}}">
+            <input type="number" name="warning_reminder_interval_minutes" min="{{reminderIntervalMin}}" max="{{reminderIntervalMax}}" value="{{.Values.WarningReminderMinutes}}">
           </label>
           {{end}}
         </div>

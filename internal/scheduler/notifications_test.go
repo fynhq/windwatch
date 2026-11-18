@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"context"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -19,7 +18,6 @@ import (
 type fakeNotificationSink struct {
 	mu            sync.Mutex
 	notifications []model.Notification
-	enabled       bool
 }
 
 func (f *fakeNotificationSink) Enqueue(notification model.Notification) bool {
@@ -27,12 +25,6 @@ func (f *fakeNotificationSink) Enqueue(notification model.Notification) bool {
 	defer f.mu.Unlock()
 	f.notifications = append(f.notifications, notification)
 	return true
-}
-
-func (f *fakeNotificationSink) NotificationsEnabled(context.Context) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.enabled, nil
 }
 
 func (f *fakeNotificationSink) snapshot() []model.Notification {
@@ -60,7 +52,7 @@ func newNotificationTestScheduler(t *testing.T) (*Scheduler, *store.Store, *fake
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := New(st, checker.NewRegistry(), logger)
-	sink := &fakeNotificationSink{enabled: true}
+	sink := &fakeNotificationSink{}
 	s.SetNotifier(sink)
 	return s, st, sink, channelID
 }
@@ -288,7 +280,14 @@ func TestDisabledChannelsDoNotConsumeReminders(t *testing.T) {
 		t.Fatalf("CreateMonitor: %v", err)
 	}
 
-	sink.enabled = false
+	channel, err := st.NotificationChannelByID(t.Context(), channelID)
+	if err != nil {
+		t.Fatalf("NotificationChannelByID: %v", err)
+	}
+	channel.Enabled = false
+	if err := st.UpdateNotificationChannel(t.Context(), channel, now); err != nil {
+		t.Fatalf("disable channel: %v", err)
+	}
 	s.apply(t.Context(), outcome{
 		monitorID: id,
 		result:    model.CheckResult{Success: false, ErrorMessage: "connection refused"},
@@ -298,7 +297,10 @@ func TestDisabledChannelsDoNotConsumeReminders(t *testing.T) {
 		t.Fatalf("notifications while disabled = %d", len(sink.notifications))
 	}
 
-	sink.enabled = true
+	channel.Enabled = true
+	if err := st.UpdateNotificationChannel(t.Context(), channel, now.Add(time.Minute)); err != nil {
+		t.Fatalf("enable channel: %v", err)
+	}
 	s.apply(t.Context(), outcome{
 		monitorID: id,
 		result:    model.CheckResult{Success: false, ErrorMessage: "connection refused"},

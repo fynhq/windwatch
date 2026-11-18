@@ -119,14 +119,6 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 	return monitor, nil
 }
 
-func (s *Store) CountMonitors(ctx context.Context) (int, error) {
-	var count int
-	if err := s.reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM monitors").Scan(&count); err != nil {
-		return 0, fmt.Errorf("count monitors: %w", err)
-	}
-	return count, nil
-}
-
 func (s *Store) ListMonitors(ctx context.Context) ([]model.Monitor, error) {
 	rows, err := s.reader().QueryContext(ctx, monitorSelect+" ORDER BY m.id ASC")
 	if err != nil {
@@ -149,17 +141,25 @@ func (s *Store) ListMonitors(ctx context.Context) ([]model.Monitor, error) {
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close monitors: %w", err)
 	}
-	if err := s.attachNotificationChannels(ctx, monitors); err != nil {
-		return nil, err
-	}
 	return monitors, nil
 }
 
 func (s *Store) MonitorByID(ctx context.Context, id int64) (model.Monitor, error) {
+	return s.monitorByID(ctx, id, true)
+}
+
+func (s *Store) MonitorConfigByID(ctx context.Context, id int64) (model.Monitor, error) {
+	return s.monitorByID(ctx, id, false)
+}
+
+func (s *Store) monitorByID(ctx context.Context, id int64, withChannels bool) (model.Monitor, error) {
 	row := s.reader().QueryRowContext(ctx, monitorSelect+" WHERE m.id = ?", id)
 	monitor, err := scanMonitor(row)
 	if err != nil {
 		return model.Monitor{}, err
+	}
+	if !withChannels {
+		return monitor, nil
 	}
 	monitors := []model.Monitor{monitor}
 	if err := s.attachNotificationChannels(ctx, monitors); err != nil {
@@ -196,9 +196,6 @@ func (s *Store) MonitorsByIDs(ctx context.Context, ids []int64) ([]model.Monitor
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close monitors by ids: %w", err)
-	}
-	if err := s.attachNotificationChannels(ctx, monitors); err != nil {
-		return nil, err
 	}
 	return monitors, nil
 }
@@ -429,21 +426,6 @@ func insertMonitorNotificationChannels(ctx context.Context, tx *sql.Tx, monitorI
 	return nil
 }
 
-func (s *Store) SetMonitorEnabled(ctx context.Context, id int64, enabled bool) error {
-	result, err := s.db.ExecContext(ctx, "UPDATE monitors SET enabled = ? WHERE id = ?", boolInt(enabled), id)
-	if err != nil {
-		return fmt.Errorf("set monitor enabled: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("set monitor enabled rows: %w", err)
-	}
-	if affected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64, enabled bool, at time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -461,47 +443,27 @@ func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64,
 	if _, err := tx.ExecContext(ctx, "UPDATE monitors SET enabled = ? WHERE id = ?", boolInt(enabled), monitorID); err != nil {
 		return fmt.Errorf("set monitor enabled: %w", err)
 	}
-	now := at.UTC().UnixMilli()
+	now := at.UTC()
 	if !enabled {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM notification_reminders WHERE monitor_id = ?", monitorID); err != nil {
 			return fmt.Errorf("clear reminder states after pause: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE events SET ended_at_ms = ?
-		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
-	`, now, monitorID, model.EventDown); err != nil {
-		return fmt.Errorf("close open down events after toggle: %w", err)
+	if err := closeOpenDownEvents(ctx, tx, monitorID, now); err != nil {
+		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE monitor_state
-		SET consecutive_failures = 0,
-		    consecutive_successes = 0,
-		    status_since_ms = CASE WHEN status IN (?, ?) THEN ? ELSE status_since_ms END,
-		    updated_at_ms = ?
-		WHERE monitor_id = ?
-	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
-		return fmt.Errorf("reset monitor counters after toggle: %w", err)
+	if err := resetMonitorCounters(ctx, tx, monitorID, now); err != nil {
+		return err
 	}
 	if enabled {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE monitor_state
-			SET status = ?,
-			    status_since_ms = ?,
-			    last_error = '',
-			    consecutive_failures = 0,
-			    consecutive_successes = 0,
-			    warning_context = '',
-			    updated_at_ms = ?
-			WHERE monitor_id = ? AND status IN (?, ?)
-		`, model.StatusPending, now, now, monitorID, model.StatusDown, model.StatusWarning); err != nil {
-			return fmt.Errorf("set monitor pending after resume: %w", err)
+		if err := resetActiveEpisode(ctx, tx, monitorID, now); err != nil {
+			return err
 		}
 		if monitorType == model.MonitorTypePush {
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE push_tokens SET last_heartbeat_ms = ?
 				WHERE monitor_id = ? AND last_heartbeat_ms IS NOT NULL
-			`, now, monitorID); err != nil {
+			`, now.UnixMilli(), monitorID); err != nil {
 				return fmt.Errorf("reset push heartbeat after resume: %w", err)
 			}
 		}
@@ -513,7 +475,13 @@ func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64,
 }
 
 func (s *Store) DeleteMonitor(ctx context.Context, id int64) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM monitors WHERE id = ?", id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin monitor deletion: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, "DELETE FROM monitors WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete monitor: %w", err)
 	}
@@ -523,6 +491,27 @@ func (s *Store) DeleteMonitor(ctx context.Context, id int64) error {
 	}
 	if affected == 0 {
 		return ErrNotFound
+	}
+
+	patterns := model.NotificationLikePatternsForMonitor(id)
+	args := make([]any, 0, len(patterns))
+	query := "DELETE FROM notify_log WHERE status = 'pending' AND ("
+	for index, pattern := range patterns {
+		if index > 0 {
+			query += " OR "
+		}
+		query += "dedupe_key LIKE ?"
+		args = append(args, pattern)
+	}
+	query += ")"
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("delete pending monitor notifications: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM notification_outbox WHERE monitor_id = ?", id); err != nil {
+		return fmt.Errorf("delete monitor notification outbox: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit monitor deletion: %w", err)
 	}
 	return nil
 }
@@ -736,7 +725,7 @@ func (s *Store) RecentCheckSummaries(ctx context.Context, monitorID int64, limit
 		SELECT monitor_id, checked_at_ms, status, latency_ms
 		FROM checks
 		WHERE monitor_id = ?
-		ORDER BY checked_at_ms DESC
+		ORDER BY checked_at_ms DESC, id DESC
 		LIMIT ?
 	`, monitorID, limit)
 	if err != nil {
@@ -765,55 +754,23 @@ func (s *Store) RecentCheckSummaries(ctx context.Context, monitorID int64, limit
 }
 
 func (s *Store) CloseOpenDownEvents(ctx context.Context, monitorID int64, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE events SET ended_at_ms = ?
-		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
-	`, at.UTC().UnixMilli(), monitorID, model.EventDown); err != nil {
-		return fmt.Errorf("close open down events: %w", err)
-	}
-	return nil
+	return closeOpenDownEvents(ctx, s.db, monitorID, at)
 }
 
 func (s *Store) ResetMonitorCounters(ctx context.Context, monitorID int64, at time.Time) error {
-	now := at.UTC().UnixMilli()
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE monitor_state
-		SET consecutive_failures = 0,
-		    consecutive_successes = 0,
-		    status_since_ms = CASE WHEN status IN (?, ?) THEN ? ELSE status_since_ms END,
-		    updated_at_ms = ?
-		WHERE monitor_id = ?
-	`, model.StatusWarning, model.StatusDown, now, now, monitorID); err != nil {
-		return fmt.Errorf("reset monitor counters: %w", err)
-	}
-	return nil
+	return resetMonitorCounters(ctx, s.db, monitorID, at)
 }
 
 func (s *Store) EnsureOpenDownEvent(ctx context.Context, monitorID int64, at time.Time, message string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin open down event: %w", err)
-	}
-	defer tx.Rollback()
-
-	var open int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM events
-		WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
-	`, monitorID, model.EventDown).Scan(&open); err != nil {
-		return fmt.Errorf("count open down events: %w", err)
-	}
-	if open > 0 {
-		return nil
-	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO events (monitor_id, type, message, started_at_ms, meta_json)
-		VALUES (?, ?, ?, ?, '{}')
-	`, monitorID, model.EventDown, message, at.UTC().UnixMilli()); err != nil {
+		SELECT ?, ?, ?, ?, '{}'
+		WHERE NOT EXISTS (
+			SELECT 1 FROM events
+			WHERE monitor_id = ? AND type = ? AND ended_at_ms IS NULL
+		)
+	`, monitorID, model.EventDown, message, at.UTC().UnixMilli(), monitorID, model.EventDown); err != nil {
 		return fmt.Errorf("open down event: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit open down event: %w", err)
 	}
 	return nil
 }

@@ -72,6 +72,11 @@ func (l *pushLimiter) pruneLocked(now time.Time) {
 			delete(l.ipWindow, key)
 		}
 	}
+	for key, last := range l.last {
+		if now.Sub(last) >= pushIPWindowDuration {
+			delete(l.last, key)
+		}
+	}
 }
 
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +100,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	monitor, err := s.store.MonitorByID(r.Context(), pushToken.MonitorID)
+	monitor, err := s.store.MonitorConfigByID(r.Context(), pushToken.MonitorID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && (monitor.Type != model.MonitorTypePush || !monitor.Enabled)) {
 		http.NotFound(w, r)
 		return

@@ -36,6 +36,7 @@ func BenchmarkAdvance(b *testing.B) {
 		if i%2 == 1 {
 			result = failure
 		}
-		benchState, benchEvent, benchClose = advance(monitor, state, result, at)
+		transition := advance(monitor, state, result, at, false, "")
+		benchState, benchEvent, benchClose = transition.state, transition.event, transition.closeDown
 	}
 }

@@ -65,7 +65,7 @@ func (s *Scheduler) processReminders(
 
 	contextKey := ""
 	if currentKind == reminderKindWarning {
-		contextKey = warningReminderContext(monitor, result)
+		contextKey = warningContextKey(monitor, result)
 	}
 	state, found, err := s.store.ReminderState(ctx, monitor.ID, currentKind)
 	if err != nil {
@@ -90,10 +90,6 @@ func (s *Scheduler) processReminders(
 	if state.SentCount >= count || checkedAt.UnixMilli() < state.NextAt.UnixMilli() {
 		return
 	}
-	if !s.notificationsAvailable(ctx) {
-		return
-	}
-
 	sequence := state.SentCount + 1
 	downtimeStart := nextState.StatusSince
 	if currentKind == reminderKindDown {
@@ -148,7 +144,7 @@ func (s *Scheduler) buildReminderNotification(
 	return notification
 }
 
-func warningReminderContext(monitor model.Monitor, result model.CheckResult) string {
+func warningContextKey(monitor model.Monitor, result model.CheckResult) string {
 	if monitor.HTTP == nil || result.Certificate == nil {
 		return "warning"
 	}

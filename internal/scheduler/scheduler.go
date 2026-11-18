@@ -21,6 +21,7 @@ var (
 	ErrNotStarted   = errors.New("scheduler is not started")
 	ErrAlreadyStart = errors.New("scheduler is already started")
 	ErrCheckRunning = errors.New("a check is already running for this monitor")
+	ErrReloadFailed = errors.New("scheduler reload failed")
 )
 
 const (
@@ -38,10 +39,6 @@ const (
 
 type NotificationSink interface {
 	Enqueue(notification model.Notification) bool
-}
-
-type notificationAvailability interface {
-	NotificationsEnabled(ctx context.Context) (bool, error)
 }
 
 type outcome struct {
@@ -189,7 +186,7 @@ func (s *Scheduler) Reload(monitorID int64) error {
 	if err != nil {
 		return err
 	}
-	monitor, err := s.store.MonitorByID(runCtx, monitorID)
+	monitor, err := s.store.MonitorConfigByID(runCtx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
 		s.stopRunner(monitorID)
 		s.mu.Lock()
@@ -222,7 +219,11 @@ func (s *Scheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enab
 		return fmt.Errorf("set monitor enabled: %w", err)
 	}
 	if err := s.Reload(monitorID); err != nil {
+		if errors.Is(err, ErrNotStarted) {
+			return nil
+		}
 		s.log.Warn("reload scheduler after toggle", "monitor_id", monitorID, "error", err)
+		return fmt.Errorf("%w: %v", ErrReloadFailed, err)
 	}
 	return nil
 }
@@ -350,7 +351,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		s.mu.Unlock()
 	}()
 
-	monitor, err := s.store.MonitorByID(ctx, monitorID)
+	monitor, err := s.store.MonitorConfigByID(ctx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
 		return
 	}
@@ -394,7 +395,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 
 	failureStartedAt := time.Time{}
 	if !result.Success {
-		if latest, loadErr := s.store.MonitorByID(ctx, monitorID); loadErr == nil {
+		if latest, loadErr := s.store.MonitorConfigByID(ctx, monitorID); loadErr == nil {
 			monitor.State = latest.State
 		}
 	}
@@ -601,7 +602,7 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		s.log.Debug("discarding stale check result", "monitor_id", job.monitorID, "generation", job.generation)
 		return
 	}
-	monitor, err := s.store.MonitorByID(ctx, job.monitorID)
+	monitor, err := s.store.MonitorConfigByID(ctx, job.monitorID)
 	if errors.Is(err, store.ErrNotFound) {
 		return
 	}
@@ -616,7 +617,6 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 
 	previousStatus := monitor.State.Status
 	previousSince := monitor.State.StatusSince
-	previousWarningKey := monitor.State.WarningContext
 	downStartedAt := time.Time{}
 	if !job.result.Success && previousStatus != model.StatusDown &&
 		monitor.State.ConsecutiveFailures+1 >= failedThreshold(monitor) {
@@ -626,38 +626,33 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 			downStartedAt = job.failureStartedAt
 		}
 	}
-	aux := s.auxiliaryWarning(ctx, monitor, job.result)
-	warning := job.result.Success && aux.active
+	warningActive := false
 	warningKey := ""
-	if warning {
-		warningKey = warningReminderContext(monitor, job.result)
+	if job.result.Success && s.auxiliaryWarning(monitor, job.result).active {
+		warningActive = true
+		warningKey = warningContextKey(monitor, job.result)
 	}
-	nextState, event, closeDown := advance(monitor, monitor.State, job.result, job.checkedAt)
+	transition := advance(monitor, monitor.State, job.result, job.checkedAt, warningActive, warningKey)
+	nextState := transition.state
+	event := transition.event
 	if event != nil && event.Type == model.EventDown && !downStartedAt.IsZero() {
 		event.StartedAt = downStartedAt
 	}
-	if nextState.Status != model.StatusDown && job.result.Success {
-		if warning && nextState.Status != model.StatusWarning {
-			if previousStatus == model.StatusWarning && previousWarningKey == warningKey {
-				nextState.StatusSince = previousSince
-			} else {
-				nextState.StatusSince = job.checkedAt
-			}
-			nextState.Status = model.StatusWarning
-		}
-	}
-
-	checkStatus := model.CheckDown
-	if job.result.Success {
-		checkStatus = model.CheckUp
-		if warning && nextState.Status != model.StatusDown {
-			checkStatus = model.CheckWarning
+	notificationDataAvailable := true
+	if (event != nil || transition.warningChanged || warningActive || nextState.Status == model.StatusDown) &&
+		s.notifier != nil && monitor.NotifyEnabled {
+		channels, err := s.store.EnabledNotificationChannelIDsForMonitor(ctx, monitor.ID)
+		if err != nil {
+			notificationDataAvailable = false
+			s.log.Warn("load enabled notification channels", "monitor_id", monitor.ID, "error", err)
+		} else {
+			monitor.EnabledNotificationChannelIDs = channels
 		}
 	}
 	check := model.Check{
 		MonitorID:    monitor.ID,
 		CheckedAt:    job.checkedAt,
-		Status:       checkStatus,
+		Status:       transition.checkStatus,
 		Latency:      job.result.Latency,
 		HTTPStatus:   job.result.HTTPStatus,
 		ErrorKind:    job.result.ErrorKind,
@@ -679,12 +674,9 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		outageStart = s.outageStart(ctx, monitor.ID, previousSince, job.checkedAt)
 	}
 
-	warningChanged := warning && nextState.Status == model.StatusWarning &&
-		(previousStatus != model.StatusWarning || previousWarningKey != warningKey)
 	notificationReady := false
-	if event != nil || warningChanged {
-		notificationReady = monitor.Enabled && monitorNotificationsEnabled(monitor) &&
-			s.notifier != nil && s.notificationsAvailable(ctx)
+	if event != nil || transition.warningChanged {
+		notificationReady = monitor.Enabled && monitorNotificationsEnabled(monitor) && s.notifier != nil
 	}
 	notifications := make([]model.Notification, 0, 2)
 	if event != nil && notificationReady {
@@ -711,20 +703,11 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		}
 		notifications = append(notifications, notification)
 	}
-	if warningChanged && notificationReady {
+	if transition.warningChanged && notificationReady {
 		notifications = append(notifications, s.warningNotification(monitor, job.result, nextState, job.checkedAt))
 	}
 
-	var warningContext *string
-	if nextState.Status == model.StatusWarning && warning {
-		value := warningKey
-		warningContext = &value
-	} else if nextState.Status != model.StatusWarning && previousWarningKey != "" {
-		value := ""
-		warningContext = &value
-	}
-
-	if err := s.store.RecordCheckWithNotifications(ctx, check, nextState, event, closeDown, notifications, warningContext); err != nil {
+	if err := s.store.RecordCheckWithNotifications(ctx, check, nextState, event, transition.closeDown, notifications, transition.warningContext); err != nil {
 		s.log.Error("record check", "monitor_id", monitor.ID, "error", err)
 		return
 	}
@@ -738,7 +721,9 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	}
 	s.wakeNotifications(notifications)
 
-	s.processReminders(ctx, monitor, job.result, warning, nextState, previousStatus, job.checkedAt)
+	if notificationDataAvailable {
+		s.processReminders(ctx, monitor, job.result, warningActive, nextState, previousStatus, job.checkedAt)
+	}
 }
 
 func (s *Scheduler) wakeNotifications(notifications []model.Notification) {
@@ -826,19 +811,6 @@ func rollupStart(now, last time.Time, hasLast bool) time.Time {
 	return now.Add(-rawRetention).Truncate(30 * time.Minute)
 }
 
-func (s *Scheduler) notificationsAvailable(ctx context.Context) bool {
-	provider, ok := s.notifier.(notificationAvailability)
-	if !ok {
-		return true
-	}
-	enabled, err := provider.NotificationsEnabled(ctx)
-	if err != nil {
-		s.log.Warn("check notification availability", "error", err)
-		return false
-	}
-	return enabled
-}
-
 func truncateErrorText(value string) string {
 	return model.TruncateText(value, 512)
 }
@@ -847,7 +819,7 @@ type auxWarning struct {
 	active bool
 }
 
-func (s *Scheduler) auxiliaryWarning(_ context.Context, monitor model.Monitor, result model.CheckResult) auxWarning {
+func (s *Scheduler) auxiliaryWarning(monitor model.Monitor, result model.CheckResult) auxWarning {
 	if !result.Success || monitor.HTTP == nil {
 		return auxWarning{}
 	}

@@ -11,11 +11,11 @@
       <div class="form-grid">
         <label class="field">
           <span>{{.I18n.T "public.pageTitle"}}</span>
-          <input type="text" name="public_status_title" value="{{.PublicStatus.Title}}" maxlength="100" placeholder="{{.I18n.T "public.titleDefault"}}">
+          <input type="text" name="public_status_title" value="{{.PublicStatus.Title}}" maxlength="{{publicTitleMaxRunes}}" placeholder="{{.I18n.T "public.titleDefault"}}">
         </label>
         <label class="field">
           <span>{{.I18n.T "public.pageDescription"}}</span>
-          <input type="text" name="public_status_description" value="{{.PublicStatus.Description}}" maxlength="500" placeholder="{{.I18n.T "public.descriptionDefault"}}">
+          <input type="text" name="public_status_description" value="{{.PublicStatus.Description}}" maxlength="{{publicDescriptionMax}}" placeholder="{{.I18n.T "public.descriptionDefault"}}">
         </label>
       </div>
       <fieldset class="field-group" id="public-monitor-fields" {{if not .PublicStatus.Enabled}}disabled{{end}}>

@@ -165,13 +165,13 @@ func buildMonitorFromValues(monitorType model.MonitorType, values monitorFormVal
 	case model.MonitorTypeHTTP:
 		method := strings.ToUpper(strings.TrimSpace(values.Method))
 		if method == "" {
-			method = http.MethodGet
+			method = model.DefaultHTTPMethod
 		}
 		expectedStatus := strings.TrimSpace(values.ExpectedStatus)
 		if expectedStatus == "" {
-			expectedStatus = "200-299"
+			expectedStatus = model.DefaultExpectedStatus
 		}
-		certWarnDays := 14
+		certWarnDays := model.DefaultCertWarnDays
 		if strings.TrimSpace(values.CertWarnDays) != "" {
 			certWarnDays, err = strconv.Atoi(values.CertWarnDays)
 			if err != nil || certWarnDays < model.MinCertWarnDays || certWarnDays > model.MaxCertWarnDays {
@@ -287,13 +287,6 @@ func (s *Server) handleMonitorCreate(w http.ResponseWriter, r *http.Request, aut
 		return
 	}
 	values := parseFormValues(r)
-	count, countErr := s.store.CountMonitors(r.Context())
-	if countErr != nil {
-		s.log.Error("count monitors", "error", countErr)
-	} else if count >= model.MaxMonitors {
-		s.renderMonitorFormError(w, r, auth, 0, monitorType, values, "error.monitorLimit")
-		return
-	}
 	base := model.Monitor{Enabled: true, NotifyEnabled: true}
 	monitor, err := buildMonitorFromValues(monitorType, values, base)
 	if err != nil {
@@ -359,7 +352,7 @@ func (s *Server) handleMonitorPushToken(w http.ResponseWriter, r *http.Request, 
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
-	monitor, err := s.store.MonitorByID(r.Context(), id)
+	monitor, err := s.store.MonitorConfigByID(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
 		return
@@ -475,7 +468,7 @@ func (s *Server) handleMonitorUpdate(w http.ResponseWriter, r *http.Request, aut
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
-	existing, err := s.store.MonitorByID(r.Context(), id)
+	existing, err := s.store.MonitorConfigByID(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
 		return
@@ -521,7 +514,7 @@ func (s *Server) handleMonitorCheck(w http.ResponseWriter, r *http.Request, auth
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
-	monitor, err := s.store.MonitorByID(r.Context(), id)
+	monitor, err := s.store.MonitorConfigByID(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
 		return
@@ -555,7 +548,7 @@ func (s *Server) handleMonitorToggle(w http.ResponseWriter, r *http.Request, aut
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
-	monitor, err := s.store.MonitorByID(r.Context(), id)
+	monitor, err := s.store.MonitorConfigByID(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
 		return
@@ -567,6 +560,11 @@ func (s *Server) handleMonitorToggle(w http.ResponseWriter, r *http.Request, aut
 
 	enabled := !monitor.Enabled
 	if err := s.scheduler.SetMonitorEnabled(r.Context(), id, enabled); err != nil {
+		if errors.Is(err, scheduler.ErrReloadFailed) {
+			s.log.Warn("toggle applied but scheduler reload failed", "monitor_id", id, "error", err)
+			http.Redirect(w, r, fmt.Sprintf("/monitors/%d?notice=scheduler_reload_failed", id), http.StatusSeeOther)
+			return
+		}
 		s.log.Error("toggle monitor", "monitor_id", id, "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -614,7 +612,11 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
 		return
 	}
-	monitor, err := s.store.MonitorByID(r.Context(), id)
+	loadMonitor := s.store.MonitorConfigByID
+	if auth.Admin.IsAdmin() {
+		loadMonitor = s.store.MonitorByID
+	}
+	monitor, err := loadMonitor(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		s.renderError(w, r, http.StatusNotFound, "error.monitorNotFound")
 		return
@@ -686,10 +688,13 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 }
 
 func (s *Server) populateMonitorExtras(r *http.Request, view *monitorDetailView, translator *i18n.Translator, location *time.Location, monitor model.Monitor, now time.Time, isAdmin bool) {
-	view.NotificationLabel = s.monitorNotificationLabel(r, translator, monitor)
-	if monitor.ProxyID != nil {
-		if proxy, err := s.store.ProxyByID(r.Context(), *monitor.ProxyID); err == nil {
-			view.ProxyName = proxy.Name
+	view.ShowConfig = isAdmin
+	if isAdmin {
+		view.NotificationLabel = s.monitorNotificationLabel(r, translator, monitor)
+		if monitor.ProxyID != nil {
+			if proxy, err := s.store.ProxyByID(r.Context(), *monitor.ProxyID); err == nil {
+				view.ProxyName = proxy.Name
+			}
 		}
 	}
 	if monitor.HTTP != nil {

@@ -197,14 +197,6 @@ func (s *Store) uptimeStatsForMonitorsCombinedWithLast(ctx context.Context, moni
 	return result, nil
 }
 
-func (s *Store) UptimeStatsForMonitorCombined(ctx context.Context, monitorID int64, since, now time.Time) (model.UptimeStats, error) {
-	stats, err := s.UptimeStatsForMonitorsCombined(ctx, []int64{monitorID}, since, now)
-	if err != nil {
-		return model.UptimeStats{}, err
-	}
-	return stats[monitorID], nil
-}
-
 func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, source model.UptimeStats) {
 	current := target[monitorID]
 	total := current.Total + source.Total
@@ -217,14 +209,6 @@ func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, sourc
 	current.Warning += source.Warning
 	current.Down += source.Down
 	target[monitorID] = current
-}
-
-func (s *Store) DailyBucketsForTimezone(ctx context.Context, monitorID int64, since, before time.Time, location *time.Location) ([]model.HourBucket, error) {
-	result, err := s.DailyBucketsForMonitors(ctx, []int64{monitorID}, since, before, location)
-	if err != nil {
-		return nil, err
-	}
-	return result[monitorID], nil
 }
 
 func (s *Store) DailyBucketsForMonitors(ctx context.Context, monitorIDs []int64, since, before time.Time, location *time.Location) (map[int64][]model.HourBucket, error) {

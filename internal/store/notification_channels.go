@@ -73,14 +73,6 @@ func (s *Store) NotificationChannelByID(ctx context.Context, id int64) (model.No
 	return scanNotificationChannel(s.reader().QueryRowContext(ctx, notificationChannelSelect+" WHERE id = ?", id))
 }
 
-func (s *Store) EnabledNotificationChannelCount(ctx context.Context) (int, error) {
-	var count int
-	if err := s.reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM notification_channels WHERE enabled = 1").Scan(&count); err != nil {
-		return 0, fmt.Errorf("count notification channels: %w", err)
-	}
-	return count, nil
-}
-
 func (s *Store) CreateNotificationChannel(ctx context.Context, channel model.NotificationChannel, now time.Time) (int64, error) {
 	if err := channel.Validate(); err != nil {
 		return 0, err
@@ -154,10 +146,10 @@ func (s *Store) DeleteNotificationChannel(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *Store) LinkNotificationChannelToUnlinkedMonitors(ctx context.Context, channelID int64) ([]int64, error) {
+func (s *Store) LinkNotificationChannelToUnlinkedMonitors(ctx context.Context, channelID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("begin notification channel linking: %w", err)
+		return fmt.Errorf("begin notification channel linking: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -171,70 +163,47 @@ func (s *Store) LinkNotificationChannelToUnlinkedMonitors(ctx context.Context, c
 		ORDER BY m.id ASC
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("list unlinked monitors: %w", err)
+		return fmt.Errorf("list unlinked monitors: %w", err)
 	}
 	var ids []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("scan unlinked monitor: %w", err)
+			return fmt.Errorf("scan unlinked monitor: %w", err)
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return nil, fmt.Errorf("iterate unlinked monitors: %w", err)
+		return fmt.Errorf("iterate unlinked monitors: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close unlinked monitors: %w", err)
+		return fmt.Errorf("close unlinked monitors: %w", err)
 	}
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO monitor_notifications (monitor_id, channel_id) VALUES (?, ?)
 		`, id, channelID); err != nil {
-			return nil, fmt.Errorf("link notification channel: %w", err)
+			return fmt.Errorf("link notification channel: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit notification channel linking: %w", err)
+		return fmt.Errorf("commit notification channel linking: %w", err)
 	}
-	return ids, nil
+	return nil
 }
 
-func (s *Store) MonitorIDsForNotificationChannel(ctx context.Context, channelID int64) ([]int64, error) {
-	rows, err := s.reader().QueryContext(ctx, `
-		SELECT monitor_id FROM monitor_notifications WHERE channel_id = ? ORDER BY monitor_id ASC
-	`, channelID)
-	if err != nil {
-		return nil, fmt.Errorf("list monitors for notification channel: %w", err)
-	}
-	defer rows.Close()
-
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan monitor for notification channel: %w", err)
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate monitors for notification channel: %w", err)
-	}
-	return ids, nil
-}
-
-func (s *Store) NotificationChannelIDsForMonitor(ctx context.Context, monitorID int64) ([]int64, error) {
+func (s *Store) EnabledNotificationChannelIDsForMonitor(ctx context.Context, monitorID int64) ([]int64, error) {
 	rows, err := s.reader().QueryContext(ctx, `
 		SELECT mn.channel_id
 		FROM monitor_notifications mn
 		JOIN notification_channels c ON c.id = mn.channel_id
-		WHERE mn.monitor_id = ?
+		WHERE mn.monitor_id = ? AND c.enabled = 1
 		ORDER BY mn.channel_id ASC
 	`, monitorID)
 	if err != nil {
-		return nil, fmt.Errorf("list monitor notification channels: %w", err)
+		return nil, fmt.Errorf("list enabled notification channels: %w", err)
 	}
 	defer rows.Close()
 
@@ -242,12 +211,12 @@ func (s *Store) NotificationChannelIDsForMonitor(ctx context.Context, monitorID 
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan monitor notification channel: %w", err)
+			return nil, fmt.Errorf("scan enabled notification channel: %w", err)
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate monitor notification channels: %w", err)
+		return nil, fmt.Errorf("iterate enabled notification channels: %w", err)
 	}
 	return ids, nil
 }

@@ -117,8 +117,7 @@ func Negotiate(cookie, acceptLanguage string) string {
 
 	bestLang := ""
 	bestQuality := -1.0
-	bestOrder := 0
-	for index, part := range strings.Split(acceptLanguage, ",") {
+	for _, part := range strings.Split(acceptLanguage, ",") {
 		fields := strings.Split(part, ";")
 		tag := strings.TrimSpace(fields[0])
 		quality := 1.0
@@ -140,10 +139,9 @@ func Negotiate(cookie, acceptLanguage string) string {
 		if !ok {
 			continue
 		}
-		if quality > bestQuality || (quality == bestQuality && bestLang != "" && index < bestOrder) {
+		if bestLang == "" || quality > bestQuality {
 			bestLang = lang
 			bestQuality = quality
-			bestOrder = index
 		}
 	}
 	if bestLang != "" {

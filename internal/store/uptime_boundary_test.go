@@ -7,7 +7,7 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
-func TestUptimeStatsForMonitorCombinedSevenDayBoundary(t *testing.T) {
+func TestUptimeStatsCombinedSevenDayBoundary(t *testing.T) {
 	st, err := Open(t.TempDir() + "/boundary.db")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -48,18 +48,20 @@ func TestUptimeStatsForMonitorCombinedSevenDayBoundary(t *testing.T) {
 		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
 	}
 
-	stats30, err := st.UptimeStatsForMonitorCombined(t.Context(), id, now.Add(-30*24*time.Hour), now)
+	stats30Map, err := st.UptimeStatsForMonitorsCombined(t.Context(), []int64{id}, now.Add(-30*24*time.Hour), now)
 	if err != nil {
 		t.Fatalf("30d combined stats: %v", err)
 	}
+	stats30 := stats30Map[id]
 	if stats30.Total != 2 {
 		t.Fatalf("30d total = %d, want 2 (boundary bucket must not be counted twice)", stats30.Total)
 	}
 
-	stats7, err := st.UptimeStatsForMonitorCombined(t.Context(), id, now.Add(-7*24*time.Hour), now)
+	stats7Map, err := st.UptimeStatsForMonitorsCombined(t.Context(), []int64{id}, now.Add(-7*24*time.Hour), now)
 	if err != nil {
 		t.Fatalf("7d combined stats: %v", err)
 	}
+	stats7 := stats7Map[id]
 	if stats7.Total != 1 {
 		t.Fatalf("7d total = %d, want 1 (only the check after the exact 7d start)", stats7.Total)
 	}

@@ -308,27 +308,6 @@ func TestNotificationClientIgnoresEnvironmentProxy(t *testing.T) {
 	}
 }
 
-func TestNotificationsEnabled(t *testing.T) {
-	service, st := testNotifyService(t)
-	enabled, err := service.NotificationsEnabled(t.Context())
-	if err != nil || enabled {
-		t.Fatalf("enabled=%v err=%v", enabled, err)
-	}
-	channel := createTestChannel(t, service, st, "Disabled", model.NotificationChannelTelegram, "111", "", "token", false)
-	enabled, err = service.NotificationsEnabled(t.Context())
-	if err != nil || enabled {
-		t.Fatalf("disabled channel enabled=%v err=%v", enabled, err)
-	}
-	channel.Enabled = true
-	if err := st.UpdateNotificationChannel(t.Context(), channel, time.Now().UTC()); err != nil {
-		t.Fatalf("UpdateNotificationChannel: %v", err)
-	}
-	enabled, err = service.NotificationsEnabled(t.Context())
-	if err != nil || !enabled {
-		t.Fatalf("enabled=%v err=%v", enabled, err)
-	}
-}
-
 func TestRecoveryDoesNotBlockNewNotifications(t *testing.T) {
 	service, st := testNotifyService(t)
 	slowStarted := make(chan struct{})

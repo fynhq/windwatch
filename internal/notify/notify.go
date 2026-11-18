@@ -40,7 +40,6 @@ type Service struct {
 	wg              sync.WaitGroup
 	telegramBaseURL string
 
-	retryDelays      []time.Duration
 	retrySchedule    func(completed int) time.Duration
 	retryMaxAge      time.Duration
 	retryMaxAttempts int
@@ -59,7 +58,6 @@ func New(st *store.Store, cipher *secret.Cipher, catalogs *i18n.Catalogs, logger
 		log:              logger,
 		wake:             make(chan struct{}, 1),
 		telegramBaseURL:  "https://api.telegram.org",
-		retryDelays:      []time.Duration{time.Second, 5 * time.Second},
 		retrySchedule:    defaultRetryDelay,
 		retryMaxAge:      time.Hour,
 		retryMaxAttempts: 24,
@@ -122,21 +120,13 @@ func (s *Service) Wake() {
 	}
 }
 
-func (s *Service) NotificationsEnabled(ctx context.Context) (bool, error) {
-	count, err := s.store.EnabledNotificationChannelCount(ctx)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
 func (s *Service) dispatch(ctx context.Context, notification model.Notification) error {
 	config, err := LoadConfig(ctx, s.store)
 	if err != nil {
 		s.log.Error("load notification settings", "error", err)
 		return err
 	}
-	channelIDs, err := s.store.NotificationChannelIDsForMonitor(ctx, notification.MonitorID)
+	channelIDs, err := s.store.EnabledNotificationChannelIDsForMonitor(ctx, notification.MonitorID)
 	if err != nil {
 		s.log.Error("load monitor notification channels", "monitor_id", notification.MonitorID, "error", err)
 		return err
@@ -276,9 +266,7 @@ func (s *Service) sendTelegramNotification(ctx context.Context, channel model.No
 			s.recordFailure(ctx, entry, err)
 			continue
 		}
-		sendErr := s.retry(ctx, func() error {
-			return s.postTelegram(ctx, client, token, chatID, text)
-		})
+		sendErr := s.postTelegram(ctx, client, token, chatID, text)
 		cleanup()
 		if sendErr != nil {
 			s.log.Warn("notification send failed", "channel", channel.Type, "channel_id", channel.ID, "target", chatID, "dedupe_key", dedupeKey, "error", sendErr)
@@ -304,9 +292,7 @@ func (s *Service) sendTelegramText(ctx context.Context, channel model.Notificati
 		if err != nil {
 			return err
 		}
-		sendErr := s.retry(ctx, func() error {
-			return s.postTelegram(ctx, client, token, chatID, text)
-		})
+		sendErr := s.postTelegram(ctx, client, token, chatID, text)
 		cleanup()
 		if sendErr != nil && firstErr == nil {
 			firstErr = sendErr
@@ -402,9 +388,7 @@ func (s *Service) sendWebhook(ctx context.Context, channel model.NotificationCha
 }
 
 func (s *Service) sendWebhookBody(ctx context.Context, channel model.NotificationChannel, body []byte) error {
-	return s.retry(ctx, func() error {
-		return s.sendWebhookAttempt(ctx, channel, body)
-	})
+	return s.sendWebhookAttempt(ctx, channel, body)
 }
 
 func (s *Service) sendWebhookAttempt(ctx context.Context, channel model.NotificationChannel, body []byte) error {
@@ -766,40 +750,6 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 		return date.Sub(now)
 	}
 	return 0
-}
-
-func (s *Service) retry(ctx context.Context, operation func() error) error {
-	delays := s.retryDelays
-	var last error
-	for attempt := 0; attempt <= len(delays); attempt++ {
-		if err := operation(); err == nil {
-			return nil
-		} else {
-			last = err
-			var permanent permanentError
-			if errors.As(err, &permanent) {
-				return err
-			}
-		}
-		if attempt >= len(delays) {
-			break
-		}
-		delay := delays[attempt]
-		var retryAfter retryAfterError
-		if errors.As(last, &retryAfter) && retryAfter.wait > 0 {
-			delay = retryAfter.wait
-			if delay > maxRetryAfter {
-				delay = maxRetryAfter
-			}
-		}
-		s.log.Warn("notification send retry", "attempt", attempt+2, "delay", delay.String(), "error", last)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(delay):
-		}
-	}
-	return last
 }
 
 func formatTime(value time.Time, location *time.Location) string {

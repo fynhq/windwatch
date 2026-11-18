@@ -267,7 +267,7 @@ func (s *Store) CreateFirstAdmin(ctx context.Context, username, passwordHash str
 		username, passwordHash, model.RoleAdmin, createdAt.UnixMilli(), createdAt.UnixMilli(),
 	)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		if isUniqueConstraint(err) {
 			return model.Admin{}, ErrAdminExists
 		}
 		return model.Admin{}, fmt.Errorf("insert administrator: %w", err)

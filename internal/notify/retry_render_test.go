@@ -49,28 +49,6 @@ func TestParseRetryAfter(t *testing.T) {
 	}
 }
 
-func TestRetryHonorsRetryAfter(t *testing.T) {
-	service, _ := testNotifyService(t)
-	attempts := 0
-	started := time.Now()
-	err := service.retry(context.Background(), func() error {
-		attempts++
-		if attempts == 1 {
-			return retryAfterError{wait: 20 * time.Millisecond}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("retry: %v", err)
-	}
-	if attempts != 2 {
-		t.Fatalf("attempts = %d, want 2", attempts)
-	}
-	if elapsed := time.Since(started); elapsed < 15*time.Millisecond {
-		t.Fatalf("retry_after was not honored: %s", elapsed)
-	}
-}
-
 func TestPendingRecovery(t *testing.T) {
 	service, st := testNotifyService(t)
 	var (

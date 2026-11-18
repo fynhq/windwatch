@@ -116,7 +116,7 @@ curl -fsS https://windwatch.example.com/api/push/REPLACE_WITH_TOKEN
 
 WindWatch notifies on `DOWN`, recovery, and certificate expiry warnings. Add methods under **Settings → Notifications**; names must be unique. Telegram methods use a bot token plus admin chat IDs. Webhooks support Generic, DingTalk, WeCom, and Feishu; Generic sends versioned JSON containing the event type, monitor status and identity, message, text, and timestamp, and can be signed, while DingTalk and Feishu support their platform signature parameters. Each method has its own optional proxy, notification language, and **Test** action. Each monitor chooses its methods and repeat reminders; turning notifications off keeps the selection but pauses delivery.
 
-Delivery is attempted up to three times, then queued and retried with a longer backoff for up to about one hour. State alerts keep their order per monitor, method, and target; duplicate events are deduplicated; non-retryable errors fail immediately. **Settings → Delivery log** shows the last 100 attempts for 365 days. Notification language is independent of the UI language.
+Delivery is attempted once immediately; retryable failures are queued and retried with a longer backoff for up to about one hour. State alerts keep their order per monitor, method, and target; duplicate events are deduplicated; non-retryable errors fail immediately. **Settings → Delivery log** shows the last 100 attempts for 365 days. Notification language is independent of the UI language.
 
 ## Operations
 
@@ -124,7 +124,7 @@ Delivery is attempted up to three times, then queued and retried with a longer b
 
 **Timezone** — choose an IANA timezone under **Settings → General** (default `UTC`). It controls displayed timestamps, notification times, and daily chart boundaries; storage remains UTC.
 
-**Accounts** — the first account created at `/setup` is an administrator. Administrators manage monitors, proxies, notifications, users, and the public page. Viewers can sign in and inspect dashboards, details, and events, but cannot change configuration or see Push tokens. At least one active administrator must remain; disabling an account or resetting its password invalidates its sessions. Resetting a password from the web UI keeps a disabled account disabled; the offline recovery command re-enables it. There is no self-registration, email invitation, or OIDC.
+**Accounts** — the first account created at `/setup` is an administrator. Administrators manage monitors, proxies, notifications, users, and the public page. Viewers can sign in and inspect dashboards, details, and events, but cannot change configuration or see Push tokens, notification channel names, or proxy names. At least one active administrator must remain; disabling an account or resetting its password invalidates its sessions. Resetting a password from the web UI keeps a disabled account disabled; the offline recovery command re-enables it. There is no self-registration, email invitation, or OIDC.
 
 **Public status page** — enable it under **Settings → Public page**, set a title and description, and select monitors. `/status` requires no login, refreshes every 30 seconds, shows only names, types, statuses, and 24h/7d/30d/90d uptime, and is marked `noindex, nofollow`. Disabling it returns 404.
 
@@ -136,7 +136,7 @@ windwatch reset-password --data-dir /var/lib/windwatch
 
 The command prompts for a new password without echoing it; `--password-stdin` supports scripts, and `--username NAME` selects an account when several exist. It re-enables the account, replaces the password hash, and invalidates all of its sessions.
 
-**Reverse proxies and security** — the built-in server speaks HTTP only; terminate TLS with a reverse proxy such as Caddy, Nginx, or Traefik. WindWatch trusts `X-Forwarded-*` only when the direct peer is listed in `WINDWATCH_TRUSTED_PROXIES`; list only proxy addresses you control, never client networks. The effective client address is used for login rate limiting, and the forwarded scheme and host for Secure cookies and the Push URL. Run one instance per data directory, under an unprivileged user with write access only to the data directory, and keep the directory and `secret.key` unreadable by others. The heartbeat URL is a bearer token. Viewers can see monitor targets, certificate details, and events. `/healthz` reports process and database health plus the build version; it does not probe the scheduler, so `windwatch healthcheck` suits systemd or container checks. Do not expose the admin panel anonymously.
+**Reverse proxies and security** — the built-in server speaks HTTP only; terminate TLS with a reverse proxy such as Caddy, Nginx, or Traefik. WindWatch trusts `X-Forwarded-*` only when the direct peer is listed in `WINDWATCH_TRUSTED_PROXIES`; list only proxy addresses you control, never client networks. The effective client address is used for login rate limiting, and the forwarded scheme and host for Secure cookies and the Push URL. Run one instance per data directory, under an unprivileged user with write access only to the data directory, and keep the directory and `secret.key` unreadable by others. The heartbeat URL is a bearer token. Viewers can see monitor targets, certificate details, and events, but not notification or proxy configuration. `/healthz` reports process and database health plus the build version; it does not probe the scheduler, so `windwatch healthcheck` suits systemd or container checks. Do not expose the admin panel anonymously.
 
 ## Development
 
@@ -272,7 +272,7 @@ curl -fsS https://windwatch.example.com/api/push/REPLACE_WITH_TOKEN
 
 WindWatch 在 `DOWN`、恢复和证书临期时发送通知。通知方式在**设置 → 通知**中添加，名称不能重复。Telegram 使用 Bot Token 加管理员 Chat ID；Webhook 支持通用、钉钉、企微和飞书，通用格式发送包含事件类型、监控状态和标识、消息、文本和时间戳的版本化 JSON，并可签名，钉钉和飞书使用平台的时间戳与签名字段。每种方式独立配置可选代理、通知语言和**测试**按钮。每个监控选择自己的通知方式和重复提醒；关闭通知开关会暂停发送，但保留选择。
 
-发送最多即时尝试三次，仍失败的可重试错误会保留并在后台按更长退避重试，最长约 1 小时。同一监控、通知方式和目标的状态告警保持顺序；重复事件按方式和目标去重；不可重试错误立即标记失败。**设置 → 发送记录**显示最近 100 条投递记录，保留 365 天。通知语言独立于界面语言。
+发送先立即尝试一次，仍失败的可重试错误会保留并在后台按更长退避重试，最长约 1 小时。同一监控、通知方式和目标的状态告警保持顺序；重复事件按方式和目标去重；不可重试错误立即标记失败。**设置 → 发送记录**显示最近 100 条投递记录，保留 365 天。通知语言独立于界面语言。
 
 ## 运维
 
@@ -280,7 +280,7 @@ WindWatch 在 `DOWN`、恢复和证书临期时发送通知。通知方式在**�
 
 **时区**：在**设置 → 常规**中选择 IANA 时区（默认 `UTC`），它控制界面时间、通知时间和日图边界；存储仍使用 UTC。
 
-**账号**：在 `/setup` 创建的第一个账号是管理员。管理员管理监控、代理、通知、用户和公开页。观察者可以登录并查看仪表盘、详情和事件，但不能修改配置，也看不到 Push Token。系统始终至少保留一个启用的管理员；停用账号或重置密码会让该账号的会话失效。在后台重置密码不会重新启用已停用账号，离线恢复命令会重新启用。不支持自助注册、邮件邀请或 OIDC。
+**账号**：在 `/setup` 创建的第一个账号是管理员。管理员管理监控、代理、通知、用户和公开页。观察者可以登录并查看仪表盘、详情和事件，但不能修改配置，也看不到 Push Token、通知方式名称或代理名称。系统始终至少保留一个启用的管理员；停用账号或重置密码会让该账号的会话失效。在后台重置密码不会重新启用已停用账号，离线恢复命令会重新启用。不支持自助注册、邮件邀请或 OIDC。
 
 **公开状态页**：在**设置 → 公开页**中启用、填写标题和说明并选择监控。`/status` 无需登录，每 30 秒刷新，只展示名称、类型、状态和 24h/7d/30d/90d 可用率，并标记 `noindex, nofollow`；关闭后返回 404。
 
@@ -292,7 +292,7 @@ windwatch reset-password --data-dir /var/lib/windwatch
 
 命令会隐藏输入并提示新密码；脚本可用 `--password-stdin`，存在多个账号时用 `--username NAME` 指定。重置会重新启用账号、替换密码哈希并注销它的全部会话。
 
-**反向代理与安全**：内置服务只提供 HTTP，请用 Caddy、Nginx 或 Traefik 等反向代理终止 TLS。只有直接来源位于 `WINDWATCH_TRUSTED_PROXIES` 中时，WindWatch 才信任 `X-Forwarded-*`；只列出你控制的代理地址，不要填写客户端网段。有效客户端地址用于登录限流，转发协议和主机用于 Secure Cookie 和 Push URL。一个数据目录只运行一个实例，并使用只对数据目录有写权限的非特权用户；数据目录和 `secret.key` 不应被其他用户读取。心跳 URL 是 bearer token。观察者可以查看监控目标、证书信息和事件。`/healthz` 报告进程、数据库状态和构建版本；它不检查调度器是否卡死，systemd 或容器健康检查请使用 `windwatch healthcheck`。不要在未认证的情况下暴露管理后台。
+**反向代理与安全**：内置服务只提供 HTTP，请用 Caddy、Nginx 或 Traefik 等反向代理终止 TLS。只有直接来源位于 `WINDWATCH_TRUSTED_PROXIES` 中时，WindWatch 才信任 `X-Forwarded-*`；只列出你控制的代理地址，不要填写客户端网段。有效客户端地址用于登录限流，转发协议和主机用于 Secure Cookie 和 Push URL。一个数据目录只运行一个实例，并使用只对数据目录有写权限的非特权用户；数据目录和 `secret.key` 不应被其他用户读取。心跳 URL 是 bearer token。观察者可以查看监控目标、证书信息和事件，但看不到通知方式或代理配置。`/healthz` 报告进程、数据库状态和构建版本；它不检查调度器是否卡死，systemd 或容器健康检查请使用 `windwatch healthcheck`。不要在未认证的情况下暴露管理后台。
 
 ## 开发
 

@@ -60,7 +60,7 @@
       <div class="form-grid">
         <label class="field">
           <span>{{.I18n.T "proxy.name"}}</span>
-          <input type="text" name="name" value="{{.ProxyForm.Name}}" maxlength="100" required autofocus>
+          <input type="text" name="name" value="{{.ProxyForm.Name}}" maxlength="{{proxyNameMaxRunes}}" required autofocus>
         </label>
         <label class="field">
           <span>{{.I18n.T "proxy.type"}}</span>

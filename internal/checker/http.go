@@ -132,7 +132,7 @@ func (c *httpChecker) Check(ctx context.Context, request Request) (model.CheckRe
 	cfg := *monitor.HTTP
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method == "" {
-		method = http.MethodGet
+		method = model.DefaultHTTPMethod
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimSpace(cfg.URL), nil)

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/fynhq/windwatch/internal/i18n"
 	"github.com/fynhq/windwatch/internal/model"
 	"github.com/fynhq/windwatch/internal/secret"
 	"github.com/fynhq/windwatch/internal/store"
@@ -280,7 +281,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, auth mo
 			LastCheckAgo:   formatRelativeTime(translator, now, monitor.State.LastCheck),
 			LastCheckTitle: formatTime(translator, monitor.State.LastCheck, data.Location),
 			LastLatency:    lastLatency,
-			IntervalLabel:  translator.Tf("dashboard.checkEvery", formatInterval(monitor.Interval)),
+			IntervalLabel:  translator.Tf("dashboard.checkEvery", i18n.FormatDuration(translator, monitor.Interval)),
 			Uptime24:       formatPercent(stats.Up+stats.Warning, stats.Total),
 			Bars:           buildCheckBars(translator, checks, 24, data.Location),
 			BarsSummary:    summarizeChecks(translator, checks, 24),

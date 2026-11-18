@@ -64,29 +64,83 @@ func TestAdvanceStateMachine(t *testing.T) {
 	monitor := model.Monitor{ID: 7, FailThreshold: 2, RecoverThreshold: 2}
 	state := model.MonitorState{Status: model.StatusPending, StatusSince: at}
 
-	state, event, closeDown := advance(monitor, state, model.CheckResult{Success: true}, at)
-	if state.Status != model.StatusUp || event != nil || closeDown {
-		t.Fatalf("pending success state=%+v event=%+v close=%v", state, event, closeDown)
+	transition := advance(monitor, state, model.CheckResult{Success: true}, at, false, "")
+	if transition.state.Status != model.StatusUp || transition.event != nil || transition.closeDown {
+		t.Fatalf("pending success state=%+v event=%+v close=%v", transition.state, transition.event, transition.closeDown)
 	}
 
-	state, event, closeDown = advance(monitor, state, model.CheckResult{Success: false, ErrorMessage: "first"}, at.Add(time.Minute))
-	if state.Status != model.StatusUp || state.ConsecutiveFailures != 1 || event != nil || closeDown {
-		t.Fatalf("first failure state=%+v event=%+v close=%v", state, event, closeDown)
+	state = transition.state
+	transition = advance(monitor, state, model.CheckResult{Success: false, ErrorMessage: "first"}, at.Add(time.Minute), false, "")
+	if transition.state.Status != model.StatusUp || transition.state.ConsecutiveFailures != 1 || transition.event != nil || transition.closeDown {
+		t.Fatalf("first failure state=%+v event=%+v close=%v", transition.state, transition.event, transition.closeDown)
 	}
 
-	state, event, closeDown = advance(monitor, state, model.CheckResult{Success: false, ErrorMessage: "second"}, at.Add(2*time.Minute))
-	if state.Status != model.StatusDown || state.ConsecutiveFailures != 2 || event == nil || event.Type != model.EventDown || closeDown {
-		t.Fatalf("second failure state=%+v event=%+v close=%v", state, event, closeDown)
+	state = transition.state
+	transition = advance(monitor, state, model.CheckResult{Success: false, ErrorMessage: "second"}, at.Add(2*time.Minute), false, "")
+	if transition.state.Status != model.StatusDown || transition.state.ConsecutiveFailures != 2 || transition.event == nil || transition.event.Type != model.EventDown || transition.closeDown {
+		t.Fatalf("second failure state=%+v event=%+v close=%v", transition.state, transition.event, transition.closeDown)
 	}
 
-	state, event, closeDown = advance(monitor, state, model.CheckResult{Success: true}, at.Add(3*time.Minute))
-	if state.Status != model.StatusDown || state.ConsecutiveSuccesses != 1 || event != nil || closeDown {
-		t.Fatalf("first recovery state=%+v event=%+v close=%v", state, event, closeDown)
+	state = transition.state
+	transition = advance(monitor, state, model.CheckResult{Success: true}, at.Add(3*time.Minute), false, "")
+	if transition.state.Status != model.StatusDown || transition.state.ConsecutiveSuccesses != 1 || transition.event != nil || transition.closeDown {
+		t.Fatalf("first recovery state=%+v event=%+v close=%v", transition.state, transition.event, transition.closeDown)
 	}
 
-	state, event, closeDown = advance(monitor, state, model.CheckResult{Success: true}, at.Add(4*time.Minute))
-	if state.Status != model.StatusUp || state.ConsecutiveSuccesses != 2 || event == nil || event.Type != model.EventUp || !closeDown {
-		t.Fatalf("second recovery state=%+v event=%+v close=%v", state, event, closeDown)
+	state = transition.state
+	transition = advance(monitor, state, model.CheckResult{Success: true}, at.Add(4*time.Minute), false, "")
+	if transition.state.Status != model.StatusUp || transition.state.ConsecutiveSuccesses != 2 || transition.event == nil || transition.event.Type != model.EventUp || !transition.closeDown {
+		t.Fatalf("second recovery state=%+v event=%+v close=%v", transition.state, transition.event, transition.closeDown)
+	}
+}
+
+func TestAdvanceWarningTransitions(t *testing.T) {
+	at := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	monitor := model.Monitor{ID: 9, FailThreshold: 2, RecoverThreshold: 1}
+	state := model.MonitorState{Status: model.StatusPending, StatusSince: at}
+	success := model.CheckResult{Success: true}
+
+	transition := advance(monitor, state, success, at, true, "cert:abc")
+	if transition.state.Status != model.StatusWarning || transition.checkStatus != model.CheckWarning ||
+		!transition.warningChanged || transition.warningContext == nil || *transition.warningContext != "cert:abc" {
+		t.Fatalf("enter warning = %+v", transition)
+	}
+	if transition.state.StatusSince != at {
+		t.Fatalf("warning status since = %s, want %s", transition.state.StatusSince, at)
+	}
+
+	transition = advance(monitor, transition.state, success, at.Add(time.Minute), true, "cert:abc")
+	if transition.state.Status != model.StatusWarning || transition.warningChanged ||
+		transition.state.StatusSince != at || transition.warningContext == nil {
+		t.Fatalf("same warning episode = %+v", transition)
+	}
+
+	transition = advance(monitor, transition.state, model.CheckResult{Success: false, ErrorMessage: "boom"}, at.Add(2*time.Minute), false, "")
+	if transition.state.Status != model.StatusWarning || transition.checkStatus != model.CheckDown ||
+		transition.warningChanged || transition.warningContext != nil {
+		t.Fatalf("warning with failed check = %+v", transition)
+	}
+
+	transition = advance(monitor, transition.state, success, at.Add(3*time.Minute), true, "cert:abc")
+	if transition.state.Status != model.StatusWarning || transition.warningChanged || transition.state.StatusSince != at {
+		t.Fatalf("warning after subthreshold failure = %+v", transition)
+	}
+
+	transition = advance(monitor, transition.state, success, at.Add(4*time.Minute), false, "")
+	if transition.state.Status != model.StatusUp || transition.warningContext == nil || *transition.warningContext != "" {
+		t.Fatalf("warning cleared = %+v", transition)
+	}
+}
+
+func TestAdvanceRecoveryWithWarning(t *testing.T) {
+	at := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	monitor := model.Monitor{ID: 10, FailThreshold: 1, RecoverThreshold: 1}
+	state := model.MonitorState{Status: model.StatusDown, StatusSince: at.Add(-time.Minute), LastError: "boom"}
+	transition := advance(monitor, state, model.CheckResult{Success: true}, at, true, "cert:abc")
+	if transition.state.Status != model.StatusWarning || transition.checkStatus != model.CheckWarning ||
+		transition.event == nil || transition.event.Type != model.EventUp || !transition.closeDown ||
+		!transition.warningChanged || transition.state.StatusSince != at {
+		t.Fatalf("recovery with warning = %+v", transition)
 	}
 }
 
@@ -119,11 +173,11 @@ func TestAuxiliaryWarnings(t *testing.T) {
 		Success:     true,
 		Certificate: &model.CertificateInfo{NotAfter: time.Now().Add(10 * 24 * time.Hour)},
 	}
-	if !s.auxiliaryWarning(t.Context(), monitor, result).active {
+	if !s.auxiliaryWarning(monitor, result).active {
 		t.Fatal("expected certificate warning")
 	}
 	result.Certificate = &model.CertificateInfo{NotAfter: time.Now().Add(90 * 24 * time.Hour)}
-	if s.auxiliaryWarning(t.Context(), monitor, result).active {
+	if s.auxiliaryWarning(monitor, result).active {
 		t.Fatal("did not expect a warning")
 	}
 }

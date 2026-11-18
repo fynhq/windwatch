@@ -58,7 +58,6 @@ func TestStateNotificationMonitorID(t *testing.T) {
 
 func TestFailedNotificationIsScheduledAndRetried(t *testing.T) {
 	service, st := testNotifyService(t)
-	service.retryDelays = nil
 	service.retrySchedule = func(int) time.Duration { return 0 }
 	service.retryMaxAttempts = 3
 	service.retryMaxAge = time.Hour
@@ -110,7 +109,6 @@ func TestFailedNotificationIsScheduledAndRetried(t *testing.T) {
 
 func TestFailedDownRetainsOrderBeforeUp(t *testing.T) {
 	service, st := testNotifyService(t)
-	service.retryDelays = nil
 	service.retrySchedule = func(int) time.Duration { return 0 }
 	service.retryMaxAttempts = 3
 	service.retryMaxAge = time.Hour
@@ -182,7 +180,6 @@ func TestFailedDownRetainsOrderBeforeUp(t *testing.T) {
 
 func TestNotificationRetryStopsAtAttemptLimit(t *testing.T) {
 	service, st := testNotifyService(t)
-	service.retryDelays = nil
 	service.retrySchedule = func(int) time.Duration { return 0 }
 	service.retryMaxAttempts = 2
 	service.retryMaxAge = time.Hour
@@ -212,7 +209,6 @@ func TestNotificationRetryStopsAtAttemptLimit(t *testing.T) {
 
 func TestPermanentNotificationFailureIsNotRetried(t *testing.T) {
 	service, st := testNotifyService(t)
-	service.retryDelays = nil
 	service.retrySchedule = func(int) time.Duration { return 0 }
 	service.retryMaxAttempts = 3
 	service.retryMaxAge = time.Hour
@@ -237,9 +233,29 @@ func TestPermanentNotificationFailureIsNotRetried(t *testing.T) {
 	}
 }
 
+func TestRetryAfterSchedulesNotificationBackoff(t *testing.T) {
+	service, st := testNotifyService(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "20")
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	channel := createTestChannel(t, service, st, "RetryAfter hook", model.NotificationChannelWebhook, "", server.URL, "", true)
+	monitorID := createTestMonitor(t, st, channel.ID)
+	service.dispatch(t.Context(), notificationForMonitor(monitorID, time.Now().UTC()))
+
+	entry := latestNotification(t, st)
+	if entry.Status != "pending" || entry.Attempts != 1 {
+		t.Fatalf("notification after 429 = status %q attempts %d", entry.Status, entry.Attempts)
+	}
+	if gap := entry.NextAttemptAt.Sub(entry.CreatedAt); gap < 19*time.Second || gap > 21*time.Second {
+		t.Fatalf("retry after gap = %s, want about 20s", gap)
+	}
+}
+
 func TestBlockedRetryYieldsBatchToDueRows(t *testing.T) {
 	service, st := testNotifyService(t)
-	service.retryDelays = nil
 	service.retrySchedule = func(int) time.Duration { return 10 * time.Second }
 	service.retryMaxAttempts = 3
 	service.retryMaxAge = time.Hour

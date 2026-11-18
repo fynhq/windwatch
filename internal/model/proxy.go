@@ -12,8 +12,9 @@ import (
 type ProxyType string
 
 const (
-	ProxyHTTP   ProxyType = "http"
-	ProxySOCKS5 ProxyType = "socks5"
+	ProxyHTTP          ProxyType = "http"
+	ProxySOCKS5        ProxyType = "socks5"
+	MaxProxyNameLength           = 100
 )
 
 type Proxy struct {
@@ -34,7 +35,7 @@ var (
 )
 
 func (p Proxy) Validate() error {
-	if strings.TrimSpace(p.Name) == "" || utf8.RuneCountInString(strings.TrimSpace(p.Name)) > 100 {
+	if strings.TrimSpace(p.Name) == "" || utf8.RuneCountInString(strings.TrimSpace(p.Name)) > MaxProxyNameLength {
 		return ErrProxyName
 	}
 	if p.Type != ProxyHTTP && p.Type != ProxySOCKS5 {

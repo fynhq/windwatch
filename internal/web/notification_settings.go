@@ -266,14 +266,8 @@ func (s *Server) handleNotificationChannelCreate(w http.ResponseWriter, r *http.
 		return
 	}
 	if len(existingChannels) == 0 {
-		linked, linkErr := s.store.LinkNotificationChannelToUnlinkedMonitors(r.Context(), createdID)
-		if linkErr != nil {
-			s.log.Warn("link new notification channel to existing monitors", "channel_id", createdID, "error", linkErr)
-		}
-		for _, monitorID := range linked {
-			if err := s.scheduler.Reload(monitorID); err != nil {
-				s.log.Warn("reload scheduler after notification channel create", "monitor_id", monitorID, "error", err)
-			}
+		if err := s.store.LinkNotificationChannelToUnlinkedMonitors(r.Context(), createdID); err != nil {
+			s.log.Warn("link new notification channel to existing monitors", "channel_id", createdID, "error", err)
 		}
 	}
 	http.Redirect(w, r, "/settings/notifications?notice=notification_channel_created", http.StatusSeeOther)
@@ -327,21 +321,10 @@ func (s *Server) handleNotificationChannelDelete(w http.ResponseWriter, r *http.
 	if !s.authorizedPost(w, r, auth) {
 		return
 	}
-	monitorIDs, err := s.store.MonitorIDsForNotificationChannel(r.Context(), id)
-	if err != nil {
-		s.log.Error("list monitors for notification channel", "channel_id", id, "error", err)
-		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
-		return
-	}
 	if err := s.store.DeleteNotificationChannel(r.Context(), id); err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.log.Error("delete notification channel", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
-	}
-	for _, monitorID := range monitorIDs {
-		if err := s.scheduler.Reload(monitorID); err != nil {
-			s.log.Warn("reload scheduler after notification channel delete", "monitor_id", monitorID, "error", err)
-		}
 	}
 	http.Redirect(w, r, "/settings/notifications?notice=notification_channel_deleted", http.StatusSeeOther)
 }

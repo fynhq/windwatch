@@ -238,7 +238,7 @@ func TestWarningIsNotRepeatedAfterRestart(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	first := New(st, checker.NewRegistry(), logger)
-	firstSink := &fakeNotificationSink{enabled: true}
+	firstSink := &fakeNotificationSink{}
 	first.SetNotifier(firstSink)
 	cert := &model.CertificateInfo{Fingerprint: "restart-fp", Issuer: "CA", NotAfter: now.Add(2 * time.Hour)}
 	first.apply(t.Context(), outcome{
@@ -255,7 +255,7 @@ func TestWarningIsNotRepeatedAfterRestart(t *testing.T) {
 	}
 
 	second := New(st, checker.NewRegistry(), logger)
-	secondSink := &fakeNotificationSink{enabled: true}
+	secondSink := &fakeNotificationSink{}
 	second.SetNotifier(secondSink)
 	second.apply(t.Context(), outcome{
 		monitorID: id,

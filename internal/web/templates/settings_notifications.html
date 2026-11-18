@@ -66,7 +66,7 @@
       <div class="form-grid">
         <label class="field is-wide">
           <span>{{.I18n.T "notification.channelName"}}</span>
-          <input type="text" name="name" value="{{.ChannelForm.Name}}" maxlength="100" required autofocus>
+          <input type="text" name="name" value="{{.ChannelForm.Name}}" maxlength="{{notificationNameMaxRunes}}" required autofocus>
           <small class="hint">{{.I18n.T "notification.channelNameHint"}}</small>
         </label>
         <label class="field{{if ne .ChannelForm.Type "webhook"}} is-wide{{end}}" data-channel-type-field>

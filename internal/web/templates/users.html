@@ -76,11 +76,11 @@
       {{if $.Error}}<p class="alert alert-error">{{$.Error}}</p>{{end}}
       <label class="field">
         <span>{{$.I18n.T "users.newPassword"}}</span>
-        <input type="password" name="password" minlength="10" maxlength="256" required autocomplete="new-password" autofocus>
+        <input type="password" name="password" minlength="{{passwordMinRunes}}" maxlength="{{passwordMaxRunes}}" required autocomplete="new-password" autofocus>
       </label>
       <label class="field">
         <span>{{$.I18n.T "users.passwordConfirm"}}</span>
-        <input type="password" name="password_confirm" minlength="10" maxlength="256" required autocomplete="new-password">
+        <input type="password" name="password_confirm" minlength="{{passwordMinRunes}}" maxlength="{{passwordMaxRunes}}" required autocomplete="new-password">
       </label>
     </div>
     <div class="dialog-actions">
@@ -106,7 +106,7 @@
       <div class="form-grid">
         <label class="field">
           <span>{{.I18n.T "users.username"}}</span>
-          <input type="text" name="username" value="{{.Values.Username}}" minlength="3" maxlength="64" required autocomplete="off" autofocus>
+          <input type="text" name="username" value="{{.Values.Username}}" minlength="{{usernameMinRunes}}" maxlength="{{usernameMaxRunes}}" required autocomplete="off" autofocus>
         </label>
         <label class="field">
           <span>{{.I18n.T "users.role"}}</span>
@@ -118,11 +118,11 @@
         </label>
         <label class="field">
           <span>{{.I18n.T "users.password"}}</span>
-          <input type="password" name="password" minlength="10" maxlength="256" required autocomplete="new-password">
+          <input type="password" name="password" minlength="{{passwordMinRunes}}" maxlength="{{passwordMaxRunes}}" required autocomplete="new-password">
         </label>
         <label class="field">
           <span>{{.I18n.T "users.passwordConfirm"}}</span>
-          <input type="password" name="password_confirm" minlength="10" maxlength="256" required autocomplete="new-password">
+          <input type="password" name="password_confirm" minlength="{{passwordMinRunes}}" maxlength="{{passwordMaxRunes}}" required autocomplete="new-password">
         </label>
       </div>
     </div>

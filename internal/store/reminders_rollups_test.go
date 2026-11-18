@@ -269,10 +269,11 @@ func TestHalfHourlyRollupTimezoneAggregation(t *testing.T) {
 		t.Fatalf("AggregateHalfHourlyRollups: %v", err)
 	}
 
-	daily, err := st.DailyBucketsForTimezone(t.Context(), id, localDay, localDay.AddDate(0, 0, 1), location)
+	dailyByMonitor, err := st.DailyBucketsForMonitors(t.Context(), []int64{id}, localDay, localDay.AddDate(0, 0, 1), location)
 	if err != nil {
-		t.Fatalf("DailyBucketsForTimezone: %v", err)
+		t.Fatalf("DailyBucketsForMonitors: %v", err)
 	}
+	daily := dailyByMonitor[id]
 	if len(daily) != 1 || daily[0].Total != 2 || daily[0].Up != 2 {
 		t.Fatalf("Shanghai daily buckets = %+v", daily)
 	}
@@ -280,10 +281,11 @@ func TestHalfHourlyRollupTimezoneAggregation(t *testing.T) {
 		t.Fatalf("daily start = %s, want %s", daily[0].Start, dayStartUTC)
 	}
 
-	utcDaily, err := st.DailyBucketsForTimezone(t.Context(), id, localDay, localDay.AddDate(0, 0, 1), time.UTC)
+	utcByMonitor, err := st.DailyBucketsForMonitors(t.Context(), []int64{id}, localDay, localDay.AddDate(0, 0, 1), time.UTC)
 	if err != nil {
-		t.Fatalf("DailyBucketsForTimezone UTC: %v", err)
+		t.Fatalf("DailyBucketsForMonitors UTC: %v", err)
 	}
+	utcDaily := utcByMonitor[id]
 	if len(utcDaily) != 2 {
 		t.Fatalf("UTC daily buckets = %+v, want 2", utcDaily)
 	}

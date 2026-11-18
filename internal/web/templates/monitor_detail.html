@@ -212,8 +212,10 @@
         <div><dt>{{.I18n.T "monitor.recoverThreshold"}}</dt><dd>{{.Monitor.RecoverThreshold}}</dd></div>
         <div><dt>{{.I18n.T "monitor.statusSince"}}</dt><dd title="{{.Monitor.StatusSince}}">{{.Monitor.StatusSinceAgo}}</dd></div>
         <div><dt>{{.I18n.T "monitor.lastLatency"}}</dt><dd>{{.Monitor.LastLatency}}</dd></div>
+        {{if .Monitor.ShowConfig}}
         <div><dt>{{.I18n.T "monitor.notificationChannels"}}</dt><dd>{{if .Monitor.NotificationLabel}}{{.Monitor.NotificationLabel}}{{else}}—{{end}}</dd></div>
         {{if .Monitor.ProxyName}}<div><dt>{{.I18n.T "monitor.egress"}}</dt><dd>{{.Monitor.ProxyName}}</dd></div>{{end}}
+        {{end}}
       </dl>
     </section>
 

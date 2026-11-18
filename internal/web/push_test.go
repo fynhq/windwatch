@@ -20,3 +20,20 @@ func TestPushIPLimiter(t *testing.T) {
 		t.Fatal("new window was rejected")
 	}
 }
+
+func TestPushLimiterPrunesThrottleKeys(t *testing.T) {
+	limiter := newPushLimiter()
+	start := time.Now()
+	if !limiter.allow("token-hash", start) {
+		t.Fatal("first request was rejected")
+	}
+	if !limiter.allowIP("192.0.2.10", start) {
+		t.Fatal("first IP request was rejected")
+	}
+	if !limiter.allowIP("192.0.2.10", start.Add(2*pushIPWindowDuration)) {
+		t.Fatal("request after window was rejected")
+	}
+	if len(limiter.last) != 0 {
+		t.Fatalf("stale throttle keys were not pruned: %+v", limiter.last)
+	}
+}

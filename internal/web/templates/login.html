@@ -6,11 +6,11 @@
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <label class="field">
       <span>{{.I18n.T "common.username"}}</span>
-      <input type="text" name="username" value="{{.Username}}" autocomplete="username" maxlength="64" required autofocus>
+      <input type="text" name="username" value="{{.Username}}" autocomplete="username" maxlength="{{usernameMaxRunes}}" required autofocus>
     </label>
     <label class="field">
       <span>{{.I18n.T "common.password"}}</span>
-      <input type="password" name="password" autocomplete="current-password" maxlength="256" required>
+      <input type="password" name="password" autocomplete="current-password" maxlength="{{passwordMaxRunes}}" required>
     </label>
     <button class="button button-primary" type="submit">{{.I18n.T "login.submit"}}</button>
   </form>

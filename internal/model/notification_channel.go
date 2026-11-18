@@ -12,8 +12,9 @@ import (
 type NotificationChannelType string
 
 const (
-	NotificationChannelTelegram NotificationChannelType = "telegram"
-	NotificationChannelWebhook  NotificationChannelType = "webhook"
+	NotificationChannelTelegram      NotificationChannelType = "telegram"
+	NotificationChannelWebhook       NotificationChannelType = "webhook"
+	MaxNotificationChannelNameLength                         = 100
 )
 
 const (
@@ -65,7 +66,7 @@ var (
 
 func (c NotificationChannel) Validate() error {
 	name := strings.TrimSpace(c.Name)
-	if name == "" || utf8.RuneCountInString(name) > 100 {
+	if name == "" || utf8.RuneCountInString(name) > MaxNotificationChannelNameLength {
 		return ErrChannelName
 	}
 	if language := strings.TrimSpace(c.Language); language != "" && !validNotificationLanguage(language) {

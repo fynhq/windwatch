@@ -12,6 +12,8 @@ const (
 	DefaultWarningReminderIntervalMinutes = 1440
 	DefaultFailureReminderCount           = 0
 	DefaultFailureReminderIntervalMinutes = 30
+	MinNotificationReminders              = 0
+	MinReminderIntervalMinutes            = 1
 	MaxNotificationReminders              = 100
 	MaxReminderIntervalMinutes            = 365 * 24 * 60
 )

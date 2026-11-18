@@ -169,22 +169,6 @@ func formatRelativeTime(translator *i18n.Translator, now, value time.Time) strin
 	}
 }
 
-func formatInterval(interval time.Duration) string {
-	if interval <= 0 {
-		return "—"
-	}
-	switch {
-	case interval%(24*time.Hour) == 0:
-		return fmt.Sprintf("%dd", int(interval/(24*time.Hour)))
-	case interval%time.Hour == 0:
-		return fmt.Sprintf("%dh", int(interval/time.Hour))
-	case interval%time.Minute == 0:
-		return fmt.Sprintf("%dm", int(interval/time.Minute))
-	default:
-		return fmt.Sprintf("%ds", int(interval/time.Second))
-	}
-}
-
 func formatLatency(latency time.Duration) string {
 	if latency <= 0 {
 		return "—"

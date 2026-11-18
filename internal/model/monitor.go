@@ -23,11 +23,23 @@ const (
 	MinThreshold       = 1
 	MaxThreshold       = 20
 
+	DefaultIntervalSeconds  = 60
+	DefaultTimeoutSeconds   = 10
+	DefaultFailThreshold    = 2
+	DefaultRecoverThreshold = 1
+	DefaultCertWarnDays     = 14
+	DefaultHTTPMethod       = "GET"
+	DefaultExpectedStatus   = "200-299"
+	DefaultFollowRedirects  = true
+	DefaultCertCheck        = true
+	DefaultDockerHealthy    = true
+
 	MaxMonitorNameLength     = 100
 	MaxURLBytes              = 2048
 	MaxTCPHostBytes          = 255
 	MaxDockerContainerLength = 255
 	MaxHTTPKeywordRunes      = 500
+	MaxExpectedStatusLength  = 20
 	MinPort                  = 1
 	MaxPort                  = 65535
 	MinCertWarnDays          = 1
@@ -374,7 +386,7 @@ func (m Monitor) Target() string {
 func ParseExpectedStatus(value string) (int, int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return 200, 299, nil
+		value = DefaultExpectedStatus
 	}
 	parts := strings.Split(value, "-")
 	if len(parts) > 2 {
@@ -416,7 +428,7 @@ func validateHTTPConfig(cfg HTTPConfig) error {
 	}
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method == "" {
-		method = "GET"
+		method = DefaultHTTPMethod
 	}
 	if method != "GET" && method != "HEAD" {
 		return ErrHTTPMethod

@@ -63,8 +63,8 @@ func TestMonitorCRUD(t *testing.T) {
 		t.Fatalf("update was not persisted: %+v", updated)
 	}
 
-	if err := st.SetMonitorEnabled(ctx, id, false); err != nil {
-		t.Fatalf("SetMonitorEnabled: %v", err)
+	if err := st.SetMonitorEnabledWithReset(ctx, id, false, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("SetMonitorEnabledWithReset: %v", err)
 	}
 	monitors, err := st.ListMonitors(ctx)
 	if err != nil {
