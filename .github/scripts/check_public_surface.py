@@ -21,13 +21,13 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-# Generic private-document markers. UPPER-CASE .md names other than README and
-# the license are private knowledge files; docs-local/ and its distinctive
-# basenames are private by definition. These are document names, not personal
-# data, so they are safe to match from a committed checker.
+# Generic private-document markers. UPPER-CASE .md names other than README,
+# CHANGELOG, and the license are private knowledge files; docs-local/ and its
+# distinctive basenames are private by definition. These are document names,
+# not personal data, so they are safe to match from a committed checker.
 PRIVATE_DOC = re.compile(
     r"("
-    r"\b(?<!LICENSE-)(?!LICENSE[-_])(?!README\b|THIRD_PARTY_NOTICES\b|LICENSE\b)[A-Z][A-Z0-9_-]{2,}\.md\b"
+    r"\b(?<!LICENSE-)(?!LICENSE[-_])(?!README\b|THIRD_PARTY_NOTICES\b|LICENSE\b|CHANGELOG\b)[A-Z][A-Z0-9_-]{2,}\.md\b"
     r"|docs-local"
     r"|product-scope|documentation-map|workflow-windows-wsl|local-testing"
     r"|changelog\.md|lessons\.md"
@@ -121,6 +121,7 @@ def scan_text(kind: str, path: str, text: str, allow: set[str], errors: list[str
             value = EMAIL.search(line).group(0).lower()
             if not (
                 value.endswith("users.noreply.github.com")
+                or value == "support@github.com"
                 or re.search(r"@example\.(com|org|net)$", value)
             ):
                 errors.append(f"{kind} {path}:{number}: email: {line.strip()[:160]}")
