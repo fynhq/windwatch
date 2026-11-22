@@ -49,6 +49,7 @@ type Server struct {
 	pages          map[string]*template.Template
 	staticFS       fs.FS
 	limiter        *loginLimiter
+	loginSlots     chan struct{}
 	pushLimiter    *pushLimiter
 	statusLimiter  *windowLimiter
 	now            func() time.Time
@@ -129,6 +130,7 @@ func New(st *store.Store, catalogs *i18n.Catalogs, scheduler MonitorScheduler, n
 		pages:          pages,
 		staticFS:       staticFS,
 		limiter:        newLoginLimiter(),
+		loginSlots:     make(chan struct{}, maxLoginInFlight),
 		pushLimiter:    newPushLimiter(),
 		statusLimiter:  newWindowLimiter(120, time.Minute),
 		now:            time.Now,

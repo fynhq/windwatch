@@ -19,18 +19,12 @@ type Cipher struct {
 }
 
 func LoadOrCreateKey(path string) ([]byte, error) {
-	key, err := os.ReadFile(path)
+	key, err := readSecretKey(path)
 	if err == nil {
-		if len(key) != 32 {
-			return nil, fmt.Errorf("secret key must be 32 bytes, got %d", len(key))
-		}
-		if err := os.Chmod(path, 0o600); err != nil {
-			return nil, fmt.Errorf("set secret key permissions: %w", err)
-		}
 		return key, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read secret key: %w", err)
+		return nil, err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -62,8 +56,25 @@ func LoadOrCreateKey(path string) ([]byte, error) {
 	if err := temp.Close(); err != nil {
 		return nil, fmt.Errorf("close secret key: %w", err)
 	}
-	if err := os.Rename(tempName, path); err != nil {
-		return nil, fmt.Errorf("install secret key: %w", err)
+	if err := os.Link(tempName, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return readSecretKey(path)
+		}
+		return nil, fmt.Errorf("install secret key atomically: %w", err)
+	}
+	return key, nil
+}
+
+func readSecretKey(path string) ([]byte, error) {
+	key, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read secret key: %w", err)
+		}
+		return nil, err
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("secret key must be 32 bytes, got %d", len(key))
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		return nil, fmt.Errorf("set secret key permissions: %w", err)

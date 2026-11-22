@@ -113,8 +113,12 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request, auth m
 		return
 	}
 
-	hash, err := secret.HashPassword(password)
+	hash, err := secret.HashPasswordContext(r.Context(), password)
 	if err != nil {
+		if errors.Is(err, secret.ErrPasswordBusy) {
+			s.renderError(w, r, http.StatusTooManyRequests, "error.tooManyAttempts")
+			return
+		}
 		s.log.Error("hash new user password", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -238,8 +242,12 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request, auth
 		s.renderUsersPasswordError(w, r, auth, id, key)
 		return
 	}
-	hash, err := secret.HashPassword(password)
+	hash, err := secret.HashPasswordContext(r.Context(), password)
 	if err != nil {
+		if errors.Is(err, secret.ErrPasswordBusy) {
+			s.renderError(w, r, http.StatusTooManyRequests, "error.tooManyAttempts")
+			return
+		}
 		s.log.Error("hash reset password", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return

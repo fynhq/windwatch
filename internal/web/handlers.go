@@ -69,6 +69,12 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		s.renderSetupPage(w, r, http.StatusForbidden, csrf, strings.TrimSpace(r.PostFormValue("username")), "error.csrf")
 		return
 	}
+	if !s.acquireLoginSlot() {
+		w.Header().Set("Retry-After", "1")
+		s.renderSetupPage(w, r, http.StatusTooManyRequests, csrf, strings.TrimSpace(r.PostFormValue("username")), "error.tooManyAttempts")
+		return
+	}
+	defer s.releaseLoginSlot()
 
 	username := strings.TrimSpace(r.PostFormValue("username"))
 	password := r.PostFormValue("password")
@@ -85,8 +91,12 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	passwordHash, err := secret.HashPassword(password)
+	passwordHash, err := secret.HashPasswordContext(r.Context(), password)
 	if err != nil {
+		if errors.Is(err, secret.ErrPasswordBusy) {
+			s.renderSetupPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
+			return
+		}
 		s.log.Error("hash administrator password", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
@@ -165,6 +175,12 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		s.renderLoginPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
 		return
 	}
+	if !s.acquireLoginSlot() {
+		w.Header().Set("Retry-After", "1")
+		s.renderLoginPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
+		return
+	}
+	defer s.releaseLoginSlot()
 
 	password := r.PostFormValue("password")
 	if utf8.RuneCountInString(username) > maxLoginUsernameLength ||
@@ -177,8 +193,20 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 
 	admin, err := s.store.AdminByUsername(r.Context(), username)
 	if errors.Is(err, store.ErrNotFound) {
+		if dummyErr := secret.VerifyDummyPasswordContext(r.Context(), password); dummyErr != nil {
+			if errors.Is(dummyErr, secret.ErrPasswordBusy) {
+				w.Header().Set("Retry-After", "1")
+				s.renderLoginPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
+				return
+			}
+			s.log.Warn("verify dummy password", "error", dummyErr)
+			if r.Context().Err() != nil {
+				return
+			}
+			s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+			return
+		}
 		s.limiter.failure(key, now)
-		secret.VerifyDummyPassword(password)
 		s.log.Warn("login failed", "username", truncateLoginValue(username), "reason", "unknown user", "client", key)
 		s.renderLoginPage(w, r, http.StatusUnauthorized, csrf, username, "error.invalidCredentials")
 		return
@@ -189,8 +217,16 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	verified, err := secret.VerifyPassword(admin.PasswordHash, password)
+	verified, err := secret.VerifyPasswordContext(r.Context(), admin.PasswordHash, password)
 	if err != nil {
+		if errors.Is(err, secret.ErrPasswordBusy) {
+			w.Header().Set("Retry-After", "1")
+			s.renderLoginPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
+			return
+		}
+		if r.Context().Err() != nil {
+			return
+		}
 		s.log.Error("verify administrator password", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return

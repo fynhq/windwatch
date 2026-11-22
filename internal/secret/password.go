@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -21,25 +22,49 @@ const (
 	argonSaltLength  = 16
 	argonKeyLength   = 32
 	maxArgonWorkers  = 4
+	maxArgonInFlight = 16
 )
 
 var (
-	ErrInvalidHash = errors.New("invalid password hash")
-	argonSlots     = make(chan struct{}, maxArgonWorkers)
+	ErrInvalidHash  = errors.New("invalid password hash")
+	ErrPasswordBusy = errors.New("password hashing capacity is exhausted")
+	argonQueue      = make(chan struct{}, maxArgonInFlight)
+	argonWorkers    = make(chan struct{}, maxArgonWorkers)
 )
 
-func acquireArgonSlot() func() {
-	argonSlots <- struct{}{}
-	return func() { <-argonSlots }
+func acquireArgonSlot(ctx context.Context) (func(), error) {
+	select {
+	case argonQueue <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		return nil, ErrPasswordBusy
+	}
+	select {
+	case argonWorkers <- struct{}{}:
+	case <-ctx.Done():
+		<-argonQueue
+		return nil, ctx.Err()
+	}
+	return func() {
+		<-argonWorkers
+		<-argonQueue
+	}, nil
 }
 
 func HashPassword(password string) (string, error) {
+	return HashPasswordContext(context.Background(), password)
+}
+
+func HashPasswordContext(ctx context.Context, password string) (string, error) {
 	salt := make([]byte, argonSaltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("generate password salt: %w", err)
 	}
-
-	release := acquireArgonSlot()
+	release, err := acquireArgonSlot(ctx)
+	if err != nil {
+		return "", err
+	}
 	hash := argon2.IDKey([]byte(password), salt, argonIterations, argonMemory, argonParallelism, argonKeyLength)
 	release()
 	return fmt.Sprintf(
@@ -54,6 +79,10 @@ func HashPassword(password string) (string, error) {
 }
 
 func VerifyPassword(encoded, password string) (bool, error) {
+	return VerifyPasswordContext(context.Background(), encoded, password)
+}
+
+func VerifyPasswordContext(ctx context.Context, encoded, password string) (bool, error) {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
 		return false, ErrInvalidHash
@@ -93,24 +122,39 @@ func VerifyPassword(encoded, password string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 
-	release := acquireArgonSlot()
+	release, err := acquireArgonSlot(ctx)
+	if err != nil {
+		return false, err
+	}
 	actual := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expected)))
 	release()
 	return subtle.ConstantTimeCompare(expected, actual) == 1, nil
 }
 
-func VerifyDummyPassword(password string) {
-	dummyHashOnce.Do(func() {
-		dummyHash, _ = HashPassword("windwatch-dummy-password")
-	})
-	if dummyHash != "" {
-		_, _ = VerifyPassword(dummyHash, password)
+func VerifyDummyPassword(password string) error {
+	return VerifyDummyPasswordContext(context.Background(), password)
+}
+
+func VerifyDummyPasswordContext(ctx context.Context, password string) error {
+	dummyHashMu.Lock()
+	hash := dummyHash
+	if hash == "" {
+		created, err := HashPasswordContext(ctx, "windwatch-dummy-password")
+		if err != nil {
+			dummyHashMu.Unlock()
+			return err
+		}
+		dummyHash = created
+		hash = created
 	}
+	dummyHashMu.Unlock()
+	_, err := VerifyPasswordContext(ctx, hash, password)
+	return err
 }
 
 var (
-	dummyHashOnce sync.Once
-	dummyHash     string
+	dummyHashMu sync.Mutex
+	dummyHash   string
 )
 
 func RandomToken(byteLength int) (string, error) {

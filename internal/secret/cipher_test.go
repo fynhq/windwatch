@@ -3,6 +3,7 @@ package secret
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -40,6 +41,47 @@ func TestCipherRoundTrip(t *testing.T) {
 	}
 	if _, err := otherCipher.Decrypt(encoded); err == nil {
 		t.Fatal("expected decryption with a different key to fail")
+	}
+}
+
+func TestLoadOrCreateKeyConcurrentInitialization(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secret.key")
+	const workers = 16
+	keys := make(chan string, workers)
+	errors := make(chan error, workers)
+	var wait sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			key, err := LoadOrCreateKey(path)
+			if err != nil {
+				errors <- err
+				return
+			}
+			keys <- string(key)
+		}()
+	}
+	wait.Wait()
+	close(keys)
+	close(errors)
+	for err := range errors {
+		t.Fatalf("LoadOrCreateKey: %v", err)
+	}
+	var expected string
+	for key := range keys {
+		if expected == "" {
+			expected = key
+		}
+		if key != expected {
+			t.Fatal("concurrent initialization produced different keys")
+		}
+	}
+	if len(expected) != 32 {
+		t.Fatalf("key length = %d", len(expected))
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("Stat: %v", err)
 	}
 }
 

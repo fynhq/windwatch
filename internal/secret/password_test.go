@@ -1,6 +1,10 @@
 package secret
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+)
 
 func TestPasswordHashAndVerify(t *testing.T) {
 	hash, err := HashPassword("correct horse battery staple")
@@ -40,6 +44,44 @@ func TestPasswordHashesUseDifferentSalts(t *testing.T) {
 	if first == second {
 		t.Fatal("expected different salts")
 	}
+}
+
+func TestPasswordHashingQueueIsBoundedAndCancelable(t *testing.T) {
+	drain := func() {
+		for {
+			select {
+			case <-argonQueue:
+			default:
+				for {
+					select {
+					case <-argonWorkers:
+					default:
+						return
+					}
+				}
+			}
+		}
+	}
+	drain()
+	t.Cleanup(drain)
+
+	for i := 0; i < maxArgonInFlight; i++ {
+		argonQueue <- struct{}{}
+	}
+	if _, err := HashPasswordContext(t.Context(), "password"); !errors.Is(err, ErrPasswordBusy) {
+		t.Fatalf("full queue error = %v, want ErrPasswordBusy", err)
+	}
+	drain()
+
+	for i := 0; i < maxArgonWorkers; i++ {
+		argonWorkers <- struct{}{}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := HashPasswordContext(ctx, "password"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled hash error = %v, want context.Canceled", err)
+	}
+	drain()
 }
 
 func TestVerifyPasswordRejectsMalformedHash(t *testing.T) {

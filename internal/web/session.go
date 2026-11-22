@@ -28,6 +28,7 @@ type loginAttempt struct {
 
 type loginLimiter struct {
 	mu        sync.Mutex
+	maxKeys   int
 	entries   map[string]*loginAttempt
 	lastPrune time.Time
 }
@@ -36,10 +37,24 @@ const (
 	loginFailureWindow = 5 * time.Minute
 	loginBlockDuration = 5 * time.Minute
 	maxLoginFailures   = 5
+	maxLoginInFlight   = 32
 )
 
+func (s *Server) acquireLoginSlot() bool {
+	select {
+	case s.loginSlots <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) releaseLoginSlot() {
+	<-s.loginSlots
+}
+
 func newLoginLimiter() *loginLimiter {
-	return &loginLimiter{entries: make(map[string]*loginAttempt)}
+	return &loginLimiter{maxKeys: maxLimiterKeys, entries: make(map[string]*loginAttempt)}
 }
 
 func (l *loginLimiter) blocked(key string, now time.Time) bool {
@@ -49,6 +64,10 @@ func (l *loginLimiter) blocked(key string, now time.Time) bool {
 
 	entry := l.entries[key]
 	if entry == nil {
+		if len(l.entries) >= l.maxKeys {
+			l.pruneAllLocked(now)
+			return len(l.entries) >= l.maxKeys
+		}
 		return false
 	}
 	if !entry.blockedUntil.IsZero() && now.Before(entry.blockedUntil) {
@@ -66,6 +85,14 @@ func (l *loginLimiter) failure(key string, now time.Time) {
 
 	entry := l.entries[key]
 	if entry == nil || now.Sub(entry.windowStart) >= loginFailureWindow || (!entry.blockedUntil.IsZero() && !now.Before(entry.blockedUntil)) {
+		if entry == nil {
+			if len(l.entries) >= l.maxKeys {
+				l.pruneAllLocked(now)
+				if len(l.entries) >= l.maxKeys {
+					return
+				}
+			}
+		}
 		entry = &loginAttempt{windowStart: now}
 		l.entries[key] = entry
 	}
@@ -85,6 +112,10 @@ func (l *loginLimiter) pruneLocked(now time.Time) {
 	if !l.lastPrune.IsZero() && now.Sub(l.lastPrune) < loginFailureWindow {
 		return
 	}
+	l.pruneAllLocked(now)
+}
+
+func (l *loginLimiter) pruneAllLocked(now time.Time) {
 	l.lastPrune = now
 	for key, entry := range l.entries {
 		if !entry.blockedUntil.IsZero() {
