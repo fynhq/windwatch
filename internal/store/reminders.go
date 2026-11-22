@@ -46,12 +46,25 @@ func (s *Store) SaveReminderStateWithNotification(
 	now time.Time,
 	notification *model.Notification,
 ) error {
+	return s.SaveReminderStateGuarded(ctx, state, now, notification, ReminderGuard{})
+}
+
+func (s *Store) SaveReminderStateGuarded(
+	ctx context.Context,
+	state model.NotificationReminder,
+	now time.Time,
+	notification *model.Notification,
+	guard ReminderGuard,
+) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin reminder state update: %w", err)
 	}
 	defer tx.Rollback()
 
+	if err := verifyReminderGuard(ctx, tx, state.MonitorID, guard); err != nil {
+		return err
+	}
 	if err := saveReminderState(ctx, tx, state, now); err != nil {
 		return err
 	}

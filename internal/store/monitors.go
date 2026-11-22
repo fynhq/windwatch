@@ -11,6 +11,69 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
+var ErrResultStale = errors.New("monitor changed while result was pending")
+
+type ResultGuard struct {
+	Versioned        bool
+	ExpectedRevision int64
+	RequireEnabled   bool
+}
+
+type ReminderGuard struct {
+	ResultGuard
+	Status      model.MonitorStatus
+	StatusSince time.Time
+}
+
+func verifyResultGuard(ctx context.Context, tx *sql.Tx, monitorID int64, guard ResultGuard) error {
+	if !guard.Versioned {
+		return nil
+	}
+	var (
+		enabled  int
+		revision int64
+	)
+	err := tx.QueryRowContext(ctx,
+		"SELECT enabled, config_revision FROM monitors WHERE id = ?", monitorID,
+	).Scan(&enabled, &revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("verify monitor result guard: %w", err)
+	}
+	if revision != guard.ExpectedRevision || (guard.RequireEnabled && enabled == 0) {
+		return ErrResultStale
+	}
+	return nil
+}
+
+func verifyReminderGuard(ctx context.Context, tx *sql.Tx, monitorID int64, guard ReminderGuard) error {
+	if err := verifyResultGuard(ctx, tx, monitorID, guard.ResultGuard); err != nil {
+		return err
+	}
+	if !guard.Versioned {
+		return nil
+	}
+	var (
+		status      model.MonitorStatus
+		statusSince int64
+	)
+	err := tx.QueryRowContext(ctx,
+		"SELECT status, status_since_ms FROM monitor_state WHERE monitor_id = ?", monitorID,
+	).Scan(&status, &statusSince)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrResultStale
+	}
+	if err != nil {
+		return fmt.Errorf("verify reminder guard: %w", err)
+	}
+	if status != guard.Status || statusSince != guard.StatusSince.UTC().UnixMilli() {
+		return ErrResultStale
+	}
+	return nil
+}
+
 const monitorSelect = `
 	SELECT
 		m.id, m.name, m.type, m.config_json,
@@ -18,11 +81,11 @@ const monitorSelect = `
 		m.fail_threshold, m.recover_threshold,
 		m.warning_reminder_count, m.warning_reminder_interval_minutes,
 		m.failure_reminder_count, m.failure_reminder_interval_minutes,
-		m.notify_enabled, m.enabled, m.proxy_id,
+		m.notify_enabled, m.enabled, m.proxy_id, m.config_revision,
 		m.created_at_ms, m.updated_at_ms,
 		ms.status, ms.status_since_ms, ms.last_check_ms, ms.last_error,
-		ms.consecutive_failures, ms.consecutive_successes, ms.updated_at_ms,
-		ms.warning_context
+		ms.consecutive_failures, ms.consecutive_successes, ms.failure_started_at_ms,
+		ms.updated_at_ms, ms.warning_context
 	FROM monitors m
 	LEFT JOIN monitor_state ms ON ms.monitor_id = m.id
 `
@@ -52,6 +115,7 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 		lastError            sql.NullString
 		consecutiveFailures  sql.NullInt64
 		consecutiveSuccesses sql.NullInt64
+		failureStartedAtMS   sql.NullInt64
 		stateUpdatedAtMS     sql.NullInt64
 		warningContext       sql.NullString
 	)
@@ -60,11 +124,11 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 		&intervalSeconds, &timeoutSeconds,
 		&monitor.FailThreshold, &monitor.RecoverThreshold,
 		&warningCount, &warningInterval, &failureCount, &failureInterval,
-		&notifyEnabled, &enabled, &proxyID,
+		&notifyEnabled, &enabled, &proxyID, &monitor.ConfigRevision,
 		&createdAtMS, &updatedAtMS,
 		&stateStatus, &statusSinceMS, &lastCheckMS, &lastError,
-		&consecutiveFailures, &consecutiveSuccesses, &stateUpdatedAtMS,
-		&warningContext,
+		&consecutiveFailures, &consecutiveSuccesses, &failureStartedAtMS,
+		&stateUpdatedAtMS, &warningContext,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Monitor{}, ErrNotFound
@@ -110,6 +174,9 @@ func scanMonitor(row scanner) (model.Monitor, error) {
 		}
 		if consecutiveSuccesses.Valid {
 			monitor.State.ConsecutiveSuccesses = int(consecutiveSuccesses.Int64)
+		}
+		if failureStartedAtMS.Valid && failureStartedAtMS.Int64 > 0 {
+			monitor.State.FailureStartedAt = time.UnixMilli(failureStartedAtMS.Int64).UTC()
 		}
 		if stateUpdatedAtMS.Valid {
 			monitor.State.UpdatedAt = time.UnixMilli(stateUpdatedAtMS.Int64).UTC()
@@ -367,7 +434,7 @@ func (s *Store) UpdateMonitor(ctx context.Context, monitor model.Monitor, now ti
 			fail_threshold = ?, recover_threshold = ?,
 			warning_reminder_count = ?, warning_reminder_interval_minutes = ?,
 			failure_reminder_count = ?, failure_reminder_interval_minutes = ?,
-			notify_enabled = ?, proxy_id = ?, updated_at_ms = ?
+			notify_enabled = ?, proxy_id = ?, config_revision = config_revision + 1, updated_at_ms = ?
 		WHERE id = ?
 	`,
 		monitor.Name,
@@ -440,7 +507,11 @@ func (s *Store) SetMonitorEnabledWithReset(ctx context.Context, monitorID int64,
 		}
 		return fmt.Errorf("load monitor type for toggle: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE monitors SET enabled = ? WHERE id = ?", boolInt(enabled), monitorID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE monitors
+		SET enabled = ?, config_revision = config_revision + 1, updated_at_ms = ?
+		WHERE id = ?
+	`, boolInt(enabled), at.UTC().UnixMilli(), monitorID); err != nil {
 		return fmt.Errorf("set monitor enabled: %w", err)
 	}
 	now := at.UTC()
@@ -517,7 +588,7 @@ func (s *Store) DeleteMonitor(ctx context.Context, id int64) error {
 }
 
 func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.MonitorState, event *model.Event, closeDownEvent bool) error {
-	return s.recordCheck(ctx, check, state, event, closeDownEvent, nil, nil)
+	return s.recordCheck(ctx, check, state, event, closeDownEvent, nil, nil, ResultGuard{})
 }
 
 func (s *Store) RecordCheckWithNotifications(
@@ -529,7 +600,20 @@ func (s *Store) RecordCheckWithNotifications(
 	notifications []model.Notification,
 	warningContext *string,
 ) error {
-	return s.recordCheck(ctx, check, state, event, closeDownEvent, notifications, warningContext)
+	return s.recordCheck(ctx, check, state, event, closeDownEvent, notifications, warningContext, ResultGuard{})
+}
+
+func (s *Store) RecordCheckWithNotificationsGuarded(
+	ctx context.Context,
+	check model.Check,
+	state model.MonitorState,
+	event *model.Event,
+	closeDownEvent bool,
+	notifications []model.Notification,
+	warningContext *string,
+	guard ResultGuard,
+) error {
+	return s.recordCheck(ctx, check, state, event, closeDownEvent, notifications, warningContext, guard)
 }
 
 func (s *Store) recordCheck(
@@ -540,6 +624,7 @@ func (s *Store) recordCheck(
 	closeDownEvent bool,
 	notifications []model.Notification,
 	warningContext *string,
+	guard ResultGuard,
 ) error {
 	metaJSON := check.MetaJSON
 	if strings.TrimSpace(metaJSON) == "" {
@@ -555,6 +640,10 @@ func (s *Store) recordCheck(
 		return fmt.Errorf("begin check record: %w", err)
 	}
 	defer tx.Rollback()
+
+	if err := verifyResultGuard(ctx, tx, check.MonitorID, guard); err != nil {
+		return err
+	}
 
 	var httpStatus any
 	if check.HTTPStatus != 0 {
@@ -583,11 +672,15 @@ func (s *Store) recordCheck(
 	if !state.LastCheck.IsZero() {
 		lastCheck = state.LastCheck.UTC().UnixMilli()
 	}
+	var failureStartedAt int64
+	if !state.FailureStartedAt.IsZero() {
+		failureStartedAt = state.FailureStartedAt.UTC().UnixMilli()
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO monitor_state (
 			monitor_id, status, status_since_ms, last_check_ms, last_error,
-			consecutive_failures, consecutive_successes, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			consecutive_failures, consecutive_successes, failure_started_at_ms, updated_at_ms
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(monitor_id) DO UPDATE SET
 			status = excluded.status,
 			status_since_ms = excluded.status_since_ms,
@@ -595,6 +688,7 @@ func (s *Store) recordCheck(
 			last_error = excluded.last_error,
 			consecutive_failures = excluded.consecutive_failures,
 			consecutive_successes = excluded.consecutive_successes,
+			failure_started_at_ms = excluded.failure_started_at_ms,
 			updated_at_ms = excluded.updated_at_ms
 	`,
 		check.MonitorID,
@@ -604,6 +698,7 @@ func (s *Store) recordCheck(
 		state.LastError,
 		state.ConsecutiveFailures,
 		state.ConsecutiveSuccesses,
+		failureStartedAt,
 		state.UpdatedAt.UTC().UnixMilli(),
 	); err != nil {
 		return fmt.Errorf("upsert monitor state: %w", err)

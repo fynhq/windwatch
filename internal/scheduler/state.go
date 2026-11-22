@@ -46,6 +46,7 @@ func advance(monitor model.Monitor, current model.MonitorState, result model.Che
 	if result.Success {
 		next.ConsecutiveFailures = 0
 		next.ConsecutiveSuccesses++
+		next.FailureStartedAt = time.Time{}
 
 		switch {
 		case next.Status == model.StatusDown:
@@ -72,6 +73,9 @@ func advance(monitor model.Monitor, current model.MonitorState, result model.Che
 		next.ConsecutiveSuccesses = 0
 		next.ConsecutiveFailures++
 		next.LastError = result.ErrorMessage
+		if next.FailureStartedAt.IsZero() {
+			next.FailureStartedAt = at
+		}
 		if next.Status != model.StatusDown && next.ConsecutiveFailures >= failThreshold {
 			next.Status = model.StatusDown
 			next.StatusSince = at

@@ -71,6 +71,13 @@ func (s *Store) ReplacePushToken(ctx context.Context, monitorID int64, tokenHash
 	if err := closeOpenDownEvents(ctx, tx, monitorID, now); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE monitors
+		SET config_revision = config_revision + 1, updated_at_ms = ?
+		WHERE id = ?
+	`, now.UnixMilli(), monitorID); err != nil {
+		return fmt.Errorf("bump monitor revision after push token replacement: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit replace push token: %w", err)
 	}

@@ -2,10 +2,12 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
+	"github.com/fynhq/windwatch/internal/store"
 )
 
 const (
@@ -21,6 +23,7 @@ func (s *Scheduler) processReminders(
 	nextState model.MonitorState,
 	previousStatus model.MonitorStatus,
 	checkedAt time.Time,
+	guard store.ReminderGuard,
 ) {
 	if s.notifier == nil || !monitor.Enabled || !monitorNotificationsEnabled(monitor) {
 		if previousStatus != nextState.Status {
@@ -82,7 +85,11 @@ func (s *Scheduler) processReminders(
 			ContextKey:  contextKey,
 			NextAt:      nextState.StatusSince.Add(interval),
 		}
-		if err := s.store.SaveReminderState(ctx, state, checkedAt); err != nil {
+		if err := s.store.SaveReminderStateGuarded(ctx, state, checkedAt, nil, guard); err != nil {
+			if errors.Is(err, store.ErrResultStale) || errors.Is(err, store.ErrNotFound) {
+				s.log.Debug("discarding stale reminder state", "monitor_id", monitor.ID)
+				return
+			}
 			s.log.Warn("save reminder state", "monitor_id", monitor.ID, "error", err)
 			return
 		}
@@ -98,7 +105,11 @@ func (s *Scheduler) processReminders(
 	notification := s.buildReminderNotification(monitor, result, nextState, checkedAt, currentKind, contextKey, sequence, count, downtimeStart)
 	state.SentCount = sequence
 	state.NextAt = checkedAt.Add(interval)
-	if err := s.store.SaveReminderStateWithNotification(ctx, state, checkedAt, &notification); err != nil {
+	if err := s.store.SaveReminderStateGuarded(ctx, state, checkedAt, &notification, guard); err != nil {
+		if errors.Is(err, store.ErrResultStale) || errors.Is(err, store.ErrNotFound) {
+			s.log.Debug("discarding stale reminder notification", "monitor_id", monitor.ID, "kind", currentKind)
+			return
+		}
 		s.log.Error("persist reminder notification", "monitor_id", monitor.ID, "kind", currentKind, "error", err)
 		return
 	}

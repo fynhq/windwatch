@@ -1,0 +1,2 @@
+ALTER TABLE monitors ADD COLUMN config_revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE monitor_state ADD COLUMN failure_started_at_ms INTEGER NOT NULL DEFAULT 0;

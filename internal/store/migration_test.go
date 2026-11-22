@@ -132,12 +132,22 @@ func TestMigrateFreshDatabase(t *testing.T) {
 
 	var warningContextColumns int
 	if err := st.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM pragma_table_info('monitor_state') WHERE name = 'warning_context'
+		SELECT COUNT(*) FROM pragma_table_info('monitor_state')
+		WHERE name IN ('warning_context', 'failure_started_at_ms')
 	`).Scan(&warningContextColumns); err != nil {
-		t.Fatalf("check warning context column: %v", err)
+		t.Fatalf("check monitor state guard columns: %v", err)
 	}
-	if warningContextColumns != 1 {
-		t.Fatalf("monitor_state warning_context columns = %d, want 1", warningContextColumns)
+	if warningContextColumns != 2 {
+		t.Fatalf("monitor_state guard columns = %d, want 2", warningContextColumns)
+	}
+	var configRevisionColumns int
+	if err := st.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM pragma_table_info('monitors') WHERE name = 'config_revision'
+	`).Scan(&configRevisionColumns); err != nil {
+		t.Fatalf("check config revision column: %v", err)
+	}
+	if configRevisionColumns != 1 {
+		t.Fatalf("monitors config_revision columns = %d, want 1", configRevisionColumns)
 	}
 
 	now := time.Now().UTC()
@@ -288,6 +298,17 @@ func TestMigrateAddsNotificationRetryColumns(t *testing.T) {
 	}
 	if retryColumns != 2 {
 		t.Fatalf("upgraded notify_log retry columns = %d, want 2", retryColumns)
+	}
+	var guardColumns int
+	if err := st.db.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM pragma_table_info('monitors') WHERE name = 'config_revision') +
+			(SELECT COUNT(*) FROM pragma_table_info('monitor_state') WHERE name = 'failure_started_at_ms')
+	`).Scan(&guardColumns); err != nil {
+		t.Fatalf("check upgraded guard columns: %v", err)
+	}
+	if guardColumns != 2 {
+		t.Fatalf("upgraded guard columns = %d, want 2", guardColumns)
 	}
 	var versions int
 	if err := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&versions); err != nil {

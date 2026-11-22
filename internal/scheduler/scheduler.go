@@ -48,6 +48,7 @@ type outcome struct {
 	failureStartedAt time.Time
 	manual           bool
 	generation       uint64
+	revision         int64
 	versioned        bool
 }
 
@@ -79,7 +80,10 @@ type Scheduler struct {
 	runners     map[int64]*runnerHandle
 	inflight    map[int64]struct{}
 	generations map[int64]uint64
-	wg          sync.WaitGroup
+	taskWG      sync.WaitGroup
+	workerWG    sync.WaitGroup
+	workersDone chan struct{}
+	workersOnce sync.Once
 }
 
 func (s *Scheduler) SetCipher(cipher *secret.Cipher) {
@@ -120,6 +124,7 @@ func New(st *store.Store, registry *checker.Registry, logger *slog.Logger) *Sche
 		runners:        make(map[int64]*runnerHandle),
 		inflight:       make(map[int64]struct{}),
 		generations:    make(map[int64]uint64),
+		workersDone:    make(chan struct{}),
 	}
 }
 
@@ -138,14 +143,14 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	s.started = true
 	s.mu.Unlock()
 
-	s.wg.Add(2)
+	s.taskWG.Add(2)
 	go func() {
-		defer s.wg.Done()
+		defer s.taskWG.Done()
 		defer s.recoverTask("collector")
 		s.collect(ctx)
 	}()
 	go func() {
-		defer s.wg.Done()
+		defer s.taskWG.Done()
 		defer s.recoverTask("maintenance")
 		s.maintain(ctx)
 	}()
@@ -162,7 +167,11 @@ func (s *Scheduler) Wait() {
 	s.mu.Lock()
 	s.stopping = true
 	s.mu.Unlock()
-	s.wg.Wait()
+	s.workerWG.Wait()
+	s.workersOnce.Do(func() {
+		close(s.workersDone)
+	})
+	s.taskWG.Wait()
 }
 
 func (s *Scheduler) recoverTask(task string) {
@@ -239,10 +248,10 @@ func (s *Scheduler) CheckNow(monitorID int64) error {
 		return ErrCheckRunning
 	}
 	runCtx := s.ctx
-	s.wg.Add(1)
+	s.workerWG.Add(1)
 	s.mu.Unlock()
 	go func() {
-		defer s.wg.Done()
+		defer s.workerWG.Done()
 		s.executeSafely(runCtx, monitorID, true)
 	}()
 	return nil
@@ -295,11 +304,11 @@ func (s *Scheduler) startRunner(monitor model.Monitor) {
 		old.cancel()
 	}
 	s.runners[monitor.ID] = &runnerHandle{cancel: cancel}
-	s.wg.Add(1)
+	s.workerWG.Add(1)
 	s.mu.Unlock()
 
 	go func() {
-		defer s.wg.Done()
+		defer s.workerWG.Done()
 		defer s.recoverTask("runner")
 		if monitor.Type == model.MonitorTypePush {
 			s.runPushMonitor(runCtx, monitor)
@@ -381,6 +390,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 				checkedAt:  s.now().UTC(),
 				manual:     manual,
 				generation: generation,
+				revision:   monitor.ConfigRevision,
 				versioned:  true,
 			})
 			return
@@ -428,6 +438,7 @@ func (s *Scheduler) execute(ctx context.Context, monitorID int64, manual bool) {
 		failureStartedAt: failureStartedAt,
 		manual:           manual,
 		generation:       generation,
+		revision:         monitor.ConfigRevision,
 		versioned:        true,
 	})
 }
@@ -547,6 +558,7 @@ func (s *Scheduler) enqueuePushOutcomeVersioned(ctx context.Context, monitor mod
 		checkedAt:  now,
 		manual:     manual,
 		generation: generation,
+		revision:   monitor.ConfigRevision,
 		versioned:  versioned,
 	})
 }
@@ -583,6 +595,7 @@ func (s *Scheduler) collect(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			<-s.workersDone
 			for {
 				select {
 				case job := <-s.results:
@@ -592,7 +605,7 @@ func (s *Scheduler) collect(ctx context.Context) {
 				}
 			}
 		case job := <-s.results:
-			s.applySafely(ctx, job)
+			s.applySafely(context.Background(), job)
 		}
 	}
 }
@@ -614,17 +627,15 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		s.log.Debug("discarding result for paused monitor", "monitor_id", monitor.ID)
 		return
 	}
+	if job.versioned && monitor.ConfigRevision != job.revision {
+		s.log.Debug("discarding result for changed monitor", "monitor_id", monitor.ID, "revision", job.revision)
+		return
+	}
 
 	previousStatus := monitor.State.Status
 	previousSince := monitor.State.StatusSince
-	downStartedAt := time.Time{}
-	if !job.result.Success && previousStatus != model.StatusDown &&
-		monitor.State.ConsecutiveFailures+1 >= failedThreshold(monitor) {
-		downStartedAt = s.firstFailureStart(ctx, monitor, job.checkedAt)
-		if !job.failureStartedAt.IsZero() &&
-			(downStartedAt.IsZero() || job.failureStartedAt.Before(downStartedAt)) {
-			downStartedAt = job.failureStartedAt
-		}
+	if !job.result.Success && monitor.State.FailureStartedAt.IsZero() && !job.failureStartedAt.IsZero() {
+		monitor.State.FailureStartedAt = job.failureStartedAt
 	}
 	warningActive := false
 	warningKey := ""
@@ -635,8 +646,8 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	transition := advance(monitor, monitor.State, job.result, job.checkedAt, warningActive, warningKey)
 	nextState := transition.state
 	event := transition.event
-	if event != nil && event.Type == model.EventDown && !downStartedAt.IsZero() {
-		event.StartedAt = downStartedAt
+	if event != nil && event.Type == model.EventDown && !nextState.FailureStartedAt.IsZero() {
+		event.StartedAt = nextState.FailureStartedAt
 	}
 	notificationDataAvailable := true
 	if (event != nil || transition.warningChanged || warningActive || nextState.Status == model.StatusDown) &&
@@ -661,9 +672,6 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	}
 	if job.result.Certificate != nil {
 		check.CertFingerprint = job.result.Certificate.Fingerprint
-		if err := s.store.UpsertCertificate(ctx, *job.result.Certificate); err != nil {
-			s.log.Warn("store certificate", "monitor_id", monitor.ID, "error", err)
-		}
 	}
 	if event != nil && event.Type == model.EventDown {
 		event.Message = job.result.ErrorMessage
@@ -707,9 +715,25 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 		notifications = append(notifications, s.warningNotification(monitor, job.result, nextState, job.checkedAt))
 	}
 
-	if err := s.store.RecordCheckWithNotifications(ctx, check, nextState, event, transition.closeDown, notifications, transition.warningContext); err != nil {
+	guard := store.ResultGuard{
+		Versioned:        job.versioned,
+		ExpectedRevision: job.revision,
+		RequireEnabled:   job.versioned && !job.manual,
+	}
+	if err := s.store.RecordCheckWithNotificationsGuarded(
+		ctx, check, nextState, event, transition.closeDown, notifications, transition.warningContext, guard,
+	); err != nil {
+		if errors.Is(err, store.ErrResultStale) || errors.Is(err, store.ErrNotFound) {
+			s.log.Debug("discarding stale check result", "monitor_id", monitor.ID, "revision", job.revision)
+			return
+		}
 		s.log.Error("record check", "monitor_id", monitor.ID, "error", err)
 		return
+	}
+	if job.result.Certificate != nil {
+		if err := s.store.UpsertCertificate(ctx, *job.result.Certificate); err != nil {
+			s.log.Warn("store certificate", "monitor_id", monitor.ID, "error", err)
+		}
 	}
 	if event != nil {
 		s.log.Info("monitor state changed",
@@ -722,7 +746,12 @@ func (s *Scheduler) apply(ctx context.Context, job outcome) {
 	s.wakeNotifications(notifications)
 
 	if notificationDataAvailable {
-		s.processReminders(ctx, monitor, job.result, warningActive, nextState, previousStatus, job.checkedAt)
+		reminderGuard := store.ReminderGuard{
+			ResultGuard: guard,
+			Status:      nextState.Status,
+			StatusSince: nextState.StatusSince,
+		}
+		s.processReminders(ctx, monitor, job.result, warningActive, nextState, previousStatus, job.checkedAt, reminderGuard)
 	}
 }
 
@@ -751,31 +780,6 @@ func failedThreshold(monitor model.Monitor) int {
 		threshold = 1
 	}
 	return threshold
-}
-
-func (s *Scheduler) firstFailureStart(ctx context.Context, monitor model.Monitor, at time.Time) time.Time {
-	prior := monitor.State.ConsecutiveFailures
-	if prior <= 0 {
-		return at
-	}
-	checks, err := s.store.RecentCheckSummaries(ctx, monitor.ID, prior)
-	if err != nil {
-		s.log.Warn("load checks for outage start", "monitor_id", monitor.ID, "error", err)
-		return at
-	}
-	if len(checks) != prior {
-		return at
-	}
-	start := checks[len(checks)-1].CheckedAt
-	if start.IsZero() || start.After(at) {
-		return at
-	}
-	for _, check := range checks {
-		if check.Status != model.CheckDown {
-			return at
-		}
-	}
-	return start
 }
 
 func (s *Scheduler) outageStart(ctx context.Context, monitorID int64, fallback, at time.Time) time.Time {

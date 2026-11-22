@@ -24,6 +24,7 @@ func resetMonitorCounters(ctx context.Context, exec execer, monitorID int64, at 
 		UPDATE monitor_state
 		SET consecutive_failures = 0,
 		    consecutive_successes = 0,
+		    failure_started_at_ms = 0,
 		    status_since_ms = CASE WHEN status IN (?, ?) THEN ? ELSE status_since_ms END,
 		    updated_at_ms = ?
 		WHERE monitor_id = ?
@@ -42,6 +43,7 @@ func resetActiveEpisode(ctx context.Context, exec execer, monitorID int64, at ti
 		    last_error = '',
 		    consecutive_failures = 0,
 		    consecutive_successes = 0,
+		    failure_started_at_ms = 0,
 		    warning_context = '',
 		    updated_at_ms = ?
 		WHERE monitor_id = ? AND status IN (?, ?)
@@ -60,6 +62,7 @@ func resetMonitorToPending(ctx context.Context, exec execer, monitorID int64, at
 		    last_error = '',
 		    consecutive_failures = 0,
 		    consecutive_successes = 0,
+		    failure_started_at_ms = 0,
 		    warning_context = '',
 		    updated_at_ms = ?
 		WHERE monitor_id = ?

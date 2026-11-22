@@ -112,6 +112,7 @@ type Monitor struct {
 	Reminders                     NotificationPolicy
 	NotifyEnabled                 bool
 	Enabled                       bool
+	ConfigRevision                int64
 	CreatedAt                     time.Time
 	UpdatedAt                     time.Time
 	State                         MonitorState
@@ -124,6 +125,7 @@ type MonitorState struct {
 	LastError            string
 	ConsecutiveFailures  int
 	ConsecutiveSuccesses int
+	FailureStartedAt     time.Time
 	UpdatedAt            time.Time
 	WarningContext       string
 }
