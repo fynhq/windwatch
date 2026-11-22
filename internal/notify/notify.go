@@ -245,7 +245,11 @@ func (s *Service) sendTelegramNotification(ctx context.Context, channel model.No
 			ID: id, DedupeKey: dedupeKey, Channel: string(channel.Type), ChannelID: channel.ID,
 			ChannelName: channel.Name, MonitorName: monitorName, Target: chatID, CreatedAt: now,
 		}
-		if s.deferToEarlierState(ctx, entry) {
+		deferred, orderErr := s.deferToEarlierState(ctx, entry)
+		if orderErr != nil {
+			return orderErr
+		}
+		if deferred {
 			continue
 		}
 		if !tokenResolved {
@@ -322,7 +326,7 @@ func (s *Service) postTelegram(ctx context.Context, client *http.Client, token, 
 		return transportError("telegram request failed", err)
 	}
 	defer response.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	data, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 	var result struct {
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
@@ -344,6 +348,9 @@ func (s *Service) postTelegram(ctx context.Context, client *http.Client, token, 
 		return permanentError{err: fmt.Errorf("telegram returned HTTP %d", response.StatusCode)}
 	}
 	if parseErr != nil {
+		if readErr != nil {
+			return permanentError{err: fmt.Errorf("invalid Telegram response: %w", readErr)}
+		}
 		return permanentError{err: errors.New("invalid Telegram response")}
 	}
 	if !result.OK {
@@ -374,7 +381,11 @@ func (s *Service) sendWebhook(ctx context.Context, channel model.NotificationCha
 		ID: id, DedupeKey: dedupeKey, Channel: string(channel.Type), ChannelID: channel.ID,
 		ChannelName: channel.Name, MonitorName: monitorName, Target: target, CreatedAt: now,
 	}
-	if s.deferToEarlierState(ctx, entry) {
+	deferred, orderErr := s.deferToEarlierState(ctx, entry)
+	if orderErr != nil {
+		return orderErr
+	}
+	if deferred {
 		return nil
 	}
 	sendErr := s.sendWebhookBody(ctx, channel, body)
@@ -447,7 +458,7 @@ func (s *Service) sendWebhookOnce(ctx context.Context, channel model.Notificatio
 		return transportError("webhook request failed", err)
 	}
 	defer response.Body.Close()
-	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 	if response.StatusCode == http.StatusTooManyRequests {
 		if delay := parseRetryAfter(response.Header.Get("Retry-After"), time.Now()); delay > 0 {
 			return retryAfterError{wait: delay}
@@ -460,10 +471,16 @@ func (s *Service) sendWebhookOnce(ctx context.Context, channel model.Notificatio
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return permanentError{err: fmt.Errorf("webhook returned HTTP %d", response.StatusCode)}
 	}
-	return webhookResponseError(format, responseBody)
+	return webhookResponseError(format, responseBody, readErr)
 }
 
-func webhookResponseError(format model.WebhookFormat, body []byte) error {
+func webhookResponseError(format model.WebhookFormat, body []byte, readErr error) error {
+	if format == model.WebhookFormatGeneric {
+		return nil
+	}
+	if readErr != nil {
+		return permanentError{err: fmt.Errorf("invalid webhook response: %w", readErr)}
+	}
 	switch format {
 	case model.WebhookFormatDingTalk, model.WebhookFormatWeCom:
 		var result struct {

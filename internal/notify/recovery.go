@@ -44,7 +44,13 @@ func (s *Service) recoverPendingEntries(ctx context.Context, entries []model.Not
 			s.log.Warn("pending notification recovery stopped", "recovered", recovered, "remaining", len(entries)-recovered)
 			return
 		}
-		if s.blockedByEarlierState(recoverCtx, entry) {
+		blocked, orderErr := s.blockedByEarlierState(recoverCtx, entry)
+		if orderErr != nil {
+			s.log.Warn("check earlier pending notification during recovery", "channel", entry.Channel, "target", entry.Target, "error", orderErr)
+			s.deferBlocked(recoverCtx, entry)
+			continue
+		}
+		if blocked {
 			continue
 		}
 		if s.expired(entry, time.Now().UTC()) {
@@ -135,7 +141,13 @@ func (s *Service) retryDue(ctx context.Context) {
 }
 
 func (s *Service) retryEntry(ctx context.Context, entry model.NotificationLog) {
-	if s.blockedByEarlierState(ctx, entry) {
+	blocked, orderErr := s.blockedByEarlierState(ctx, entry)
+	if orderErr != nil {
+		s.log.Warn("check earlier pending notification", "channel", entry.Channel, "target", entry.Target, "error", orderErr)
+		s.deferBlocked(ctx, entry)
+		return
+	}
+	if blocked {
 		s.deferBlocked(ctx, entry)
 		return
 	}
@@ -163,17 +175,16 @@ func (s *Service) expired(entry model.NotificationLog, now time.Time) bool {
 	return entry.Attempts > 0 && age >= maxAge
 }
 
-func (s *Service) blockedByEarlierState(ctx context.Context, entry model.NotificationLog) bool {
+func (s *Service) blockedByEarlierState(ctx context.Context, entry model.NotificationLog) (bool, error) {
 	monitorID, ok := model.StateNotificationMonitorID(entry.DedupeKey)
 	if !ok || entry.ID <= 0 {
-		return false
+		return false, nil
 	}
 	older, err := s.store.HasEarlierPendingStateNotification(ctx, entry.ID, monitorID, entry.ChannelID, entry.Target)
 	if err != nil {
-		s.log.Warn("check earlier pending notification", "channel", entry.Channel, "target", entry.Target, "dedupe_key", entry.DedupeKey, "error", err)
-		return false
+		return false, fmt.Errorf("check earlier pending notification: %w", err)
 	}
-	return older
+	return older, nil
 }
 
 func (s *Service) deferBlocked(ctx context.Context, entry model.NotificationLog) {
@@ -183,15 +194,20 @@ func (s *Service) deferBlocked(ctx context.Context, entry model.NotificationLog)
 	}
 }
 
-func (s *Service) deferToEarlierState(ctx context.Context, entry model.NotificationLog) bool {
-	if !s.blockedByEarlierState(ctx, entry) {
-		return false
+func (s *Service) deferToEarlierState(ctx context.Context, entry model.NotificationLog) (bool, error) {
+	blocked, err := s.blockedByEarlierState(ctx, entry)
+	if err != nil {
+		s.deferBlocked(ctx, entry)
+		return false, err
+	}
+	if !blocked {
+		return false, nil
 	}
 	if err := s.store.DeferNotification(ctx, entry.DedupeKey, entry.Channel, entry.ChannelID, entry.Target, time.Now().UTC()); err != nil {
 		s.log.Error("defer notification", "channel", entry.Channel, "target", entry.Target, "dedupe_key", entry.DedupeKey, "error", err)
 	}
 	s.log.Info("notification deferred behind earlier pending notification", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey)
-	return true
+	return true, nil
 }
 
 func (s *Service) attemptEntry(ctx context.Context, entry model.NotificationLog) error {
