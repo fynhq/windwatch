@@ -48,6 +48,7 @@
 <dialog class="dialog" id="proxy-form" aria-labelledby="proxy-form-title" {{if .ProxyFormOpen}}data-auto-open="true"{{end}}>
   <form method="post" action="{{.ProxyFormAction}}" class="dialog-form">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    {{if .ProxyForm.PasswordCiphertext}}<input type="hidden" name="password_ciphertext" value="{{.ProxyForm.PasswordCiphertext}}">{{end}}
     <div class="dialog-head">
       <div>
         <h2 id="proxy-form-title">{{if .ProxyFormEdit}}{{.I18n.T "proxy.editTitle"}}{{else}}{{.I18n.T "proxy.addTitle"}}{{end}}</h2>

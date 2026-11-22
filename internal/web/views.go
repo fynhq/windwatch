@@ -15,6 +15,7 @@ type pageData struct {
 	I18n            *i18n.Translator
 	Title           string
 	Path            string
+	LanguageNext    string
 	Version         string
 	AssetVersion    string
 	Username        string
@@ -81,10 +82,15 @@ func (s *Server) newPage(r *http.Request, titleKey string) pageData {
 	if key, ok := noticeKeys[r.URL.Query().Get("notice")]; ok {
 		notice = translator.T(key)
 	}
+	languageNext := r.URL.RequestURI()
+	if !safeRedirectPath(languageNext) {
+		languageNext = "/"
+	}
 	return pageData{
 		I18n:         translator,
 		Title:        translator.T(titleKey),
 		Path:         r.URL.Path,
+		LanguageNext: languageNext,
 		Version:      s.version,
 		AssetVersion: s.assetVersion,
 		Notice:       notice,

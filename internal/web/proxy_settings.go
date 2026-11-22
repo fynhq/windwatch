@@ -16,11 +16,12 @@ import (
 const proxyTestTarget = "example.com:443"
 
 type proxyFormValues struct {
-	Name     string
-	Type     model.ProxyType
-	Address  string
-	Username string
-	Password string
+	Name               string
+	Type               model.ProxyType
+	Address            string
+	Username           string
+	Password           string
+	PasswordCiphertext string
 }
 
 type proxyOption struct {
@@ -95,6 +96,14 @@ func (s *Server) handleProxyTest(w http.ResponseWriter, r *http.Request, auth mo
 
 	values := parseProxyForm(r)
 	password := values.Password
+	if password == "" && values.PasswordCiphertext != "" {
+		decrypted, err := s.cipher.Decrypt(values.PasswordCiphertext)
+		if err != nil {
+			s.renderProxyTestError(w, r, auth, values, existing, "error.invalidRequest", "")
+			return
+		}
+		password = decrypted
+	}
 	if password == "" && existing != nil && existing.PasswordEnc != "" {
 		decrypted, err := s.cipher.Decrypt(existing.PasswordEnc)
 		if err != nil {
@@ -131,6 +140,10 @@ func (s *Server) renderProxyTestSuccess(w http.ResponseWriter, r *http.Request, 
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
+	if err := s.prepareProxyPassword(&values); err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
 	page.ProxyFormOpen = true
 	page.ProxyForm = values
 	page.Notice = page.I18n.T("notice.proxyTestOK")
@@ -145,6 +158,10 @@ func (s *Server) renderProxyTestSuccess(w http.ResponseWriter, r *http.Request, 
 func (s *Server) renderProxyTestError(w http.ResponseWriter, r *http.Request, auth model.AuthInfo, values proxyFormValues, existing *model.Proxy, errorKey, detail string) {
 	page, err := s.loadProxySettingsPage(r, auth)
 	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
+	if err := s.prepareProxyPassword(&values); err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}
@@ -239,6 +256,19 @@ func (s *Server) handleProxyDelete(w http.ResponseWriter, r *http.Request, auth 
 	http.Redirect(w, r, "/settings/proxies?notice=proxy_deleted", http.StatusSeeOther)
 }
 
+func (s *Server) prepareProxyPassword(values *proxyFormValues) error {
+	if values.Password == "" {
+		return nil
+	}
+	encrypted, err := s.cipher.Encrypt(values.Password)
+	if err != nil {
+		return err
+	}
+	values.Password = ""
+	values.PasswordCiphertext = encrypted
+	return nil
+}
+
 func (s *Server) proxyFromValues(r *http.Request, values proxyFormValues, existing *model.Proxy) (model.Proxy, error) {
 	proxy := model.Proxy{
 		Name:     strings.TrimSpace(values.Name),
@@ -257,6 +287,11 @@ func (s *Server) proxyFromValues(r *http.Request, values proxyFormValues, existi
 			return model.Proxy{}, err
 		}
 		proxy.PasswordEnc = encrypted
+	} else if values.PasswordCiphertext != "" {
+		if _, err := s.cipher.Decrypt(values.PasswordCiphertext); err != nil {
+			return model.Proxy{}, newFormError("error.invalidRequest")
+		}
+		proxy.PasswordEnc = values.PasswordCiphertext
 	}
 	if err := proxy.Validate(); err != nil {
 		return model.Proxy{}, newFormError(proxyValidationKey(err))
@@ -266,11 +301,12 @@ func (s *Server) proxyFromValues(r *http.Request, values proxyFormValues, existi
 
 func parseProxyForm(r *http.Request) proxyFormValues {
 	return proxyFormValues{
-		Name:     strings.TrimSpace(r.PostFormValue("name")),
-		Type:     model.ProxyType(r.PostFormValue("type")),
-		Address:  strings.TrimSpace(r.PostFormValue("address")),
-		Username: strings.TrimSpace(r.PostFormValue("username")),
-		Password: r.PostFormValue("password"),
+		Name:               strings.TrimSpace(r.PostFormValue("name")),
+		Type:               model.ProxyType(r.PostFormValue("type")),
+		Address:            strings.TrimSpace(r.PostFormValue("address")),
+		Username:           strings.TrimSpace(r.PostFormValue("username")),
+		Password:           r.PostFormValue("password"),
+		PasswordCiphertext: r.PostFormValue("password_ciphertext"),
 	}
 }
 
@@ -290,6 +326,10 @@ func proxyValidationKey(err error) string {
 func (s *Server) renderSettingsError(w http.ResponseWriter, r *http.Request, auth model.AuthInfo, values proxyFormValues, editingID int64, errorKey string) {
 	page, err := s.loadProxySettingsPage(r, auth)
 	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
+		return
+	}
+	if err := s.prepareProxyPassword(&values); err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
 		return
 	}

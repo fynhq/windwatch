@@ -46,7 +46,7 @@
         <span class="brand-name">{{.I18n.T "app.name"}}</span>
       </a>
       <div class="topbar-actions">
-        <a class="lang-button" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}"
+        <a class="lang-button" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .LanguageNext}}"
           title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}{{.I18n.T "language.short.en"}}{{else}}{{.I18n.T "language.short.zhCN"}}{{end}}</a>
         <span class="user-chip">
           <span class="avatar" aria-hidden="true">{{template "icon-user"}}</span>
@@ -103,7 +103,7 @@
     </span>
   </a>
   <div class="auth-controls">
-    <a class="lang-button" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .Path}}"
+    <a class="lang-button" href="/language/{{if eq .I18n.Lang "zh-CN"}}en{{else}}zh-CN{{end}}?next={{urlquery .LanguageNext}}"
       title="{{.I18n.T "language.switch"}}" aria-label="{{.I18n.T "language.switch"}}">{{if eq .I18n.Lang "zh-CN"}}{{.I18n.T "language.short.en"}}{{else}}{{.I18n.T "language.short.zhCN"}}{{end}}</a>
   </div>
 </header>

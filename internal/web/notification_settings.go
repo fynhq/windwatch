@@ -204,8 +204,8 @@ func (s *Server) handleNotificationTest(w http.ResponseWriter, r *http.Request, 
 }
 
 func parseNotificationChannelForm(r *http.Request) notificationChannelFormValues {
-	channelType := model.NotificationChannelType(r.PostFormValue("type"))
-	if channelType != model.NotificationChannelTelegram && channelType != model.NotificationChannelWebhook {
+	channelType := model.NotificationChannelType(strings.TrimSpace(r.PostFormValue("type")))
+	if channelType == "" {
 		channelType = model.NotificationChannelTelegram
 	}
 	language := strings.TrimSpace(r.PostFormValue("language"))

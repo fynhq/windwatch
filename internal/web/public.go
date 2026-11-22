@@ -185,8 +185,8 @@ func (s *Server) buildPublicSnapshot(ctx context.Context, ids []int64, version u
 		combined, err := s.store.UptimeStatsForMonitorsCombinedMany(ctx, monitorIDs, []time.Time{
 			now.Add(-24 * time.Hour),
 			now.Add(-7 * 24 * time.Hour),
-			now.Add(-30 * 24 * time.Hour),
-			now.Add(-90 * 24 * time.Hour),
+			longRangeStart(now, 30),
+			longRangeStart(now, 90),
 		}, now)
 		if err != nil {
 			return nil, err

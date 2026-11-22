@@ -16,6 +16,11 @@ import (
 	"github.com/fynhq/windwatch/internal/store"
 )
 
+func longRangeStart(now time.Time, days int) time.Time {
+	resolution := time.Duration(store.HalfHourlyResolutionSeconds) * time.Second
+	return now.Add(-time.Duration(days) * 24 * time.Hour).Truncate(resolution)
+}
+
 type formError struct {
 	key string
 }
@@ -641,8 +646,8 @@ func (s *Server) handleMonitorDetail(w http.ResponseWriter, r *http.Request, aut
 		return
 	}
 	combined, err := s.store.UptimeStatsForMonitorsCombinedMany(r.Context(), []int64{id}, []time.Time{
-		now.Add(-30 * 24 * time.Hour),
-		now.Add(-90 * 24 * time.Hour),
+		longRangeStart(now, 30),
+		longRangeStart(now, 90),
 	}, now)
 	if err != nil {
 		s.log.Error("load long-range stats", "monitor_id", id, "error", err)

@@ -5,9 +5,12 @@ import (
 	"time"
 )
 
+const maxLimiterKeys = 4096
+
 type windowLimiter struct {
 	mu       sync.Mutex
 	limit    int
+	maxKeys  int
 	window   time.Duration
 	windows  map[string]*windowEntry
 	lastSeen time.Time
@@ -21,6 +24,7 @@ type windowEntry struct {
 func newWindowLimiter(limit int, window time.Duration) *windowLimiter {
 	return &windowLimiter{
 		limit:   limit,
+		maxKeys: maxLimiterKeys,
 		window:  window,
 		windows: make(map[string]*windowEntry),
 	}
@@ -41,6 +45,12 @@ func (l *windowLimiter) allow(key string, now time.Time) bool {
 		entry.count++
 		return true
 	}
+	if len(l.windows) >= l.maxKeys {
+		l.pruneAllLocked(now)
+		if len(l.windows) >= l.maxKeys {
+			return false
+		}
+	}
 	l.windows[key] = &windowEntry{start: now, count: 1}
 	return true
 }
@@ -49,6 +59,10 @@ func (l *windowLimiter) pruneLocked(now time.Time) {
 	if !l.lastSeen.IsZero() && now.Sub(l.lastSeen) < l.window {
 		return
 	}
+	l.pruneAllLocked(now)
+}
+
+func (l *windowLimiter) pruneAllLocked(now time.Time) {
 	l.lastSeen = now
 	for key, entry := range l.windows {
 		if now.Sub(entry.start) >= l.window {

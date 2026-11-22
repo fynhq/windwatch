@@ -24,6 +24,7 @@ type pushIPWindow struct {
 
 type pushLimiter struct {
 	mu       sync.Mutex
+	maxKeys  int
 	last     map[string]time.Time
 	ipWindow map[string]*pushIPWindow
 	lastSeen time.Time
@@ -31,6 +32,7 @@ type pushLimiter struct {
 
 func newPushLimiter() *pushLimiter {
 	return &pushLimiter{
+		maxKeys:  maxLimiterKeys,
 		last:     make(map[string]time.Time),
 		ipWindow: make(map[string]*pushIPWindow),
 	}
@@ -42,6 +44,12 @@ func (l *pushLimiter) allow(key string, now time.Time) bool {
 	if last, ok := l.last[key]; ok && now.Sub(last) < time.Second {
 		return false
 	}
+	if _, exists := l.last[key]; !exists && len(l.last) >= l.maxKeys {
+		l.pruneAllLocked(now)
+		if len(l.last) >= l.maxKeys {
+			return false
+		}
+	}
 	l.last[key] = now
 	return true
 }
@@ -52,6 +60,12 @@ func (l *pushLimiter) allowIP(key string, now time.Time) bool {
 	l.pruneLocked(now)
 	entry := l.ipWindow[key]
 	if entry == nil || now.Sub(entry.start) >= pushIPWindowDuration {
+		if entry == nil && len(l.ipWindow) >= l.maxKeys {
+			l.pruneAllLocked(now)
+			if len(l.ipWindow) >= l.maxKeys {
+				return false
+			}
+		}
 		l.ipWindow[key] = &pushIPWindow{start: now, count: 1}
 		return true
 	}
@@ -66,6 +80,10 @@ func (l *pushLimiter) pruneLocked(now time.Time) {
 	if !l.lastSeen.IsZero() && now.Sub(l.lastSeen) < pushIPWindowDuration {
 		return
 	}
+	l.pruneAllLocked(now)
+}
+
+func (l *pushLimiter) pruneAllLocked(now time.Time) {
 	l.lastSeen = now
 	for key, entry := range l.ipWindow {
 		if now.Sub(entry.start) >= pushIPWindowDuration {
