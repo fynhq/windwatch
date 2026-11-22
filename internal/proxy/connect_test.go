@@ -122,6 +122,91 @@ func TestHTTPProxyConnectSuccess(t *testing.T) {
 	roundTrip(t, connection)
 }
 
+func TestHTTPConnectOversizedHeaders(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen proxy: %v", err)
+	}
+	defer listener.Close()
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer connection.Close()
+		reader := bufio.NewReader(connection)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil || line == "\r\n" {
+				break
+			}
+		}
+		_, _ = connection.Write([]byte("HTTP/1.1 200 OK\r\nX-Large: "))
+		_, _ = connection.Write([]byte(strings.Repeat("a", maxConnectHeaderBytes+1)))
+		_, _ = connection.Write([]byte("\r\n\r\n"))
+	}()
+	dial, err := DialContext(&Config{Type: model.ProxyHTTP, Address: listener.Addr().String()})
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := dial(ctx, "tcp", "example.com:443"); err == nil {
+		t.Fatal("expected oversized CONNECT header error")
+	} else if !strings.Contains(err.Error(), errConnectHeadersTooLarge.Error()) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHTTPConnectCancelWithoutDeadline(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen proxy: %v", err)
+	}
+	defer listener.Close()
+	requestSeen := make(chan struct{})
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer connection.Close()
+		reader := bufio.NewReader(connection)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil || line == "\r\n" {
+				break
+			}
+		}
+		close(requestSeen)
+		_, _ = io.Copy(io.Discard, reader)
+	}()
+	dial, err := DialContext(&Config{Type: model.ProxyHTTP, Address: listener.Addr().String()})
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := dial(ctx, "tcp", "example.com:443")
+		result <- err
+	}()
+	select {
+	case <-requestSeen:
+	case <-time.After(time.Second):
+		t.Fatal("proxy did not receive CONNECT request")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("expected canceled CONNECT to fail")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CONNECT did not stop after context cancellation")
+	}
+}
+
 func TestSOCKS5DialSuccess(t *testing.T) {
 	for _, requireAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("auth=%v", requireAuth), func(t *testing.T) {

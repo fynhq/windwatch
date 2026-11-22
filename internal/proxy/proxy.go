@@ -24,9 +24,12 @@ type Config struct {
 	Password string
 }
 
+const maxConnectHeaderBytes = 64 << 10
+
 var (
-	ErrInvalidConfig = errors.New("invalid proxy configuration")
-	ErrProxyFailure  = errors.New("proxy request failed")
+	ErrInvalidConfig          = errors.New("invalid proxy configuration")
+	ErrProxyFailure           = errors.New("proxy request failed")
+	errConnectHeadersTooLarge = errors.New("proxy CONNECT response headers exceed limit")
 )
 
 func wrapProxyError(err error) error {
@@ -177,7 +180,11 @@ func dialHTTPConnect(ctx context.Context, cfg *Config, network, address string) 
 		return nil, fmt.Errorf("connect to proxy: %w", err)
 	}
 	success := false
+	stopCancel := context.AfterFunc(ctx, func() {
+		_ = connection.Close()
+	})
 	defer func() {
+		stopCancel()
 		if !success {
 			_ = connection.Close()
 		}
@@ -203,7 +210,8 @@ func dialHTTPConnect(ctx context.Context, cfg *Config, network, address string) 
 		return nil, fmt.Errorf("write proxy CONNECT: %w", err)
 	}
 
-	reader := bufio.NewReader(connection)
+	limited := &headerLimitedConn{Conn: connection, remaining: maxConnectHeaderBytes, enabled: true}
+	reader := bufio.NewReader(limited)
 	response, err := http.ReadResponse(reader, &http.Request{Method: http.MethodConnect})
 	if err != nil {
 		return nil, fmt.Errorf("read proxy CONNECT response: %w", err)
@@ -212,9 +220,41 @@ func dialHTTPConnect(ctx context.Context, cfg *Config, network, address string) 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("proxy CONNECT returned HTTP %d", response.StatusCode)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !stopCancel() {
+		return nil, ctx.Err()
+	}
+	limited.disable()
 	_ = connection.SetDeadline(time.Time{})
 	success = true
 	return &bufferedConn{Conn: connection, reader: reader}, nil
+}
+
+type headerLimitedConn struct {
+	net.Conn
+	remaining int
+	enabled   bool
+}
+
+func (c *headerLimitedConn) Read(buffer []byte) (int, error) {
+	if !c.enabled {
+		return c.Conn.Read(buffer)
+	}
+	if c.remaining <= 0 {
+		return 0, errConnectHeadersTooLarge
+	}
+	if len(buffer) > c.remaining {
+		buffer = buffer[:c.remaining]
+	}
+	count, err := c.Conn.Read(buffer)
+	c.remaining -= count
+	return count, err
+}
+
+func (c *headerLimitedConn) disable() {
+	c.enabled = false
 }
 
 type bufferedConn struct {
