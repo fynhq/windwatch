@@ -117,3 +117,41 @@ func TestLoginSuccessKeepsFailureWindow(t *testing.T) {
 		t.Fatalf("guess after shared-IP success status = %d, want 429", response.StatusCode)
 	}
 }
+
+func TestLoginCSRFFailuresCountTowardLimiter(t *testing.T) {
+	_, _, testServer := newWebTestServer(t)
+	setupAdminSession(t, testServer)
+	client := newTestClient(t)
+	response, err := client.Get(testServer.URL + "/login")
+	if err != nil {
+		t.Fatalf("GET login: %v", err)
+	}
+	_ = readResponseBody(t, response)
+	csrf := cookieValue(t, client, testServer.URL+"/login", csrfCookieName)
+	for i := 0; i < maxLoginFailures; i++ {
+		response, err = client.PostForm(testServer.URL+"/login", url.Values{
+			"csrf_token": {"wrong-token"},
+			"username":   {"admin"},
+			"password":   {testPassword},
+		})
+		if err != nil {
+			t.Fatalf("POST csrf failure: %v", err)
+		}
+		_ = readResponseBody(t, response)
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("csrf failure status = %d, want 403", response.StatusCode)
+		}
+	}
+	response, err = client.PostForm(testServer.URL+"/login", url.Values{
+		"csrf_token": {csrf},
+		"username":   {"admin"},
+		"password":   {testPassword},
+	})
+	if err != nil {
+		t.Fatalf("POST after csrf failures: %v", err)
+	}
+	_ = readResponseBody(t, response)
+	if response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("login after repeated csrf failures status = %d, want 429", response.StatusCode)
+	}
+}

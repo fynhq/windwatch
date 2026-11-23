@@ -163,17 +163,18 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := strings.TrimSpace(r.PostFormValue("username"))
-	if !s.validatePreAuthCSRF(r) {
-		s.renderLoginPage(w, r, http.StatusForbidden, csrf, username, "error.csrf")
-		return
-	}
-
 	key := s.clientKey(r)
 	now := s.now()
 	if s.limiter.blocked(key, now) {
 		s.renderLoginPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
 		return
 	}
+	if !s.validatePreAuthCSRF(r) {
+		s.limiter.failure(key, now)
+		s.renderLoginPage(w, r, http.StatusForbidden, csrf, username, "error.csrf")
+		return
+	}
+
 	if !s.acquireLoginSlot() {
 		w.Header().Set("Retry-After", "1")
 		s.renderLoginPage(w, r, http.StatusTooManyRequests, csrf, username, "error.tooManyAttempts")
