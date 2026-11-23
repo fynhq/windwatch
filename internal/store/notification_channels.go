@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fynhq/windwatch/internal/model"
+	"modernc.org/sqlite"
 )
 
 var ErrNotificationChannelNameTaken = errors.New("notification channel name already exists")
@@ -221,6 +222,15 @@ func (s *Store) EnabledNotificationChannelIDsForMonitor(ctx context.Context, mon
 	return ids, nil
 }
 
+const (
+	sqliteConstraintUnique     = 2067
+	sqliteConstraintPrimaryKey = 1555
+)
+
 func isUniqueConstraint(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unique constraint")
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == sqliteConstraintUnique || sqliteErr.Code() == sqliteConstraintPrimaryKey
+	}
+	return false
 }
