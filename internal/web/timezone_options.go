@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -181,10 +182,24 @@ func buildTimezoneOptions(current string, now time.Time) []timezoneOption {
 	return options
 }
 
+var timezoneLocations = sync.OnceValue(func() map[string]*time.Location {
+	locations := make(map[string]*time.Location, len(timezoneNames))
+	for _, name := range timezoneNames {
+		if location, err := time.LoadLocation(name); err == nil {
+			locations[name] = location
+		}
+	}
+	return locations
+})
+
 func timezoneLabel(name string, now time.Time) (string, bool) {
-	location, err := time.LoadLocation(name)
-	if err != nil {
-		return "", false
+	location, ok := timezoneLocations()[name]
+	if !ok {
+		var err error
+		location, err = time.LoadLocation(name)
+		if err != nil {
+			return "", false
+		}
 	}
 	_, offset := now.In(location).Zone()
 	if offset%1800 != 0 {
