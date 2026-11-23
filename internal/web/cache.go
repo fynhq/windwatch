@@ -11,18 +11,38 @@ const (
 )
 
 func (s *Server) settingsSnapshot(ctx context.Context) (map[string]string, uint64, error) {
-	now := s.now()
+	for attempt := 0; attempt < 2; attempt++ {
+		now := s.now()
+		s.settingsMu.Lock()
+		if s.settingsValues != nil && now.Before(s.settingsExpires) {
+			values, version := s.settingsValues, s.settingsVersion
+			s.settingsMu.Unlock()
+			return values, version, nil
+		}
+		version := s.settingsVersion
+		s.settingsMu.Unlock()
+
+		values, err := s.store.Settings(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+		s.settingsMu.Lock()
+		if s.settingsVersion == version {
+			s.settingsValues = values
+			s.settingsExpires = s.now().Add(settingsCacheTTL)
+			s.settingsMu.Unlock()
+			return values, version, nil
+		}
+		s.settingsMu.Unlock()
+	}
 	s.settingsMu.Lock()
 	defer s.settingsMu.Unlock()
-	if s.settingsValues != nil && now.Before(s.settingsExpires) {
-		return s.settingsValues, s.settingsVersion, nil
-	}
 	values, err := s.store.Settings(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
 	s.settingsValues = values
-	s.settingsExpires = now.Add(settingsCacheTTL)
+	s.settingsExpires = s.now().Add(settingsCacheTTL)
 	return values, s.settingsVersion, nil
 }
 
