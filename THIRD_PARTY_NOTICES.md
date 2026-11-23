@@ -2,7 +2,7 @@
 
 WindWatch binaries include the Go standard library and the third-party modules
 listed below. This file is generated from the packages compiled into
-`./cmd/windwatch`; do not edit it by hand. Regenerate it with `make notices`.
+`./cmd/windwatch`; do not edit it by hand.
 
 WindWatch itself is licensed under the MIT License.
 ## Included modules

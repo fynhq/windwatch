@@ -57,7 +57,7 @@ To upgrade, back up `./data`, then run `docker compose pull && docker compose up
 
 Standalone binaries are provided only for Linux amd64 and arm64; other platforms should use the container image. Releases publish `windwatch-linux-amd64-vX.Y.Z.tar.gz`, `windwatch-linux-arm64-vX.Y.Z.tar.gz`, and `SHA256SUMS`. Verify with `sha256sum -c --strict SHA256SUMS`, extract the archive for your architecture, and run `windwatch version`.
 
-`make dist` runs formatting, vet, tests, and the notices freshness check, then writes both archives and `dist/SHA256SUMS`; each archive contains the static `windwatch` binary and `THIRD_PARTY_NOTICES.md`. HTTPS checks use the system CA bundle, so minimal hosts need `ca-certificates`.
+`make dist` runs formatting, vet, and tests, then writes both archives and `dist/SHA256SUMS`; each archive contains the static `windwatch` binary and `THIRD_PARTY_NOTICES.md`. HTTPS checks use the system CA bundle, so minimal hosts need `ca-certificates`.
 
 Install with systemd (replace `X.Y.Z` with the release version):
 
@@ -142,7 +142,7 @@ make race
 make build
 ```
 
-`make check` runs formatting, vet, tests, and the notices freshness check; `make vuln` runs the pinned `govulncheck`; `make dist` and `make docker-build` wrap deployment builds; `make version` prints the current version. The code lives in `cmd/windwatch` and `internal/`; tests use local fakes for HTTP, TCP, Docker, Telegram, and proxies. SQLite uses the pure-Go `modernc.org/sqlite` driver, so `CGO_ENABLED=0` builds are supported.
+`make check` runs formatting, vet, and tests; `make vuln` runs the pinned `govulncheck`; `make dist` and `make docker-build` wrap deployment builds; `make version` prints the current version. The code lives in `cmd/windwatch` and `internal/`; tests use local fakes for HTTP, TCP, Docker, Telegram, and proxies. SQLite uses the pure-Go `modernc.org/sqlite` driver, so `CGO_ENABLED=0` builds are supported.
 
 ## License
 
@@ -209,7 +209,7 @@ docker compose up -d
 
 单文件只提供 Linux amd64 和 arm64 版本，其他平台请使用容器镜像。发布包包含 `windwatch-linux-amd64-vX.Y.Z.tar.gz`、`windwatch-linux-arm64-vX.Y.Z.tar.gz` 和 `SHA256SUMS`；用 `sha256sum -c --strict SHA256SUMS` 校验，解压对应架构后用 `windwatch version` 查看版本。
 
-`make dist` 会执行格式检查、vet、测试和许可证通知新鲜度检查，然后生成两个压缩包和 `dist/SHA256SUMS`；每个压缩包内含静态链接的 `windwatch` 和 `THIRD_PARTY_NOTICES.md`。HTTPS 检查使用系统 CA 证书，最小化系统需要安装 `ca-certificates`。
+`make dist` 会执行格式检查、vet 和测试，然后生成两个压缩包和 `dist/SHA256SUMS`；每个压缩包内含静态链接的 `windwatch` 和 `THIRD_PARTY_NOTICES.md`。HTTPS 检查使用系统 CA 证书，最小化系统需要安装 `ca-certificates`。
 
 在 systemd 主机上安装（把 `X.Y.Z` 换成实际版本）：
 
@@ -294,7 +294,7 @@ make race
 make build
 ```
 
-`make check` 执行格式检查、vet、测试和许可证通知新鲜度检查；`make vuln` 运行固定版本的 `govulncheck`；`make dist` 和 `make docker-build` 负责部署构建；`make version` 输出当前版本。代码位于 `cmd/windwatch` 和 `internal/`；测试使用本地替身覆盖 HTTP、TCP、Docker、Telegram 和代理。SQLite 使用纯 Go 的 `modernc.org/sqlite` 驱动，因此支持 `CGO_ENABLED=0` 构建。
+`make check` 执行格式检查、vet 和测试；`make vuln` 运行固定版本的 `govulncheck`；`make dist` 和 `make docker-build` 负责部署构建；`make version` 输出当前版本。代码位于 `cmd/windwatch` 和 `internal/`；测试使用本地替身覆盖 HTTP、TCP、Docker、Telegram 和代理。SQLite 使用纯 Go 的 `modernc.org/sqlite` 驱动，因此支持 `CGO_ENABLED=0` 构建。
 
 ## 许可
 
