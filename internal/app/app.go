@@ -106,15 +106,18 @@ func (a *App) Run(ctx context.Context) error {
 	cancelCleanup()
 
 	schedulerCtx, cancelScheduler := context.WithCancel(ctx)
-	a.notifier.Start(schedulerCtx)
+	notifyCtx, cancelNotify := context.WithCancel(ctx)
+	a.notifier.Start(notifyCtx)
 	if err := a.scheduler.Start(schedulerCtx); err != nil {
 		cancelScheduler()
+		cancelNotify()
 		a.notifier.Wait()
 		return fmt.Errorf("start scheduler: %w", err)
 	}
 	defer func() {
 		cancelScheduler()
 		a.scheduler.Wait()
+		cancelNotify()
 		a.notifier.Wait()
 	}()
 
@@ -145,7 +148,10 @@ func (a *App) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := a.server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown http server: %w", err)
+			a.log.Warn("http shutdown incomplete; forcing close", "error", err)
+			_ = a.server.Close()
+			<-serveErr
+			return nil
 		}
 		err := <-serveErr
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
