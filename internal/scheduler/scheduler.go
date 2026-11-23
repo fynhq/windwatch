@@ -527,10 +527,6 @@ func (s *Scheduler) runPushMonitor(ctx context.Context, monitor model.Monitor) {
 	}
 }
 
-func (s *Scheduler) enqueuePushOutcome(ctx context.Context, monitor model.Monitor, manual bool) {
-	s.enqueuePushOutcomeVersioned(ctx, monitor, manual, 0, false)
-}
-
 func (s *Scheduler) enqueuePushOutcomeVersioned(ctx context.Context, monitor model.Monitor, manual bool, generation uint64, versioned bool) {
 	token, err := s.store.PushTokenByMonitorID(ctx, monitor.ID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && token.LastHeartbeat.IsZero()) {
