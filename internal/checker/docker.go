@@ -214,27 +214,37 @@ type dockerMeta struct {
 
 func (d *dockerChecker) getAPIVersion(ctx context.Context) (string, error) {
 	d.versionMu.Lock()
-	defer d.versionMu.Unlock()
 	if d.apiVersion != "" {
-		return d.apiVersion, nil
+		version := d.apiVersion
+		d.versionMu.Unlock()
+		return version, nil
 	}
 	now := time.Now()
 	if d.versionErr != nil && now.Before(d.versionRetryAt) {
-		return "", d.versionErr
+		err := d.versionErr
+		d.versionMu.Unlock()
+		return "", err
 	}
+	d.versionMu.Unlock()
 
 	var response struct {
 		APIVersion string `json:"ApiVersion"`
 	}
 	status, err := d.getJSON(ctx, "/version", &response)
+
+	d.versionMu.Lock()
+	defer d.versionMu.Unlock()
+	if d.apiVersion != "" {
+		return d.apiVersion, nil
+	}
 	if err != nil {
 		d.versionErr = fmt.Errorf("query Docker version: %w", err)
-		d.versionRetryAt = now.Add(dockerVersionRetryDelay)
+		d.versionRetryAt = time.Now().Add(dockerVersionRetryDelay)
 		return "", d.versionErr
 	}
 	if status < 200 || status >= 300 || response.APIVersion == "" {
 		d.versionErr = fmt.Errorf("docker version endpoint returned HTTP %d", status)
-		d.versionRetryAt = now.Add(dockerVersionRetryDelay)
+		d.versionRetryAt = time.Now().Add(dockerVersionRetryDelay)
 		return "", d.versionErr
 	}
 	d.apiVersion = response.APIVersion
