@@ -14,10 +14,10 @@ WindWatch itself is licensed under the MIT License.
 - `golang.org/x/net@v0.63.0`
 - `golang.org/x/sys@v0.50.0`
 - `golang.org/x/term@v0.48.0`
-- `modernc.org/libc@v1.81.2`
+- `modernc.org/libc@v1.82.13`
 - `modernc.org/mathutil@v1.7.1`
 - `modernc.org/memory@v1.13.0`
-- `modernc.org/sqlite@v1.62.0`
+- `modernc.org/sqlite@v1.63.0`
 
 ## WindWatch
 
@@ -316,7 +316,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-## modernc.org/libc v1.81.2
+## modernc.org/libc v1.82.13
 
 ### LICENSE
 
@@ -782,7 +782,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-## modernc.org/sqlite v1.62.0
+## modernc.org/sqlite v1.63.0
 
 ### LICENSE
 

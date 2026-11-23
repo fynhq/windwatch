@@ -51,7 +51,7 @@ Open [http://localhost:8080/setup](http://localhost:8080/setup). Data and daily 
 
 The example uses host networking on Linux so monitors can reach host services such as a local proxy. On Docker Desktop, skip `chown`, comment out `network_mode: host`, uncomment the `ports` mapping, and use `host.docker.internal` instead of `127.0.0.1`. For multi-second HTTPS latency there, enable the commented `GODEBUG=tlsmlkem=0`; certificate verification is unchanged.
 
-To upgrade, back up `./data`, then run `docker compose pull && docker compose up -d`. Migrations run at startup and are not reversible; to roll back, restore the backup and pin `WINDWATCH_IMAGE` to the previous tag or digest. Published images support linux/amd64 and linux/arm64; release images are signed with cosign keyless and include SBOM/provenance attestations. Docker socket, hardening, and other options are documented in [compose.example.yaml](compose.example.yaml); mounting the socket is required for Docker monitors and grants significant host control.
+To upgrade, back up `./data`, then run `docker compose pull && docker compose up -d`. Migrations run at startup and are not reversible; to roll back, restore the backup and pin `WINDWATCH_IMAGE` to the previous tag or digest. Published images support linux/amd64 and linux/arm64; release images are signed with cosign keyless (cosign v3+ is required for verification) and include SBOM/provenance attestations. Docker socket, hardening, and other options are documented in [compose.example.yaml](compose.example.yaml); mounting the socket is required for Docker monitors and grants significant host control.
 
 ### Single binary (Linux amd64 and arm64)
 
@@ -203,7 +203,7 @@ docker compose up -d
 
 示例在 Linux 上默认使用 host 网络，便于访问本地代理等宿主机服务。Docker Desktop 上跳过 `chown`，注释掉 `network_mode: host`，取消 `ports` 映射注释，并把 `127.0.0.1` 换成 `host.docker.internal`；如果 HTTPS 检查出现数秒延迟，可启用已注释的 `GODEBUG=tlsmlkem=0`，证书校验不变。
 
-升级时先备份 `./data`，再执行 `docker compose pull && docker compose up -d`。迁移在启动时执行且不可自动回退；回滚需恢复备份，并把 `WINDWATCH_IMAGE` 固定到升级前的版本标签或 digest。官方镜像支持 linux/amd64 和 linux/arm64；发布镜像使用 cosign keyless 签名，并带 SBOM/provenance 证明。Docker socket、加固和其他选项见 [compose.example.yaml](compose.example.yaml)；挂载 socket 是 Docker 监控的前提，也会授予较高的宿主机控制权限。
+升级时先备份 `./data`，再执行 `docker compose pull && docker compose up -d`。迁移在启动时执行且不可自动回退；回滚需恢复备份，并把 `WINDWATCH_IMAGE` 固定到升级前的版本标签或 digest。官方镜像支持 linux/amd64 和 linux/arm64；发布镜像使用 cosign keyless 签名（验证需 cosign v3+），并带 SBOM/provenance 证明。Docker socket、加固和其他选项见 [compose.example.yaml](compose.example.yaml)；挂载 socket 是 Docker 监控的前提，也会授予较高的宿主机控制权限。
 
 ### 单文件二进制（Linux amd64 和 arm64）
 
