@@ -35,7 +35,6 @@ type dockerInspect struct {
 	State        struct {
 		Running    bool   `json:"Running"`
 		Paused     bool   `json:"Paused"`
-		Status     string `json:"Status"`
 		Restarting bool   `json:"Restarting"`
 		StartedAt  string `json:"StartedAt"`
 		Health     *struct {
@@ -270,10 +269,6 @@ func (d *dockerChecker) getJSON(ctx context.Context, path string, output any) (i
 		return 0, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode == http.StatusNotFound {
-		_, _ = io.Copy(io.Discard, response.Body)
-		return response.StatusCode, nil
-	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, response.Body)
 		return response.StatusCode, nil

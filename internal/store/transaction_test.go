@@ -8,7 +8,7 @@ import (
 	"github.com/fynhq/windwatch/internal/model"
 )
 
-func TestRecordCheckWithNotificationsIsAtomic(t *testing.T) {
+func TestRecordCheckWithNotificationsGuardedIsAtomic(t *testing.T) {
 	st := newStoreTest(t)
 	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 	monitorID, err := st.CreateMonitor(t.Context(), model.Monitor{
@@ -34,10 +34,10 @@ func TestRecordCheckWithNotificationsIsAtomic(t *testing.T) {
 		Status: model.StatusWarning, StatusSince: now, LastCheck: now,
 		LastError: "boom", ConsecutiveFailures: 1, UpdatedAt: now,
 	}
-	if err := st.RecordCheckWithNotifications(t.Context(), model.Check{
+	if err := st.RecordCheckWithNotificationsGuarded(t.Context(), model.Check{
 		MonitorID: monitorID, CheckedAt: now, Status: model.CheckWarning, Latency: time.Millisecond, MetaJSON: "{}",
-	}, state, event, false, []model.Notification{notification}, &warningContext); err != nil {
-		t.Fatalf("RecordCheckWithNotifications: %v", err)
+	}, state, event, false, []model.Notification{notification}, &warningContext, ResultGuard{}); err != nil {
+		t.Fatalf("RecordCheckWithNotificationsGuarded: %v", err)
 	}
 	current, err := st.MonitorByID(t.Context(), monitorID)
 	if err != nil {

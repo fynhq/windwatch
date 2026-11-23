@@ -591,18 +591,6 @@ func (s *Store) RecordCheck(ctx context.Context, check model.Check, state model.
 	return s.recordCheck(ctx, check, state, event, closeDownEvent, nil, nil, ResultGuard{})
 }
 
-func (s *Store) RecordCheckWithNotifications(
-	ctx context.Context,
-	check model.Check,
-	state model.MonitorState,
-	event *model.Event,
-	closeDownEvent bool,
-	notifications []model.Notification,
-	warningContext *string,
-) error {
-	return s.recordCheck(ctx, check, state, event, closeDownEvent, notifications, warningContext, ResultGuard{})
-}
-
 func (s *Store) RecordCheckWithNotificationsGuarded(
 	ctx context.Context,
 	check model.Check,
