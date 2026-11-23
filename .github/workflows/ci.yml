@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
+    branches: [dev, main]
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -24,17 +26,14 @@ jobs:
       - name: Show version
         run: make version
 
-      - name: Run checks
-        run: make check
+      - name: Run static checks
+        run: make fmt-check vet notices-check
 
-      - name: Run race tests
-        run: make race
+      - name: Run tests with race detector and coverage
+        run: go test -race -cover ./...
 
       - name: Run static analysis
         run: make lint
-
-      - name: Report coverage
-        run: make cover
 
       - name: Run govulncheck
         run: make vuln
