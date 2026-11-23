@@ -53,7 +53,9 @@ type outcome struct {
 }
 
 type runnerHandle struct {
-	cancel context.CancelFunc
+	cancel   context.CancelFunc
+	interval time.Duration
+	push     bool
 }
 
 type Scheduler struct {
@@ -74,6 +76,7 @@ type Scheduler struct {
 	results   chan outcome
 
 	mu          sync.Mutex
+	reloadMu    sync.Mutex
 	ctx         context.Context
 	started     bool
 	stopping    bool
@@ -191,6 +194,12 @@ func (s *Scheduler) applySafely(ctx context.Context, job outcome) {
 }
 
 func (s *Scheduler) Reload(monitorID int64) error {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
+	return s.reloadLocked(monitorID)
+}
+
+func (s *Scheduler) reloadLocked(monitorID int64) error {
 	runCtx, err := s.context()
 	if err != nil {
 		return err
@@ -215,6 +224,8 @@ func (s *Scheduler) Reload(monitorID int64) error {
 }
 
 func (s *Scheduler) Remove(monitorID int64) {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	s.stopRunner(monitorID)
 	s.mu.Lock()
 	delete(s.generations, monitorID)
@@ -222,12 +233,14 @@ func (s *Scheduler) Remove(monitorID int64) {
 }
 
 func (s *Scheduler) SetMonitorEnabled(ctx context.Context, monitorID int64, enabled bool) error {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	s.bumpGeneration(monitorID)
 	now := s.now().UTC()
 	if err := s.store.SetMonitorEnabledWithReset(ctx, monitorID, enabled, now); err != nil {
 		return fmt.Errorf("set monitor enabled: %w", err)
 	}
-	if err := s.Reload(monitorID); err != nil {
+	if err := s.reloadLocked(monitorID); err != nil {
 		if errors.Is(err, ErrNotStarted) {
 			return nil
 		}
@@ -303,7 +316,11 @@ func (s *Scheduler) startRunner(monitor model.Monitor) {
 	if old := s.runners[monitor.ID]; old != nil {
 		old.cancel()
 	}
-	s.runners[monitor.ID] = &runnerHandle{cancel: cancel}
+	s.runners[monitor.ID] = &runnerHandle{
+		cancel:   cancel,
+		interval: monitor.Interval,
+		push:     monitor.Type == model.MonitorTypePush,
+	}
 	s.workerWG.Add(1)
 	s.mu.Unlock()
 
