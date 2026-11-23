@@ -188,11 +188,12 @@ type Event struct {
 }
 
 type UptimeStats struct {
-	Total      int
-	Up         int
-	Warning    int
-	Down       int
-	AvgLatency time.Duration
+	Total        int
+	Up           int
+	Warning      int
+	Down         int
+	AvgLatency   time.Duration
+	LatencySumMs int64
 }
 
 type HourBucket struct {

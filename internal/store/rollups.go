@@ -101,6 +101,7 @@ func (s *Store) RollupStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		if err := rows.Scan(&monitorID, &stats.Total, &stats.Up, &stats.Warning, &stats.Down, &latencySum); err != nil {
 			return nil, fmt.Errorf("scan rollup stats: %w", err)
 		}
+		stats.LatencySumMs = latencySum
 		if stats.Total > 0 {
 			stats.AvgLatency = time.Duration(latencySum/int64(stats.Total)) * time.Millisecond
 		}
@@ -157,26 +158,14 @@ func (s *Store) uptimeStatsForMonitorsCombinedWithLast(ctx context.Context, moni
 			rollupEnd = next
 		}
 	}
-	if completeEnd := now.Truncate(bucket); rollupEnd.After(completeEnd) {
-		rollupEnd = completeEnd
+	if rollupEnd.After(now) {
+		rollupEnd = now
 	}
+	rollupEnd = rollupEnd.Truncate(bucket)
 	rollupStart := since.Truncate(bucket)
-	if rollupStart.Before(since) {
-		rollupStart = rollupStart.Add(bucket)
-	}
 
 	if !rollupStart.Before(rollupEnd) {
 		return s.uptimeStatsForMonitors(ctx, monitorIDs, since, now)
-	}
-
-	if since.Before(rollupStart) {
-		leading, err := s.uptimeStatsForMonitors(ctx, monitorIDs, since, rollupStart)
-		if err != nil {
-			return nil, err
-		}
-		for monitorID, stats := range leading {
-			mergeUptimeStats(result, monitorID, stats)
-		}
 	}
 	rollupStats, err := s.RollupStatsForMonitors(ctx, monitorIDs, rollupStart, rollupEnd)
 	if err != nil {
@@ -199,15 +188,14 @@ func (s *Store) uptimeStatsForMonitorsCombinedWithLast(ctx context.Context, moni
 
 func mergeUptimeStats(target map[int64]model.UptimeStats, monitorID int64, source model.UptimeStats) {
 	current := target[monitorID]
-	total := current.Total + source.Total
-	if total > 0 {
-		weighted := current.AvgLatency*time.Duration(current.Total) + source.AvgLatency*time.Duration(source.Total)
-		current.AvgLatency = weighted / time.Duration(total)
-	}
-	current.Total = total
+	current.Total += source.Total
 	current.Up += source.Up
 	current.Warning += source.Warning
 	current.Down += source.Down
+	current.LatencySumMs += source.LatencySumMs
+	if current.Total > 0 {
+		current.AvgLatency = time.Duration(current.LatencySumMs/int64(current.Total)) * time.Millisecond
+	}
 	target[monitorID] = current
 }
 

@@ -977,7 +977,7 @@ func (s *Store) uptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		       COALESCE(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END), 0),
-		       COALESCE(AVG(latency_ms), 0)
+		       COALESCE(SUM(latency_ms), 0)
 		FROM checks
 		WHERE monitor_id IN (`+idPlaceholders(len(monitorIDs))+`) AND `+window+`
 		GROUP BY monitor_id
@@ -991,12 +991,15 @@ func (s *Store) uptimeStatsForMonitors(ctx context.Context, monitorIDs []int64, 
 		var (
 			monitorID  int64
 			stats      model.UptimeStats
-			avgLatency float64
+			latencySum int64
 		)
-		if err := rows.Scan(&monitorID, &stats.Total, &stats.Up, &stats.Warning, &stats.Down, &avgLatency); err != nil {
+		if err := rows.Scan(&monitorID, &stats.Total, &stats.Up, &stats.Warning, &stats.Down, &latencySum); err != nil {
 			return nil, fmt.Errorf("scan uptime stats: %w", err)
 		}
-		stats.AvgLatency = time.Duration(avgLatency) * time.Millisecond
+		stats.LatencySumMs = latencySum
+		if stats.Total > 0 {
+			stats.AvgLatency = time.Duration(latencySum/int64(stats.Total)) * time.Millisecond
+		}
 		result[monitorID] = stats
 	}
 	if err := rows.Err(); err != nil {
