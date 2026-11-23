@@ -1056,7 +1056,12 @@ func (s *Store) DeleteChecksBefore(ctx context.Context, before time.Time) error 
 }
 
 func (s *Store) DeleteEventsBefore(ctx context.Context, before time.Time) error {
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE ended_at_ms IS NOT NULL AND ended_at_ms < ?", before.UTC().UnixMilli()); err != nil {
+	cutoff := before.UTC().UnixMilli()
+	if _, err := s.db.ExecContext(ctx, `
+		DELETE FROM events
+		WHERE (ended_at_ms IS NOT NULL AND ended_at_ms < ?)
+		   OR (type = 'up' AND started_at_ms < ?)
+	`, cutoff, cutoff); err != nil {
 		return fmt.Errorf("delete old events: %w", err)
 	}
 	return nil
