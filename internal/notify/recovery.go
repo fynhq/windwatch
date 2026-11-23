@@ -285,21 +285,35 @@ func (s *Service) recordFailure(ctx context.Context, entry model.NotificationLog
 		s.log.Warn("notification send failed permanently", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "attempts", completed, "error", sendErr)
 		return
 	}
+	maxAge := s.retryMaxAge
+	if maxAge <= 0 {
+		maxAge = time.Hour
+	}
+	var retryAfter retryAfterError
+	hasRetryAfter := errors.As(sendErr, &retryAfter) && retryAfter.wait > 0
+	if hasRetryAfter && retryAfter.wait > maxRetryAfter {
+		nextAt := now.Add(retryAfter.wait)
+		if !entry.CreatedAt.IsZero() && nextAt.After(entry.CreatedAt.Add(maxAge)) {
+			if err := s.store.FailNotification(ctx, entry.DedupeKey, entry.Channel, entry.ChannelID, entry.Target, errorText, completed, now); err != nil {
+				s.log.Error("record expired notification", "channel", entry.Channel, "target", entry.Target, "dedupe_key", entry.DedupeKey, "error", err)
+			}
+			s.log.Warn("notification retry window expired", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "attempts", completed, "error", sendErr)
+			return
+		}
+		if err := s.store.ScheduleNotificationRetry(ctx, entry.DedupeKey, entry.Channel, entry.ChannelID, entry.Target, errorText, entry.Attempts, nextAt); err != nil {
+			s.log.Error("schedule notification retry", "channel", entry.Channel, "target", entry.Target, "dedupe_key", entry.DedupeKey, "error", err)
+			return
+		}
+		s.log.Warn("notification retry deferred by server", "channel", entry.Channel, "channel_id", entry.ChannelID, "target", entry.Target, "dedupe_key", entry.DedupeKey, "retry_after", retryAfter.wait.String(), "next_attempt_at", nextAt.UTC().Format(time.RFC3339))
+		return
+	}
 	schedule := s.retrySchedule
 	if schedule == nil {
 		schedule = defaultRetryDelay
 	}
 	delay := schedule(completed)
-	var retryAfter retryAfterError
-	if errors.As(sendErr, &retryAfter) && retryAfter.wait > 0 {
+	if hasRetryAfter {
 		delay = retryAfter.wait
-		if delay > maxRetryAfter {
-			delay = maxRetryAfter
-		}
-	}
-	maxAge := s.retryMaxAge
-	if maxAge <= 0 {
-		maxAge = time.Hour
 	}
 	nextAt := now.Add(delay)
 	if !entry.CreatedAt.IsZero() && nextAt.After(entry.CreatedAt.Add(maxAge)) {
