@@ -150,7 +150,9 @@ func (a *App) Run(ctx context.Context) error {
 		if err := a.server.Shutdown(shutdownCtx); err != nil {
 			a.log.Warn("http shutdown incomplete; forcing close", "error", err)
 			_ = a.server.Close()
-			<-serveErr
+			if serveErrValue := <-serveErr; serveErrValue != nil {
+				a.log.Debug("serve stopped after forced close", "error", serveErrValue)
+			}
 			return nil
 		}
 		err := <-serveErr
