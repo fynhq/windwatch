@@ -50,7 +50,7 @@ func TestProxyTestPreservesCandidatePassword(t *testing.T) {
 		t.Fatal("plaintext proxy password appeared in the response")
 	}
 	ciphertext := html.UnescapeString(match[1])
-	if password, err := srv.cipher.Decrypt(ciphertext); err != nil || password != "proxy-secret" {
+	if password, err := srv.cipher.DecryptWithPurpose(proxyFormPurpose, ciphertext); err != nil || password != "proxy-secret" {
 		t.Fatalf("candidate ciphertext = %q password = %q err=%v", ciphertext, password, err)
 	}
 

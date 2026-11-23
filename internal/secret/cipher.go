@@ -13,6 +13,7 @@ import (
 )
 
 const cipherPrefix = "v1:"
+const purposeCipherPrefix = "v2:"
 
 type Cipher struct {
 	aead cipher.AEAD
@@ -120,6 +121,35 @@ func (c *Cipher) Decrypt(encoded string) (string, error) {
 		return "", errors.New("encrypted value is truncated")
 	}
 	plaintext, err := c.aead.Open(nil, payload[:nonceSize], payload[nonceSize:], nil)
+	if err != nil {
+		return "", fmt.Errorf("decrypt value: %w", err)
+	}
+	return string(plaintext), nil
+}
+
+func (c *Cipher) EncryptWithPurpose(purpose, plaintext string) (string, error) {
+	nonce := make([]byte, c.aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", fmt.Errorf("generate encryption nonce: %w", err)
+	}
+	ciphertext := c.aead.Seal(nil, nonce, []byte(plaintext), []byte(purpose))
+	payload := append(nonce, ciphertext...)
+	return purposeCipherPrefix + base64.RawStdEncoding.EncodeToString(payload), nil
+}
+
+func (c *Cipher) DecryptWithPurpose(purpose, encoded string) (string, error) {
+	if !strings.HasPrefix(encoded, purposeCipherPrefix) {
+		return "", errors.New("unsupported encrypted value")
+	}
+	payload, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(encoded, purposeCipherPrefix))
+	if err != nil {
+		return "", fmt.Errorf("decode encrypted value: %w", err)
+	}
+	nonceSize := c.aead.NonceSize()
+	if len(payload) < nonceSize {
+		return "", errors.New("encrypted value is truncated")
+	}
+	plaintext, err := c.aead.Open(nil, payload[:nonceSize], payload[nonceSize:], []byte(purpose))
 	if err != nil {
 		return "", fmt.Errorf("decrypt value: %w", err)
 	}

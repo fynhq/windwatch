@@ -97,7 +97,7 @@ func (s *Server) handleProxyTest(w http.ResponseWriter, r *http.Request, auth mo
 	values := parseProxyForm(r)
 	password := values.Password
 	if password == "" && values.PasswordCiphertext != "" {
-		decrypted, err := s.cipher.Decrypt(values.PasswordCiphertext)
+		decrypted, err := s.proxyFormPassword(values.PasswordCiphertext, existing)
 		if err != nil {
 			s.renderProxyTestError(w, r, auth, values, existing, "error.invalidRequest", "")
 			return
@@ -260,13 +260,22 @@ func (s *Server) prepareProxyPassword(values *proxyFormValues) error {
 	if values.Password == "" {
 		return nil
 	}
-	encrypted, err := s.cipher.Encrypt(values.Password)
+	encrypted, err := s.cipher.EncryptWithPurpose(proxyFormPurpose, values.Password)
 	if err != nil {
 		return err
 	}
 	values.Password = ""
 	values.PasswordCiphertext = encrypted
 	return nil
+}
+
+const proxyFormPurpose = "proxy-form"
+
+func (s *Server) proxyFormPassword(ciphertext string, existing *model.Proxy) (string, error) {
+	if existing != nil && ciphertext == existing.PasswordEnc {
+		return s.cipher.Decrypt(ciphertext)
+	}
+	return s.cipher.DecryptWithPurpose(proxyFormPurpose, ciphertext)
 }
 
 func (s *Server) proxyFromValues(r *http.Request, values proxyFormValues, existing *model.Proxy) (model.Proxy, error) {
@@ -288,10 +297,15 @@ func (s *Server) proxyFromValues(r *http.Request, values proxyFormValues, existi
 		}
 		proxy.PasswordEnc = encrypted
 	} else if values.PasswordCiphertext != "" {
-		if _, err := s.cipher.Decrypt(values.PasswordCiphertext); err != nil {
+		password, err := s.proxyFormPassword(values.PasswordCiphertext, existing)
+		if err != nil {
 			return model.Proxy{}, newFormError("error.invalidRequest")
 		}
-		proxy.PasswordEnc = values.PasswordCiphertext
+		encrypted, err := s.cipher.Encrypt(password)
+		if err != nil {
+			return model.Proxy{}, err
+		}
+		proxy.PasswordEnc = encrypted
 	}
 	if err := proxy.Validate(); err != nil {
 		return model.Proxy{}, newFormError(proxyValidationKey(err))
