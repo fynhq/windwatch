@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -279,5 +280,14 @@ func (s *Server) secureCookie(r *http.Request) bool {
 }
 
 func (s *Server) clientKey(r *http.Request) string {
-	return clientIP(r, s.trustedProxies)
+	key := clientIP(r, s.trustedProxies)
+	addr, err := netip.ParseAddr(key)
+	if err != nil {
+		return key
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		return netip.PrefixFrom(addr, 64).Masked().String()
+	}
+	return key
 }
