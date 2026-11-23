@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,13 +12,19 @@ import (
 )
 
 func (s *Store) PrunePublicStatusMonitorIDs(ctx context.Context, now time.Time) error {
-	values, err := s.Settings(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin public status prune: %w", err)
 	}
-	raw, ok := values[model.SettingPublicStatusMonitorIDs]
-	if !ok {
+	defer func() { _ = tx.Rollback() }()
+
+	var raw string
+	err = tx.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", model.SettingPublicStatusMonitorIDs).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read public monitor ids: %w", err)
 	}
 
 	var ids []int64
@@ -24,7 +32,7 @@ func (s *Store) PrunePublicStatusMonitorIDs(ctx context.Context, now time.Time) 
 		ids = nil
 	}
 
-	rows, err := s.db.QueryContext(ctx, "SELECT id FROM monitors")
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM monitors")
 	if err != nil {
 		return fmt.Errorf("list monitor ids: %w", err)
 	}
@@ -67,7 +75,17 @@ func (s *Store) PrunePublicStatusMonitorIDs(ctx context.Context, now time.Time) 
 	if string(encoded) == raw {
 		return nil
 	}
-	return s.SetSettings(ctx, map[string]string{
-		model.SettingPublicStatusMonitorIDs: string(encoded),
-	}, now)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO settings (key, value, updated_at_ms)
+		VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET
+			value = excluded.value,
+			updated_at_ms = excluded.updated_at_ms
+	`, model.SettingPublicStatusMonitorIDs, string(encoded), now.UTC().UnixMilli()); err != nil {
+		return fmt.Errorf("write public monitor ids: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit public status prune: %w", err)
+	}
+	return nil
 }
