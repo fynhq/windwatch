@@ -102,12 +102,6 @@ func (l *loginLimiter) failure(key string, now time.Time) {
 	}
 }
 
-func (l *loginLimiter) reset(key string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	delete(l.entries, key)
-}
-
 func (l *loginLimiter) pruneLocked(now time.Time) {
 	if !l.lastPrune.IsZero() && now.Sub(l.lastPrune) < loginFailureWindow {
 		return

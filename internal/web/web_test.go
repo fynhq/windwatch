@@ -451,9 +451,9 @@ func TestLoginLimiter(t *testing.T) {
 	if limiter.blocked("192.0.2.1", now.Add(6*time.Minute)) {
 		t.Fatal("expected block to expire")
 	}
-	limiter.reset("192.0.2.1")
-	if limiter.blocked("192.0.2.1", now) {
-		t.Fatal("reset should clear the limiter")
+	limiter.failure("192.0.2.1", now.Add(6*time.Minute))
+	if limiter.blocked("192.0.2.1", now.Add(7*time.Minute)) {
+		t.Fatal("a single failure after expiry should not block")
 	}
 }
 

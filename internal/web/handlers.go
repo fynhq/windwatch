@@ -113,7 +113,6 @@ func (s *Server) handleSetupPost(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("administrator created", "username", admin.Username)
 	s.setAdminCache(true)
-	s.limiter.reset(key)
 
 	if err := s.createSession(w, r, admin.ID); err != nil {
 		s.log.Error("create session after setup", "error", err)
@@ -242,7 +241,6 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.limiter.reset(key)
 	if err := s.createSession(w, r, admin.ID); err != nil {
 		s.log.Error("create login session", "error", err)
 		s.renderError(w, r, http.StatusInternalServerError, "error.internal")
