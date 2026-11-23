@@ -391,6 +391,9 @@ func ParseExpectedStatus(value string) (int, int, error) {
 	if value == "" {
 		value = DefaultExpectedStatus
 	}
+	if len(value) > MaxExpectedStatusLength {
+		return 0, 0, ErrHTTPStatus
+	}
 	parts := strings.Split(value, "-")
 	if len(parts) > 2 {
 		return 0, 0, ErrHTTPStatus
