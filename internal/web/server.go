@@ -259,7 +259,12 @@ func (s *Server) withPanicRecovery(next http.Handler) http.Handler {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				s.log.Error("http handler panic", "path", requestLogPath(r), "error", recovered)
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				lang := ""
+				if cookie, err := r.Cookie(languageCookieName); err == nil {
+					lang = cookie.Value
+				}
+				translator := s.catalogs.Translator(i18n.Negotiate(lang, r.Header.Get("Accept-Language")))
+				http.Error(w, translator.T("error.internal"), http.StatusInternalServerError)
 			}
 		}()
 		next.ServeHTTP(w, r)
