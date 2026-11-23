@@ -341,7 +341,7 @@ func (s *Service) postTelegram(ctx context.Context, client *http.Client, token, 
 		}
 		return fmt.Errorf("telegram returned HTTP %d", response.StatusCode)
 	}
-	if response.StatusCode >= 500 {
+	if response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout {
 		return fmt.Errorf("telegram returned HTTP %d", response.StatusCode)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -465,7 +465,7 @@ func (s *Service) sendWebhookOnce(ctx context.Context, channel model.Notificatio
 		}
 		return fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
 	}
-	if response.StatusCode >= 500 {
+	if response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout {
 		return fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

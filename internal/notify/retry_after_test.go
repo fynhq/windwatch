@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,5 +83,29 @@ func TestRetryAfterBeyondWindowFails(t *testing.T) {
 	entry := latestNotification(t, st)
 	if entry.Status != "failed" {
 		t.Fatalf("retry-after beyond window entry = status %q, want failed", entry.Status)
+	}
+}
+
+func TestRequestTimeoutIsRetryable(t *testing.T) {
+	service, st := testNotifyService(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusRequestTimeout)
+	}))
+	defer server.Close()
+	channel := createTestChannel(t, service, st, "Timeout hook", model.NotificationChannelWebhook, "", server.URL, "", true)
+	monitorID := createTestMonitor(t, st, channel.ID)
+	notification := model.Notification{
+		Key: fmt.Sprintf("down:%d:1", monitorID), Kind: model.EventDown, MonitorID: monitorID,
+		MonitorName: "Example", MonitorTarget: "https://example.com", MonitorType: model.MonitorTypeHTTP,
+		Status: model.StatusDown, Message: "timeout", OccurredAt: time.Now().UTC(),
+	}
+	service.dispatch(t.Context(), notification)
+
+	entry := latestNotification(t, st)
+	if entry.Status != "pending" || entry.Attempts != 1 {
+		t.Fatalf("408 entry = status %q attempts %d, want pending attempts 1", entry.Status, entry.Attempts)
+	}
+	if !strings.Contains(entry.Error, "HTTP 408") {
+		t.Fatalf("408 entry error = %q", entry.Error)
 	}
 }
