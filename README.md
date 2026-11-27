@@ -53,6 +53,8 @@ The example uses host networking on Linux so monitors can reach host services su
 
 To upgrade, back up `./data`, then run `docker compose pull && docker compose up -d`. Migrations run at startup and are not reversible; to roll back, restore the backup and pin `WINDWATCH_IMAGE` to the previous tag or digest. Published images support linux/amd64 and linux/arm64; release images are signed with cosign keyless (cosign v3+ is required for verification) and include SBOM/provenance attestations. Docker socket, hardening, and other options are documented in [compose.example.yaml](compose.example.yaml); mounting the socket is required for Docker monitors and grants significant host control.
 
+The runtime image is shell-less: it contains only the static binary, the CA bundle, `/THIRD_PARTY_NOTICES.md`, and the pre-created `/data`, `/tmp`, and `/var/run` directories. Troubleshoot with `docker compose logs`, `/healthz`, and `windwatch` subcommands instead of a container shell.
+
 ### Single binary (Linux amd64 and arm64)
 
 Standalone binaries are provided only for Linux amd64 and arm64; other platforms should use the container image. Releases publish `windwatch-linux-amd64-vX.Y.Z.tar.gz`, `windwatch-linux-arm64-vX.Y.Z.tar.gz`, and `SHA256SUMS`. Verify with `sha256sum -c --strict SHA256SUMS`, extract the archive for your architecture, and run `windwatch version`.
@@ -204,6 +206,8 @@ docker compose up -d
 示例在 Linux 上默认使用 host 网络，便于访问本地代理等宿主机服务。Docker Desktop 上跳过 `chown`，注释掉 `network_mode: host`，取消 `ports` 映射注释，并把 `127.0.0.1` 换成 `host.docker.internal`；如果 HTTPS 检查出现数秒延迟，可启用已注释的 `GODEBUG=tlsmlkem=0`，证书校验不变。
 
 升级时先备份 `./data`，再执行 `docker compose pull && docker compose up -d`。迁移在启动时执行且不可自动回退；回滚需恢复备份，并把 `WINDWATCH_IMAGE` 固定到升级前的版本标签或 digest。官方镜像支持 linux/amd64 和 linux/arm64；发布镜像使用 cosign keyless 签名（验证需 cosign v3+），并带 SBOM/provenance 证明。Docker socket、加固和其他选项见 [compose.example.yaml](compose.example.yaml)；挂载 socket 是 Docker 监控的前提，也会授予较高的宿主机控制权限。
+
+运行镜像不含 shell：只有静态二进制、CA 证书、`/THIRD_PARTY_NOTICES.md` 以及预建的 `/data`、`/tmp`、`/var/run`。排障请使用 `docker compose logs`、`/healthz` 和 `windwatch` 子命令，而不是容器 shell。
 
 ### 单文件二进制（Linux amd64 和 arm64）
 

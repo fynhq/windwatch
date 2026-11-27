@@ -26,7 +26,9 @@ RUN set -eux; \
     target_arch="${TARGETARCH:-$(go env GOARCH)}"; \
     version="${VERSION:-$(tr -d '\r' < VERSION)}"; \
     case "${version}" in v*) ;; *) version="v${version}" ;; esac; \
-    mkdir -p /out; \
+    mkdir -p /out/rootfs-app/data /out/rootfs-root/tmp /out/rootfs-root/var/run; \
+    chmod 0700 /out/rootfs-app/data; \
+    chmod 1777 /out/rootfs-root/tmp; \
     GOOS="${target_os}" GOARCH="${target_arch}" go build \
         -trimpath \
         -buildvcs=false \
@@ -36,17 +38,13 @@ RUN set -eux; \
             -X github.com/fynhq/windwatch/internal/version.BuildTime=${BUILD_TIME}" \
         -o /out/windwatch ./cmd/windwatch
 
-FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+FROM scratch
 
-RUN apk add --no-cache ca-certificates \
-    && addgroup -g 65532 -S windwatch \
-    && adduser -u 65532 -S -D -H -G windwatch windwatch \
-    && mkdir -p /data \
-    && chmod 0700 /data \
-    && chown 65532:65532 /data
-
-COPY --from=build --chown=65532:65532 /out/windwatch /windwatch
-COPY --chown=65532:65532 THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
+COPY --from=build --chown=65532:65532 /out/rootfs-app/ /
+COPY --from=build /out/rootfs-root/ /
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /out/windwatch /windwatch
+COPY THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
 
 LABEL org.opencontainers.image.source="https://github.com/fynhq/windwatch" \
       org.opencontainers.image.licenses="MIT"
